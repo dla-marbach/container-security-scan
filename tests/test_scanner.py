@@ -50,11 +50,53 @@ class EolTests(unittest.TestCase):
             json.dump(self.data, f)
         self.assertIn("veraltet", scanner.eol_warnungen([], self.path)[0])
 
-    def test_end_date_is_still_supported_on_that_day(self):
-        self.data["products"][0]["cycles"][1]["eol"] = "2026-11-04"
+    def write(self):
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(self.data, f)
-        self.assertEqual(scanner.eol_warnungen([scanner.comp("npm", "vue", "2.7.16")], self.path), [])
+
+    def test_end_date_is_still_supported_on_that_day(self):
+        self.data["products"][0]["cycles"][1]["eol"] = "2026-11-04"
+        self.write()
+        warnings = scanner.eol_warnungen([scanner.comp("npm", "vue", "2.7.16")], self.path)
+        self.assertEqual(len(warnings), 1)
+        self.assertTrue(warnings[0].startswith("Supportende bald:"))
+
+    def test_upcoming_end_only_within_notice_period(self):
+        self.data["products"][1]["cycles"].append({"cycle": "11", "eol": "2026-12-31"})
+        self.write()
+        warnings = scanner.eol_warnungen([scanner.comp("composer", "laravel/framework", "11.2.0", ort="/x"),
+                                          scanner.comp("composer", "laravel/framework", "12.1.0", ort="/y")], self.path)
+        self.assertEqual(warnings, ["Supportende bald: laravel/framework 11.2.0 (laravel 11, am 2026-12-31; /x)"])
+
+    def test_runtimes_only_outside_os_packages(self):
+        self.data["products"].append({"name": "php", "purls": [], "cycles": [
+            {"cycle": "8.1", "eol": "2025-12-31"}, {"cycle": "8.4", "eol": "2028-12-31"}]})
+        self.write()
+        official = scanner.comp("runtime", "php", "8.1.31", ort="/usr/local/bin/php")
+        fpm = scanner.comp("runtime", "php-fpm", "8.1.31", ort="/usr/local/sbin/php-fpm")
+        debian = scanner.comp("runtime", "php", "8.1.2", ort="/usr/bin/php8.1", hinweise=["aus OS-Paket php8.1-cli"])
+        current = scanner.comp("runtime", "php", "8.4.1", ort="/usr/local/bin/php")
+        sury = scanner.comp("runtime", "php", "8.1.33", ort="/usr/bin/php8.1",
+                            hinweise=["aus OS-Paket php8.1-cli", scanner.FREMDQUELLE + " – über Bitnami geprüft"])
+        warnings = scanner.eol_warnungen([official, fpm, debian, current, sury], self.path)
+        self.assertEqual(len(warnings), 3)
+        self.assertIn("php 8.1.33", warnings[2])
+        self.assertIn("php 8.1.31 (php 8.1, seit 2025-12-31; /usr/local/bin/php)", warnings[0])
+        self.assertIn("php-fpm 8.1.31", warnings[1])
+
+    def test_same_component_in_many_places_is_one_warning(self):
+        comps = [scanner.comp("npm", "vue", "2.7.16", ort="/app%d" % i) for i in range(5)]
+        warnings = scanner.eol_warnungen(comps, self.path)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("/app0, /app1, /app2 und 2 weitere", warnings[0])
+
+    def test_newest_of_several_files_is_used(self):
+        other = os.path.join(self.tmp.name, "alt.json")
+        old = dict(self.data, geprueft="2026-01-01T00:00:00Z")
+        with open(other, "w", encoding="utf-8") as f:
+            json.dump(old, f)
+        self.assertEqual(scanner.eol_warnungen([], [other, self.path, self.path + "-fehlt"]), [])
+        self.assertIn("veraltet", scanner.eol_warnungen([], [other, self.path + "-fehlt"])[0])
 
     def test_invalid_cycle_data_is_a_warning(self):
         self.data["products"][0]["cycles"][0]["eol"] = None
@@ -67,14 +109,22 @@ class EolTests(unittest.TestCase):
             {"type": "purl", "id": "pkg:npm/vue"}], "releases": [
             {"name": "2.7", "eolFrom": "2023-12-31", "isEol": True},
             {"name": "3.5", "eolFrom": None, "isEol": False},
-            {"name": "4", "eolFrom": None, "isEol": None}]}]}
+            {"name": "4", "eolFrom": None, "isEol": None}]},
+            {"name": "symfony", "identifiers": [], "releases": [{"name": "6.4", "eolFrom": "2027-11-30", "isEol": False}]},
+            {"name": "php", "identifiers": [{"type": "purl", "id": "pkg:generic/php"}],
+             "releases": [{"name": "8.1", "eolFrom": "2025-12-31", "isEol": True}]},
+            {"name": "redis", "identifiers": [], "releases": [{"name": "7.2", "eolFrom": "2026-01-01", "isEol": True}]}]}
+        result["total"] = len(result["result"])
         with mock.patch.object(scanner.urllib.request, "urlopen", return_value=io.BytesIO(json.dumps(result).encode())):
             scanner.eol_daten_erzeugen(self.path)
         with open(self.path, encoding="utf-8") as f:
             saved = json.load(f)
         self.assertEqual(saved["products"][0]["cycles"][0]["eol"], "2023-12-31")
         self.assertEqual(len(saved["products"][0]["cycles"]), 2)
-        result["total"] = 2
+        self.assertEqual([p["name"] for p in saved["products"]], ["vue", "symfony", "php"])
+        self.assertIn("pkg:composer/symfony/http-kernel", saved["products"][1]["purls"])
+        self.assertEqual(saved["products"][2]["purls"], [])
+        result["total"] += 1
         with mock.patch.object(scanner.urllib.request, "urlopen", return_value=io.BytesIO(json.dumps(result).encode())):
             with self.assertRaises(scanner.ScanError):
                 scanner.eol_daten_erzeugen(self.path)
@@ -83,17 +133,23 @@ class EolTests(unittest.TestCase):
 
 
 class ProxyTests(unittest.TestCase):
-    def test_custom_nginx_configuration_is_incomplete(self):
+    def test_custom_nginx_configuration_is_passed_to_nginx_t(self):
         container = mock.Mock()
         container.info = {"HostConfig": {}, "NetworkSettings": {"Ports": {}}}
         container.exec.return_value = (0, "events {} http {}")
-        proc = {"base": "nginx", "exe": "/usr/sbin/nginx",
-                "argv": ["nginx: master process nginx -c /tmp/nginx.conf -g daemon off;"]}
+        master = {"base": "nginx", "exe": "/usr/sbin/nginx",
+                  "argv": ["nginx: master process nginx -p /srv/ -c conf/nginx.conf -g daemon off;"]}
+        worker = {"base": "nginx", "exe": "/usr/sbin/nginx", "argv": ["nginx: worker process"]}
         with mock.patch.object(scanner, "run", return_value=(0, "")):
-            web = scanner.collect_web(container, {1: proc})
-            self.assertIn("nginx mit -c oder -p", web["problems"][0])
-            proc["argv"] = ["nginx: master process nginx -g daemon off;"]
-            self.assertEqual(scanner.collect_web(container, {1: proc})["problems"], [])
+            web = scanner.collect_web(container, {1: master, 2: worker})
+            self.assertEqual(web["problems"], [])
+            self.assertEqual(container.exec.call_args[0][0],
+                             ["/usr/sbin/nginx", "-p", "/srv/", "-c", "conf/nginx.conf", "-T"])
+            master["argv"] = ["nginx", "-g", "daemon off;"]
+            scanner.collect_web(container, {1: master})
+            self.assertEqual(container.exec.call_args[0][0], ["/usr/sbin/nginx", "-T"])
+            container.exec.return_value = (1, "nginx: [emerg] open() failed")
+            self.assertIn("-T fehlgeschlagen", scanner.collect_web(container, {1: master})["problems"][0])
 
     def test_public_unresolved_backend_is_flagged(self):
         p = {"base": "nginx", "exe": "/usr/sbin/nginx", "label": "nginx:80",

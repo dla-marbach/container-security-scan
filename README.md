@@ -64,7 +64,7 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 |---|---|
 | `0` | keine relevanten Schwachstellen |
 | `1` | relevante Schwachstellen gefunden |
-| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar, Distribution ohne aktuelle Sicherheitsdaten (EOL). |
+| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar, nginx-Konfiguration nicht lesbar, Distribution ohne aktuelle Sicherheitsdaten (EOL). |
 
 **Relevant** ist P1 CRITICAL/HIGH und P2 CRITICAL (anpassbar über `RELEVANT` am Anfang des Skripts).
 
@@ -168,19 +168,26 @@ liegt nur lokal in `osv-db/`, nicht im Repository; bei späteren Aktualisierunge
 erneut ausführen. Maßgeblich ist die Distribution des jeweiligen Images, nicht der Imagename.
 Fehlen die Ubuntu-Daten, bleibt das Ergebnis ausdrücklich unvollständig (Rückgabewert 2).
 
-`eol-daten.json` enthält zusätzlich einen Auszug aus [endoflife.date](https://endoflife.date)
-(MIT-Lizenz, siehe [`EOL-LIZENZ.txt`](EOL-LIZENZ.txt)). Die Action aktualisiert ihn täglich aus dem
-vollständigen API-Export. Der mitgelieferte Ausgangsstand enthält Laravel und Vue; nach der ersten
-erfolgreichen Aktualisierung kommen weitere Produkte mit npm-, Composer-, PyPI- oder Maven-Paketkennung
-hinzu. Nur eindeutig zuordenbare numerische Versionszweige werden verglichen. Supportende erscheint
-als Warnung im Bericht und auf der Konsole, **nicht** als CVE oder Änderung des Rückgabewerts.
-Fehlende oder mindestens 30 Tage alte EOL-Daten werden ebenfalls als Warnung gemeldet; fehlende
-Kennungen und nicht zuordenbare Versionszweige sind damit nicht auf Supportende geprüft. Die Angaben
-beziehen sich auf das reguläre Supportende, nicht auf möglicherweise erhältlichen kommerziellen Support.
-Der Ausgangsstand stammt aus den Produktdateien von endoflife.date für
-[Laravel](https://github.com/endoflife-date/endoflife.date/blob/46d14de9ebb0e1643467baf895da62d06e8d1260/products/laravel.md)
-und [Vue](https://github.com/endoflife-date/endoflife.date/blob/a2cf8eba99d66faf1cec42ecd86f6f0b2f15a524/products/vue.md)
-(abgerufen am 4. November 2026).
+### Supportende (EOL)
+
+`eol-daten.json` enthält einen Auszug aus [endoflife.date](https://endoflife.date) (MIT-Lizenz, siehe
+[`EOL-LIZENZ.txt`](EOL-LIZENZ.txt)), den die Action täglich aus dem vollständigen API-Export
+(`/api/v1/products/full/`) erzeugt. Geprüft werden:
+
+- **Pakete** mit npm-, Composer-, PyPI- oder Maven-Kennung bei endoflife.date (z. B. Laravel, Vue,
+  Angular, jQuery, Bootstrap, Django, Drupal, TYPO3, Spring, Log4j) sowie ergänzend Symfony, CakePHP,
+  Twig, Shopware, Craft CMS, Contao, Electron und Tomcat (`EOL_ZUSATZ` im Skript);
+- **Laufzeiten und Server**, die nicht aus einem OS-Paket stammen (offizielle Images, Herstellerquellen):
+  PHP/PHP-FPM, Node.js, Python, nginx, Apache httpd, MariaDB, MySQL, PostgreSQL. Stammen sie aus einem
+  OS-Paket, zählt der Support der Distribution (Debian portiert Sicherheitskorrekturen zurück); deren
+  Supportende wird über die Sicherheitsdaten erkannt (Rückgabewert 2).
+
+Verglichen werden nur numerische Versionszweige (`2.7.16` → Zweig `2.7`, sonst `2`). Ein abgelaufener
+Zweig erscheint als **Warnung** „Supportende“, ein Zweig mit Supportende in den nächsten 90 Tagen als
+„Supportende bald“ – im Bericht und auf der Konsole, **nicht** als CVE und ohne Einfluss auf den
+Rückgabewert. Fehlende oder mindestens 30 Tage alte EOL-Daten werden ebenfalls als Warnung gemeldet.
+Maßgeblich ist das reguläre Supportende, nicht kommerzieller Zusatzsupport (z. B. für PHP oder Node.js).
+Ohne Git-Checkout lädt `--db-aktualisieren` die EOL-Daten direkt nach `osv-db/eol-daten.json`.
 
 ## Rein lesend und ohne Datenabfluss
 
@@ -192,7 +199,7 @@ und [Vue](https://github.com/endoflife-date/endoflife.date/blob/a2cf8eba99d66faf
 - Ohne Shell oder Werkzeuge im Container wird passiv gelesen (`docker export`, `docker cp`, `/proc` des Hosts).
 - Der tar-Strom aus dem Container wird im Speicher gelesen; nichts wird auf dem Host entpackt.
 - Getestet: `docker diff` zeigt vor und nach dem Scan keine Änderung im Container.
-- Es werden nur Daten **heruntergeladen** (GitHub bzw. OSV); Paketlisten verlassen den Server nicht.
+- Es werden nur Daten **heruntergeladen** (GitHub bzw. OSV und endoflife.date); Paketlisten verlassen den Server nicht.
 
 ## Grenzen
 
@@ -202,15 +209,14 @@ und [Vue](https://github.com/endoflife-date/endoflife.date/blob/a2cf8eba99d66faf
 - Nicht erfasst: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung, Bundles ohne Kopfkommentar,
   Programme direkt auf dem Host, UDP-Dienste nur bei offenem Socket, Proxys außer nginx/Apache
   (Traefik, Caddy, HAProxy: Backends dann einzeln scannen).
-- EOL-Abgleich nur für Paketkennungen und numerische Versionszweige in `eol-daten.json`; OS-Pakete und
-  direkt erkannte Laufzeiten werden dabei nicht geprüft. Distributionen ohne aktuelle Sicherheitsdaten
-  werden separat erkannt (Rückgabewert 2).
+- EOL-Abgleich nur für Produkte mit Paketkennung bzw. die genannten Laufzeiten/Server und nur für
+  numerische Versionszweige; einzelne OS-Pakete, Java-Laufzeiten (herstellerabhängig) und Anwendungen
+  ohne Paketkennung (z. B. WordPress, Nextcloud) werden nicht auf Supportende geprüft.
 - Herstellerpaketquellen werden über typische Versionskennungen und Paketbetreuer erkannt
   (nginx.org, NodeSource, Sury, mariadb.org, PostgreSQL); andere Fremdquellen können unerkannt bleiben.
 - Ohne `--oeffentliche` kennt ein Einzelscan keine Proxys in *anderen* Containern; Backends erscheinen dann als P2.
-- Bei nginx mit `-c` oder `-p` kann die Abfrage `nginx -T` eine andere Konfiguration als die des
-  laufenden Prozesses lesen. Die Prüfung wird dann als unvollständig markiert (Rückgabewert 2);
-  Backends gesondert prüfen.
+- nginx-Konfiguration: `nginx -T` wird mit `-p`/`-c` des laufenden Masterprozesses aufgerufen. Schlägt
+  die Abfrage fehl, ist die Prüfung unvollständig (Rückgabewert 2), da Proxy-Backends fehlen könnten.
 
 ## Validierung
 

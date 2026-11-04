@@ -81,6 +81,18 @@ BITNAMI = {"php": "php", "php-fpm": "php", "node": "node", "python": "python", "
 SEV = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"]
 EOL_URL = "https://endoflife.date/api/v1/products/full/"
 EOL_TYPEN = {"npm": "npm", "js-lib": "npm", "composer": "composer", "pypi": "pypi", "maven": "maven"}
+# Laufzeiten/Server (Typ runtime/server) -> Produkt bei endoflife.date; nur geprüft, wenn nicht aus einem
+# OS-Paket (dort zählt der Support der Distribution, die Sicherheitskorrekturen zurückportiert)
+EOL_LAUFZEITEN = {"php": "php", "php-fpm": "php", "node": "nodejs", "python": "python", "nginx": "nginx",
+                  "apache-httpd": "apache-http-server", "mariadb": "mariadb", "mysql": "mysql", "postgresql": "postgresql"}
+# Paketkennungen, die bei endoflife.date fehlen
+EOL_ZUSATZ = {"symfony": ["pkg:composer/symfony/symfony", "pkg:composer/symfony/http-kernel"],
+              "cakephp": ["pkg:composer/cakephp/cakephp"], "twig": ["pkg:composer/twig/twig"],
+              "shopware": ["pkg:composer/shopware/core"], "craft-cms": ["pkg:composer/craftcms/cms"],
+              "contao": ["pkg:composer/contao/core-bundle"], "electron": ["pkg:npm/electron"],
+              "tomcat": ["pkg:maven/org.apache.tomcat/tomcat-catalina", "pkg:maven/org.apache.tomcat.embed/tomcat-embed-core"]}
+EOL_VORWARNUNG_TAGE = 90       # Supportende innerhalb dieser Frist: Hinweis vorab
+EOL_MAX_ALTER_TAGE = 30
 
 
 class ScanError(Exception):
@@ -123,7 +135,8 @@ def eol_daten_erzeugen(path):
     for product in data["result"]:
         identifiers = [x["id"] for x in product["identifiers"] if x.get("type") == "purl"
                        and x.get("id", "").startswith(("pkg:npm/", "pkg:composer/", "pkg:pypi/", "pkg:maven/"))]
-        if not identifiers:
+        identifiers += EOL_ZUSATZ.get(product["name"], [])
+        if not identifiers and product["name"] not in EOL_LAUFZEITEN.values():
             continue
         cycles = []
         for release in product["releases"]:
@@ -151,52 +164,97 @@ def eol_daten_erzeugen(path):
     os.replace(path + ".tmp", path)
 
 
-def eol_warnungen(comps, path):
-    """Warnungen für bekannte, nicht mehr sicherheitsunterstützte Paket-Versionszweige."""
+def eol_laden(paths):
+    """EOL-Daten lesen und prüfen; bei mehreren Dateien (Repository, osv-db/) die jüngste."""
+    best, err = None, "keine Datei"
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            checked = datetime.datetime.strptime(data["geprueft"], "%Y-%m-%dT%H:%M:%SZ")
+            products = data["products"]
+            if not isinstance(products, list) or not products:
+                raise ValueError("keine Produkte")
+            for product in products:
+                if not isinstance(product["name"], str) or not isinstance(product["purls"], list) \
+                        or not isinstance(product["cycles"], list):
+                    raise ValueError("ungültiges Produkt")
+                for cycle in product["cycles"]:
+                    if not isinstance(cycle["cycle"], str) or not isinstance(cycle["eol"], (str, bool)):
+                        raise ValueError("ungültiger Versionszweig")
+                    if isinstance(cycle["eol"], str):
+                        datetime.datetime.strptime(cycle["eol"], "%Y-%m-%d")
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            if not isinstance(e, FileNotFoundError) or err == "keine Datei":
+                err = str(e)
+            continue
+        if best is None or checked > best[0]:
+            best = (checked, products)
+    if best is None:
+        raise ValueError(err)
+    return best
+
+
+def eol_warnungen(comps, paths):
+    """Warnungen für Versionszweige ohne regulären Support (oder kurz davor): Pakete über ihre Kennung,
+    Laufzeiten/Server außerhalb von OS-Paketen über den Produktnamen. Ändert den Rückgabewert nicht."""
+    if isinstance(paths, str):
+        paths = [paths]
     try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        checked = datetime.datetime.strptime(data["geprueft"], "%Y-%m-%dT%H:%M:%SZ")
-        products = data["products"]
-        if not isinstance(products, list) or not products:
-            raise ValueError("keine Produkte")
-        index = defaultdict(list)
-        for product in products:
-            if not isinstance(product["name"], str) or not isinstance(product["purls"], list) \
-                    or not isinstance(product["cycles"], list):
-                raise ValueError("ungültiges Produkt")
-            for cycle in product["cycles"]:
-                if not isinstance(cycle["cycle"], str) or not isinstance(cycle["eol"], (str, bool)):
-                    raise ValueError("ungültiger Versionszweig")
-                if isinstance(cycle["eol"], str):
-                    datetime.datetime.strptime(cycle["eol"], "%Y-%m-%d")
-            for purl in product["purls"]:
-                index[urllib.parse.unquote(purl).lower()].append(product)
-    except (OSError, ValueError, KeyError, TypeError) as e:
-        return ["EOL-Daten fehlen oder sind ungültig (%s); Frameworks nicht auf Supportende geprüft" % e]
+        checked, products = eol_laden(paths)
+    except ValueError as e:
+        return ["EOL-Daten fehlen oder sind ungültig (%s); Supportende nicht geprüft" % e]
+    by_purl, by_name = defaultdict(list), {}
+    for product in products:
+        by_name[product["name"]] = product
+        for purl in product["purls"]:
+            by_purl[urllib.parse.unquote(purl).lower()].append(product)
     warnings = []
-    if (utcnow() - checked).days >= 30:
-        warnings.append("EOL-Daten veraltet (Stand %s); git pull ausführen" % checked.strftime("%Y-%m-%d"))
+    if (utcnow() - checked).days >= EOL_MAX_ALTER_TAGE:
+        warnings.append("EOL-Daten veraltet (Stand %s); git pull bzw. --db-aktualisieren ausführen"
+                        % checked.strftime("%Y-%m-%d"))
+    today = utcnow().date()
+    hits = OrderedDict()
     for c in comps:
         typ = EOL_TYPEN.get(c["typ"])
-        if not typ:
+        if typ:
+            name = c["name"].replace(":", "/", 1) if typ == "maven" else c["name"]
+            if typ == "pypi":
+                name = pypi_name(name)
+            candidates = by_purl.get(("pkg:%s/%s" % (typ, name)).lower(), [])
+        elif c["typ"] in ("runtime", "server") and c["name"] in EOL_LAUFZEITEN and (
+                not from_os_package(c) or any(h.startswith(FREMDQUELLE) for h in c["hinweise"])):
+            candidates = [by_name[EOL_LAUFZEITEN[c["name"]]]] if EOL_LAUFZEITEN[c["name"]] in by_name else []
+        else:
             continue
-        name = c["name"].replace(":", "/", 1) if typ == "maven" else c["name"]
-        if typ == "pypi":
-            name = pypi_name(name)
         version = c["version"].lstrip("v")
-        for product in index.get(("pkg:%s/%s" % (typ, name)).lower(), []):
+        for product in candidates:
             cycles = [r for r in product["cycles"] if re.fullmatch(r"\d+(?:\.\d+)*", r["cycle"])
                       and (version == r["cycle"] or version.startswith(r["cycle"] + "."))]
             if not cycles:
                 continue
             cycle = max(cycles, key=lambda r: len(r["cycle"]))
             end = cycle["eol"]
-            if end is True or (isinstance(end, str) and end < utcnow().strftime("%Y-%m-%d")):
-                warnings.append("Supportende: %s %s (%s, Zweig %s, %s; %s)" % (
-                    c["name"], c["version"], product["name"], cycle["cycle"], end if end is not True else "Datum unbekannt",
-                    c["ort"]))
-    return list(OrderedDict.fromkeys(warnings))
+            if end is False:
+                continue
+            if end is True:
+                days = -1
+            else:
+                days = (datetime.datetime.strptime(end, "%Y-%m-%d").date() - today).days
+            if days > EOL_VORWARNUNG_TAGE:
+                continue
+            key = (c["name"], c["version"], product["name"], cycle["cycle"], end if end is not True else "", days < 0)
+            # am Tag des Supportendes gilt der Zweig noch als unterstützt (days == 0 -> "bald")
+            hits.setdefault(key, []).append(c["ort"] or "?")
+    for (name, version, product, cycle, end, ended), places in hits.items():
+        places = list(OrderedDict.fromkeys(places))
+        where = ", ".join(places[:3]) + (" und %d weitere" % (len(places) - 3) if len(places) > 3 else "")
+        if ended:
+            warnings.append("Supportende: %s %s (%s %s, %s; %s)" % (
+                name, version, product, cycle, "seit " + end if end else "Datum unbekannt", where))
+        else:
+            warnings.append("Supportende bald: %s %s (%s %s, am %s; %s)" % (name, version, product, cycle, end, where))
+    return warnings
 
 
 def norm(path):
@@ -990,11 +1048,17 @@ def collect_web(c, procs):
            "host_network": (c.info.get("HostConfig") or {}).get("NetworkMode") == "host"}
     for exe in sorted({p["exe"] for p in procs.values() if p["base"] in ("nginx", "apache2", "httpd")}):
         if posixpath.basename(exe) == "nginx":
-            if any(re.search(r"(?:^|\s)-(?:c|p)", " ".join(p["argv"]))
-                   for p in procs.values() if p["exe"] == exe):
-                web["problems"].append("nginx mit -c oder -p: laufende Konfiguration kann von nginx -T abweichen; "
-                                       "Proxy-Backends gesondert prüfen")
-            conf = c.exec([exe, "-T"], timeout=60)[1]
+            # -p/-c des laufenden Masterprozesses übernehmen, sonst liest nginx -T eine andere Konfiguration
+            opts = OrderedDict()
+            for p in procs.values():
+                if p["exe"] == exe:
+                    for flag, value in re.findall(r"(?:^|\s)-([cp])\s*([^\s;]+)", " ".join(p["argv"])):
+                        opts.setdefault(flag, value)
+            args = [x for flag in ("p", "c") if flag in opts for x in ("-" + flag, opts[flag])]
+            rc, conf = c.exec([exe] + args + ["-T"], timeout=60)
+            if rc != 0 or not conf.strip():
+                web["problems"].append("%s %s-T fehlgeschlagen: Konfiguration (vHosts, Proxy-Backends) nicht lesbar"
+                                       % (exe, " ".join(args) + " " if args else ""))
             web["raw"].append("--- %s -T (Auszug)\n" % exe + "\n".join(
                 l for l in conf.splitlines() if re.match(r"# configuration file|\s*(server|listen|server_name|root|location|\w+_pass|upstream)[\s;{]", l)))
             parse_nginx(conf, web, exe)
@@ -1712,6 +1776,7 @@ OS_FILES = ("Debian", "Ubuntu", "Alpine", "SUSE", "openSUSE")
 THIRD_PARTY = re.compile(r"nodesource|maria~|\+0~|pgdg|~(bookworm|bullseye|buster|trixie|jammy|noble|focal)\b")
 THIRD_PARTY_MAINT = re.compile(r"NGINX Packaging|nginx-packaging@|NodeSource|MariaDB (Developers|Foundation)|@mariadb\.(org|com)"
                                r"|PostgreSQL on Debian and Ubuntu|apt\.postgresql\.org", re.I)
+FREMDQUELLE = "Paket fehlt in den Sicherheitsdaten der Distribution (Fremdquelle?)"
 OS_DATEN_MAX_TAGE = 120        # jüngster Eintrag für das OS-Release älter -> vermutlich ohne Support (EOL)
 
 
@@ -1797,7 +1862,7 @@ def osv_scan(comps, osinfo, dbdirs):
                     not any(src_of.get(o, o) in known_src for o in owner[0].split(","))
                     or any(THIRD_PARTY.search(ver_of.get(o, "")) or THIRD_PARTY_MAINT.search(maint_of.get(o, ""))
                            for o in owner[0].split(","))):
-                c["hinweise"].append("Paket fehlt in den Sicherheitsdaten der Distribution (Fremdquelle?) – über Bitnami geprüft")
+                c["hinweise"].append(FREMDQUELLE + " – über Bitnami geprüft")
                 by_file["Bitnami"][BITNAMI[c["name"]]].append(
                     (c, ("Bitnami", lambda e: e == "Bitnami", {BITNAMI[c["name"]]}, c["version"], cmp_semver)))
     for fname in [f for f in list(by_file) if f not in OS_FILES]:
@@ -2139,11 +2204,13 @@ def scan_container(name, a, via_proxy=None):
     for svc in services:
         for b in svc["unresolved"]:
             warnings.append("Backend %s von %s keinem Container zuordenbar – dort ggf. gesondert scannen" % (b, svc["label"]))
-    warnings.extend(eol_warnungen(comps, os.path.join(os.path.dirname(os.path.abspath(__file__)), "eol-daten.json")))
     how["warnungen"] = warnings
 
     log("Abgleich mit OSV-Daten %s ..." % ", ".join(a.dbdirs))
     findings, db_date, missing, os_newest = osv_scan(comps, osinfo, a.dbdirs)
+    # nach osv_scan: erst dort werden Laufzeiten aus Fremdquellen (nginx.org, NodeSource …) erkannt
+    warnings.extend(eol_warnungen(comps, [os.path.join(os.path.dirname(os.path.abspath(__file__)), "eol-daten.json")] +
+                                  [os.path.join(d, "eol-daten.json") for d in a.dbdirs]))
     if missing:
         problems.append("Daten fehlen für: " + ", ".join(missing) + " (--db-aktualisieren --oekosysteme " + ",".join(missing) + ")")
     if not pkgs:
@@ -2241,6 +2308,12 @@ def main():
             log("Skript und osv-daten per git pull aktualisiert")
         if a.oekosysteme or not repo_data:
             osv_update(a.db or local_db, [e for e in (a.oekosysteme or ",".join(OSV_ECOSYSTEMS)).split(",") if e], a.voll)
+        if not repo_data:                 # ohne Git-Checkout: EOL-Daten direkt von endoflife.date
+            try:
+                eol_daten_erzeugen(os.path.join(a.db or local_db, "eol-daten.json"))
+                log("EOL-Daten von endoflife.date aktualisiert")
+            except (OSError, ValueError, KeyError, TypeError, ScanError) as e:
+                log("WARNUNG: EOL-Daten nicht aktualisiert: %s" % e)
         a.dbdirs = [a.db] if a.db else [d for d in (data_dir, local_db) if os.path.isdir(d)]
         if not a.container and not a.oeffentliche:
             return 0
