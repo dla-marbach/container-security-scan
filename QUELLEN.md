@@ -16,45 +16,55 @@ Namensnennung und – wo verlangt – unter derselben Lizenz.
 
 | Verzeichnis | Quelle (Kennungen) | Lizenz |
 |---|---|---|
-| `Alpine/` | Alpine Linux secdb, von OSV konvertiert (`ALPINE-…`) | CC-BY-SA 4.0 – die gekürzten Daten in `Alpine/` stehen daher ebenfalls unter [CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de) |
-| `Bitnami/` | [Bitnami Vulnerability Database](https://github.com/bitnami/vulndb) (`BIT-…`) | Apache 2.0 |
-| `Debian/` | [Debian Security Tracker](https://security-tracker.debian.org) (`DEBIAN-CVE-…`, `DSA-…`, `DLA-…`, `DTSA-…`) | *noch nicht abschließend geprüft* (öffentlich bereitgestellte Daten des Debian-Projekts) |
-| `Go/` | [Go Vulnerability Database](https://pkg.go.dev/vuln) (`GO-…`) | CC-BY 4.0 |
-| `Maven/`, `npm/`, `Packagist/`, `PyPI/` | [GitHub Advisory Database](https://github.com/github/advisory-database) (`GHSA-…`) | CC-BY 4.0 |
-| `PyPI/` | [PyPA Advisory Database](https://github.com/pypa/advisory-database) (`PYSEC-…`) | [CC-BY 4.0](https://github.com/pypa/advisory-database/blob/main/LICENSE) |
-| `npm/`, `PyPI/` u.a. | [OpenSSF Malicious Packages](https://github.com/ossf/malicious-packages) (`MAL-…`) | [Apache 2.0](https://github.com/ossf/malicious-packages/blob/main/LICENSE) |
-| `Packagist/` | [Drupal Advisory Database](https://github.com/DrupalSecurityTeam/drupal-advisory-database) (`DRUPAL-…`) | [MIT](https://github.com/DrupalSecurityTeam/drupal-advisory-database/blob/main/LICENSE); Lizenztext und Copyright unten |
+| `Alpine/` | Alpine Linux secdb, von OSV konvertiert (`ALPINE-…`) | [CC-BY-SA 4.0](https://secdb.alpinelinux.org/license.txt) – die gekürzten Daten in `Alpine/` stehen daher ebenfalls unter [CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de) |
+| `Bitnami/` | [Bitnami Vulnerability Database](https://github.com/bitnami/vulndb) (`BIT-…`) | [Apache 2.0](https://github.com/bitnami/vulndb/blob/main/LICENSE.md), Text: [`LIZENZEN/Apache-2.0.txt`](LIZENZEN/Apache-2.0.txt) |
+| `Debian/` | [Debian Security Tracker](https://security-tracker.debian.org), von OSV konvertiert (`DEBIAN-CVE-…`, `DSA-…`, `DLA-…`, `DTSA-…`) | **keine ausdrückliche Lizenz** – siehe [unten](#debian) |
+| `Go/` | [Go Vulnerability Database](https://pkg.go.dev/vuln) (`GO-…`) | [CC-BY 4.0](https://github.com/golang/vulndb#license) |
+| `Maven/`, `npm/`, `Packagist/`, `PyPI/` | [GitHub Advisory Database](https://github.com/github/advisory-database) (`GHSA-…`) | [CC-BY 4.0](https://github.com/github/advisory-database/blob/main/LICENSE.md) |
+| `PyPI/` | [PyPA Advisory Database](https://github.com/pypa/advisory-database) (`PYSEC-…`) | [CC-BY 4.0](https://github.com/pypa/advisory-database/blob/main/LICENSE) – geprüft |
+| `npm/`, `PyPI/` u.a. | [OpenSSF Malicious Packages](https://github.com/ossf/malicious-packages) (`MAL-…`) | [Apache 2.0](https://github.com/ossf/malicious-packages/blob/main/LICENSE) – geprüft (keine NOTICE-Datei), Text: [`LIZENZEN/Apache-2.0.txt`](LIZENZEN/Apache-2.0.txt) |
+| `Packagist/` | [Drupal Advisory Database](https://github.com/DrupalSecurityTeam/drupal-advisory-database) (`DRUPAL-…`) | [MIT](https://github.com/DrupalSecurityTeam/drupal-advisory-database/blob/main/LICENSE), © 2025 Ackama – geprüft, Text: [`LIZENZEN/MIT-Drupal-Advisory-Database.txt`](LIZENZEN/MIT-Drupal-Advisory-Database.txt) |
+
+Geprüft am 4. November 2026 anhand der Lizenzdateien der Quell-Repositories und der Liste der
+[OSV-Datenquellen](https://github.com/google/osv.dev/blob/master/docs/data.md), die für PyPA, OpenSSF
+und Drupal dieselben Lizenzen nennt. Für die Apache-2.0-Daten gilt als Änderungshinweis (§ 4 b): die
+Einträge sind gekürzt, siehe **Bearbeitung** oben.
 
 Der Ubuntu-Export von OSV, der bei Bedarf lokal geladen werden kann, stammt aus
 [Ubuntu Security Notices](https://github.com/canonical/ubuntu-security-notices) und steht laut
 [OSV-Datenquellen](https://github.com/google/osv.dev/blob/master/docs/data.md) unter
-[CC-BY-SA 4.0](https://github.com/canonical/ubuntu-security-notices/blob/main/LICENSE).
+[CC-BY-SA 4.0](https://github.com/canonical/ubuntu-security-notices/blob/main/LICENSE). Er liegt nur
+lokal in `osv-db/` und wird nicht weitergegeben.
 
-### Drupal Advisory Database: MIT-Lizenz
+### Debian
 
-```text
-The MIT License (MIT)
+Für die Debian-Daten gibt es **keine ausdrückliche Lizenz**:
 
-Copyright (c) 2025 Ackama
+- Die [OSV-Datenquellen](https://github.com/google/osv.dev/blob/master/docs/data.md) führen die
+  Debian-Daten als von OSV konvertierte Daten, ohne Lizenzangabe (anders als bei Alpine).
+- Das Repository des [Debian Security Tracker](https://salsa.debian.org/security-tracker-team/security-tracker)
+  (Quelle der Versionsangaben) enthält keine Lizenzdatei und keine Lizenzangabe; auch die Website
+  des Trackers nennt keine.
+- Die Ankündigungen (DSA/DLA) auf www.debian.org stehen seit 2012 unter der
+  [Debian WWW Pages License](https://www.debian.org/license) (MIT/Expat oder GPL-2+). Aus ihnen
+  stammt hier aber nur der Kurztitel („Paket – security update“).
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Was `Debian/` tatsächlich enthält (ca. 73.000 Einträge, davon ca. 62.000 `DEBIAN-CVE-…`):
 
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
+1. **Fakten** aus dem Tracker: Paketname, Debian-Release, betroffene und behobene Version,
+   Dringlichkeit. Einzelne Versionsangaben sind als Tatsachen nicht urheberrechtlich geschützt; für
+   die Sammlung als Ganzes ist ein Datenbankschutz (in der EU sui generis, §§ 87a ff. UrhG) nicht
+   ausgeschlossen.
+2. **Kurztitel**: bei `DEBIAN-CVE-…` die erste Zeile der CVE-Beschreibung (gekürzt auf 200 Zeichen).
+   Diese Texte stammen aus dem CVE-Programm und dürfen nach den
+   [CVE Terms of Use](LIZENZEN/CVE-Terms-of-Use.txt) (SPDX `cve-tou`) mit Copyright-Hinweis und
+   Lizenztext weitergegeben werden: CVE® is a registered trademark of The MITRE Corporation.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-```
+Debian ist ein Freie-Software-Projekt und stellt die Daten ausdrücklich zur maschinellen Nutzung
+bereit (JSON-Export des Trackers); OSV, Trivy und Grype verteilen sie ebenfalls weiter. Eine
+schriftliche Klärung beim Debian Security Team (team@security.debian.org) steht aus; bis dahin ist
+die Lizenzfrage **offen** (keine Rechtsberatung). Alternative ohne diese Frage: `Debian` nicht ins Repository übernehmen, sondern
+wie Ubuntu lokal mit `--db-aktualisieren --oekosysteme Debian` laden.
 
 Alle Angaben ohne Gewähr; maßgeblich sind die Lizenzangaben der jeweiligen Quelle.
 Die Daten werden ohne Gewähr für Vollständigkeit oder Richtigkeit weitergegeben.
