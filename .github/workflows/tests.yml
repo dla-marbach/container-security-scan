@@ -11,13 +11,34 @@ permissions:
 
 jobs:
   unittest:
+    name: Unit-Tests (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python: ["3.8", "3.13"]
+        python: ["3.9", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - run: python -W error::ResourceWarning -m unittest discover -s tests -v
+
+  python36:
+    name: Unit-Tests (Python 3.6, wie SLES 15)
+    runs-on: ubuntu-latest
+    container: python:3.6-slim
+    steps:
+      - uses: actions/checkout@v4
       - run: python -m unittest discover -s tests -v
+
+  docker:
+    name: Integrationstest mit Docker
+    runs-on: ubuntu-latest
+    needs: unittest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker pull -q nginx:1.27-alpine && docker pull -q node:20-alpine
+      - run: python3 -m unittest discover -s tests -p "test_docker.py" -v
+        env:
+          CSS_DOCKER_TESTS: "1"

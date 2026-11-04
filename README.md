@@ -231,6 +231,30 @@ erreichbar). Abgleich mit Trivy (Image-Scan derselben Images, gleiche Datenstän
   `TEMP-…`-Kennungen ohne CVE und einzelne tzdata-Meldungen. Mehr Funde vor allem bei eingebetteten
   JavaScript-Bibliotheken, bei Laufzeiten aus offiziellen Images und bei offenen Ubuntu-CVEs ohne Fix.
 
+### Tests
+
+```bash
+python3 -m unittest discover -s tests                                   # Unit-Tests, ohne Docker (ca. 1 s)
+CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit echten Containern
+```
+
+| Datei | Prüft |
+|---|---|
+| `test_versionen.py` | Versionsvergleiche (dpkg, rpm, apk, SemVer, PEP 440, Maven, PHP) und OSV-Versionsbereiche |
+| `test_schweregrad.py` | CVSS 3/4, Vorrang von Quellen-Einstufung, Debian-Dringlichkeit, Ubuntu-Priorität, `MAL-…` |
+| `test_inventar.py` | dpkg (auch distroless), apk, rpm, npm/Composer/PyPI, JS-Bibliotheken, JARs, Go-Build-Info, tar-Strom |
+| `test_prozesse.py` | Prozesse, Ports und Dateien aus `/proc` (je Prozess-Benutzer bzw. über den Host), Volumes |
+| `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c`, veröffentlichte Ports, Backends |
+| `test_nutzung.py` | Zuordnung Komponente → Dienst, Erreichbarkeit, Priorität P1–P4 |
+| `test_osv.py` | Abgleich je Ökosystem, Quellpakete, Fremdquellen über Bitnami, Datenformat, inkrementelle Aktualisierung |
+| `test_eol.py` | EOL-Daten erzeugen, Supportende und Vorwarnung |
+| `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden |
+| `test_kommandozeile.py` | Aufruf als Programm: Optionen, docker nicht erreichbar, unerwartete Fehler → 2 |
+| `test_docker.py` | nginx (`-c`) als Proxy vor Node: Proxy-Erkennung, EOL-Warnungen, Berichte, `docker diff` unverändert |
+
+Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.9 und 3.13
+sowie den Docker-Test aus.
+
 ## Verwandte Werkzeuge
 
 - [Trivy](https://trivy.dev), [Grype](https://github.com/anchore/grype),

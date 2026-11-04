@@ -1,5 +1,5 @@
+"""Supportende (EOL) aus endoflife.date: Erzeugen der Daten und Warnungen."""
 import datetime
-import importlib.util
 import io
 import json
 import os
@@ -7,14 +7,10 @@ import tempfile
 import unittest
 from unittest import mock
 
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-spec = importlib.util.spec_from_file_location("scanner", os.path.join(ROOT, "container-security-scan.py"))
-scanner = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(scanner)
+from _laden import scanner
 
 
-class EolTests(unittest.TestCase):
+class Eol(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -131,61 +127,28 @@ class EolTests(unittest.TestCase):
         with open(self.path, encoding="utf-8") as f:
             self.assertEqual(json.load(f), saved)
 
+    def test_paketkennungen_maven_pypi_scoped_npm(self):
+        self.data["products"] += [
+            {"name": "log4j", "purls": ["pkg:maven/org.apache.logging.log4j/log4j-core"],
+             "cycles": [{"cycle": "2", "eol": False}, {"cycle": "2.12", "eol": "2021-12-14"}]},
+            {"name": "django", "purls": ["pkg:pypi/django"], "cycles": [{"cycle": "4.2", "eol": "2026-04-07"}]},
+            {"name": "angular", "purls": ["pkg:npm/%40angular/core"], "cycles": [{"cycle": "15", "eol": "2024-05-18"}]}]
+        self.write()
+        warnings = scanner.eol_warnungen([
+            scanner.comp("maven", "org.apache.logging.log4j:log4j-core", "2.12.4", ort="/a.jar"),
+            scanner.comp("maven", "org.apache.logging.log4j:log4j-core", "2.17.1", ort="/b.jar"),
+            scanner.comp("pypi", "Django", "4.2.11", ort="/venv"),
+            scanner.comp("npm", "@angular/core", "15.2.0", ort="/app"),
+            scanner.comp("npm", "vue", "unbekannt", ort="/x")], self.path)
+        self.assertEqual([w.split(" (")[0] for w in warnings], [
+            "Supportende: org.apache.logging.log4j:log4j-core 2.12.4", "Supportende: Django 4.2.11",
+            "Supportende: @angular/core 15.2.0"])
 
-class ProxyTests(unittest.TestCase):
-    def test_custom_nginx_configuration_is_passed_to_nginx_t(self):
-        container = mock.Mock()
-        container.info = {"HostConfig": {}, "NetworkSettings": {"Ports": {}}}
-        container.exec.return_value = (0, "events {} http {}")
-        master = {"base": "nginx", "exe": "/usr/sbin/nginx",
-                  "argv": ["nginx: master process nginx -p /srv/ -c conf/nginx.conf -g daemon off;"]}
-        worker = {"base": "nginx", "exe": "/usr/sbin/nginx", "argv": ["nginx: worker process"]}
-        with mock.patch.object(scanner, "run", return_value=(0, "")):
-            web = scanner.collect_web(container, {1: master, 2: worker})
-            self.assertEqual(web["problems"], [])
-            self.assertEqual(container.exec.call_args[0][0],
-                             ["/usr/sbin/nginx", "-p", "/srv/", "-c", "conf/nginx.conf", "-T"])
-            master["argv"] = ["nginx", "-g", "daemon off;"]
-            scanner.collect_web(container, {1: master})
-            self.assertEqual(container.exec.call_args[0][0], ["/usr/sbin/nginx", "-T"])
-            container.exec.return_value = (1, "nginx: [emerg] open() failed")
-            self.assertIn("-T fehlgeschlagen", scanner.collect_web(container, {1: master})["problems"][0])
-
-    def test_public_unresolved_backend_is_flagged(self):
-        p = {"base": "nginx", "exe": "/usr/sbin/nginx", "label": "nginx:80",
-             "ports": {"80": "0.0.0.0"}, "argv": ["nginx"], "cwd": "/",
-             "maps": set(), "files": set()}
-        web = {"backends": {p["exe"]: ["http://unknown.example:8080"]}, "upstreams": {},
-               "containers": {}, "self": "proxy", "published": {"80": ["0.0.0.0:80"]},
-               "host_network": False, "via_proxy": {}, "docroots": {}, "modphp": set(),
-               "vhosts": {}, "venvs": set()}
-        services = scanner.mark_usage([], {1: p}, {}, web)
-        self.assertEqual(services[0]["unresolved"], ["http://unknown.example:8080"])
-        web["published"] = {}
-        self.assertEqual(scanner.mark_usage([], {1: p}, {}, web)[0]["unresolved"], [])
-
-
-class UbuntuTests(unittest.TestCase):
-    def test_local_ubuntu_data_and_missing_database(self):
-        package = scanner.comp("os-paket", "libexample1", "1.0-1", src="example", srcver="1.0-1")
-        osinfo = {"id": "ubuntu", "version": "22.04", "pretty": "Ubuntu 22.04"}
-        with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(scanner.osv_scan([package], osinfo, [tmp])[2], ["Ubuntu"])
-            os.mkdir(os.path.join(tmp, "Ubuntu"))
-            records = [
-                {"id": "CVE-2026-1000", "published": "2026-10-01T00:00:00Z",
-                 "affected": [{"package": {"ecosystem": "Ubuntu:22.04:LTS", "name": "example"},
-                               "ranges": [{"type": "ECOSYSTEM", "events": [
-                                   {"introduced": "0"}, {"fixed": "1.0-2"}]}]}]},
-                {"id": "CVE-2026-1001", "published": "2026-10-01T00:00:00Z",
-                 "affected": [{"package": {"ecosystem": "Ubuntu:24.04:LTS", "name": "example"},
-                               "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}]}]}]}]
-            with open(os.path.join(tmp, "Ubuntu", "00.jsonl"), "w", encoding="utf-8") as f:
-                for record in records:
-                    f.write(json.dumps(record) + "\n")
-            findings, _, missing, _ = scanner.osv_scan([package], osinfo, [tmp])
-            self.assertEqual(missing, [])
-            self.assertEqual([(x["id"], x["fix"]) for x in findings], [("CVE-2026-1000", "1.0-2")])
+    def test_ohne_datum_beendet(self):
+        self.data["products"][0]["cycles"].append({"cycle": "1", "eol": True})
+        self.write()
+        warnings = scanner.eol_warnungen([scanner.comp("js-lib", "vue", "1.0.28", ort="/v.js")], self.path)
+        self.assertEqual(warnings, ["Supportende: vue 1.0.28 (vue 1, Datum unbekannt; /v.js)"])
 
 
 if __name__ == "__main__":

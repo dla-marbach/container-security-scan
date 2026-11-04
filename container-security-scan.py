@@ -554,6 +554,16 @@ def text(data):
     return data.decode("utf-8-sig", "replace")
 
 
+def json_datei(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def datei_sha256(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
 def os_release(files):
     raw = files.get("/etc/os-release") or files.get("/usr/lib/os-release") or b""
     info = dict(re.findall(r'^(\w+)="?([^"\n]*)"?$', text(raw), re.M))
@@ -1877,7 +1887,7 @@ def db_state(dbdir):
     """Je Ökosystem: "stand" = Zeitstempel des neuesten Eintrags (für das inkrementelle Update),
     "geprueft" = Zeitpunkt der letzten erfolgreichen Aktualisierung (für die Altersprüfung). Datei stand.json."""
     try:
-        raw = json.load(open(os.path.join(dbdir, "stand.json"), encoding="utf-8"))
+        raw = json_datei(os.path.join(dbdir, "stand.json"))
     except (OSError, ValueError):
         return {}
     return {k: (v if isinstance(v, dict) else {"stand": v, "geprueft": v}) for k, v in raw.items() if not k.startswith("_")}
@@ -1989,7 +1999,7 @@ def daten_erzeugen(target, ecosystems=DATEN_OEKOSYSTEME):
         state = {"_format": "osv-kompakt-1"}
         old = os.path.join(target, "stand.json")
         if os.path.exists(old):
-            state.update(json.load(open(old, encoding="utf-8")))
+            state.update(json_datei(old))
         for eco in ecosystems:
             n = DATEN_TEILE.get(eco, 1)
             parts = [[] for _ in range(n)]
@@ -2226,7 +2236,7 @@ def scan_container(name, a, via_proxy=None):
     db_info = {"problems": problems, "text": "OSV, Stand %s UTC (%s)" % (db_date.strftime("%Y-%m-%d %H:%M") if db_date else "?", ", ".join(a.dbdirs))}
     known_file = os.path.join(a.ausgabe, "bekannt_%s.json" % c.name)    # relevante Funde des letzten Laufs
     try:
-        known = {tuple(k) for k in json.load(open(known_file, encoding="utf-8"))}
+        known = {tuple(k) for k in json_datei(known_file)}
     except (OSError, ValueError):
         known = None
 
@@ -2240,7 +2250,7 @@ def scan_container(name, a, via_proxy=None):
     write_cdx(base + ".cdx.json", c, osinfo, comps, services)
     with open(base + ".sha256", "w") as f:
         for ext in (".md", ".cdx.json"):
-            f.write("%s  %s\n" % (hashlib.sha256(open(base + ext, "rb").read()).hexdigest(), os.path.basename(base + ext)))
+            f.write("%s  %s\n" % (datei_sha256(base + ext), os.path.basename(base + ext)))
 
     code = 2 if problems else 1 if relevant else 0
     public = [s["label"] for s in services if s["exposed"]]
