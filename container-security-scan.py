@@ -58,6 +58,7 @@ import tempfile
 import threading
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 import zipfile
@@ -78,6 +79,8 @@ OSV_ECOSYSTEMS = ["Debian", "Alpine", "npm", "PyPI", "Packagist", "Maven", "Go",
 BITNAMI = {"php": "php", "php-fpm": "php", "node": "node", "python": "python", "java": "jre", "nginx": "nginx",
            "apache-httpd": "apache", "mariadb": "mariadb", "postgresql": "postgresql"}
 SEV = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"]
+EOL_URL = "https://endoflife.date/api/v1/products/full/"
+EOL_TYPEN = {"npm": "npm", "js-lib": "npm", "composer": "composer", "pypi": "pypi", "maven": "maven"}
 
 
 class ScanError(Exception):
@@ -108,6 +111,92 @@ def run(cmd, input=None, binary=False, stderr=False, timeout=None):
 
 def utcnow():
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
+def eol_daten_erzeugen(path):
+    """EOL-Daten mit Paketkennungen aus dem vollständigen endoflife.date-API-Export erzeugen."""
+    with urllib.request.urlopen(EOL_URL, timeout=120) as response:
+        data = json.load(response)
+    if not isinstance(data.get("result"), list) or not data["result"] or data.get("total") != len(data["result"]):
+        raise ScanError("Ungültige oder unvollständige endoflife.date-Antwort")
+    products = []
+    for product in data["result"]:
+        identifiers = [x["id"] for x in product["identifiers"] if x.get("type") == "purl"
+                       and x.get("id", "").startswith(("pkg:npm/", "pkg:composer/", "pkg:pypi/", "pkg:maven/"))]
+        if not identifiers:
+            continue
+        cycles = []
+        for release in product["releases"]:
+            name, date, ended = release["name"], release["eolFrom"], release["isEol"]
+            if date is None and ended is None:
+                continue
+            if not isinstance(ended, bool) or (date is not None and
+                    (not isinstance(date, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date))):
+                raise ScanError("Ungültige EOL-Daten für " + product["name"])
+            if date:
+                try:
+                    datetime.datetime.strptime(date, "%Y-%m-%d")
+                except ValueError:
+                    raise ScanError("Ungültiges EOL-Datum für " + product["name"])
+            if re.fullmatch(r"\d+(?:\.\d+)*", name):
+                cycles.append({"cycle": name, "eol": date if date else ended})
+        if cycles:
+            products.append({"name": product["name"], "purls": sorted(set(identifiers)), "cycles": cycles})
+    if not products:
+        raise ScanError("Keine geeigneten endoflife.date-Produkte gefunden")
+    payload = {"geprueft": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "products": products}
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=1, sort_keys=True)
+        f.write("\n")
+    os.replace(path + ".tmp", path)
+
+
+def eol_warnungen(comps, path):
+    """Warnungen für bekannte, nicht mehr sicherheitsunterstützte Paket-Versionszweige."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        checked = datetime.datetime.strptime(data["geprueft"], "%Y-%m-%dT%H:%M:%SZ")
+        products = data["products"]
+        if not isinstance(products, list) or not products:
+            raise ValueError("keine Produkte")
+        index = defaultdict(list)
+        for product in products:
+            if not isinstance(product["name"], str) or not isinstance(product["purls"], list) \
+                    or not isinstance(product["cycles"], list):
+                raise ValueError("ungültiges Produkt")
+            for cycle in product["cycles"]:
+                if not isinstance(cycle["cycle"], str) or not isinstance(cycle["eol"], (str, bool)):
+                    raise ValueError("ungültiger Versionszweig")
+                if isinstance(cycle["eol"], str):
+                    datetime.datetime.strptime(cycle["eol"], "%Y-%m-%d")
+            for purl in product["purls"]:
+                index[urllib.parse.unquote(purl).lower()].append(product)
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return ["EOL-Daten fehlen oder sind ungültig (%s); Frameworks nicht auf Supportende geprüft" % e]
+    warnings = []
+    if (utcnow() - checked).days >= 30:
+        warnings.append("EOL-Daten veraltet (Stand %s); git pull ausführen" % checked.strftime("%Y-%m-%d"))
+    for c in comps:
+        typ = EOL_TYPEN.get(c["typ"])
+        if not typ:
+            continue
+        name = c["name"].replace(":", "/", 1) if typ == "maven" else c["name"]
+        if typ == "pypi":
+            name = pypi_name(name)
+        version = c["version"].lstrip("v")
+        for product in index.get(("pkg:%s/%s" % (typ, name)).lower(), []):
+            cycles = [r for r in product["cycles"] if re.fullmatch(r"\d+(?:\.\d+)*", r["cycle"])
+                      and (version == r["cycle"] or version.startswith(r["cycle"] + "."))]
+            if not cycles:
+                continue
+            cycle = max(cycles, key=lambda r: len(r["cycle"]))
+            end = cycle["eol"]
+            if end is True or (isinstance(end, str) and end < utcnow().strftime("%Y-%m-%d")):
+                warnings.append("Supportende: %s %s (%s, Zweig %s, %s; %s)" % (
+                    c["name"], c["version"], product["name"], cycle["cycle"], end if end is not True else "Datum unbekannt",
+                    c["ort"]))
+    return list(OrderedDict.fromkeys(warnings))
 
 
 def norm(path):
@@ -897,9 +986,14 @@ def parse_apache(c, exe, web):
 def collect_web(c, procs):
     web = {"docroots": defaultdict(list), "backends": defaultdict(list), "vhosts": defaultdict(list),
            "upstreams": defaultdict(list), "modphp": set(), "raw": [], "published": defaultdict(list), "containers": {},
-           "via_proxy": {}, "host_network": (c.info.get("HostConfig") or {}).get("NetworkMode") == "host"}
+           "via_proxy": {}, "problems": [],
+           "host_network": (c.info.get("HostConfig") or {}).get("NetworkMode") == "host"}
     for exe in sorted({p["exe"] for p in procs.values() if p["base"] in ("nginx", "apache2", "httpd")}):
         if posixpath.basename(exe) == "nginx":
+            if any(re.search(r"(?:^|\s)-(?:c|p)", " ".join(p["argv"]))
+                   for p in procs.values() if p["exe"] == exe):
+                web["problems"].append("nginx mit -c oder -p: laufende Konfiguration kann von nginx -T abweichen; "
+                                       "Proxy-Backends gesondert prüfen")
             conf = c.exec([exe, "-T"], timeout=60)[1]
             web["raw"].append("--- %s -T (Auszug)\n" % exe + "\n".join(
                 l for l in conf.splitlines() if re.match(r"# configuration file|\s*(server|listen|server_name|root|location|\w+_pass|upstream)[\s;{]", l)))
@@ -2019,6 +2113,7 @@ def scan_container(name, a, via_proxy=None):
     comps = pkgs + [x for x in lang if not owners.get(norm(x["datei"]))]
     comps += probe_runtimes(c, procs, owners) + host_components()
     web = collect_web(c, procs)
+    problems.extend(web["problems"])
     web["self"] = c.name
     web["via_proxy"] = via_proxy or {}
     web["venvs"] = {posixpath.dirname(f) for f in files if f.endswith("/pyvenv.cfg")}
@@ -2044,6 +2139,7 @@ def scan_container(name, a, via_proxy=None):
     for svc in services:
         for b in svc["unresolved"]:
             warnings.append("Backend %s von %s keinem Container zuordenbar – dort ggf. gesondert scannen" % (b, svc["label"]))
+    warnings.extend(eol_warnungen(comps, os.path.join(os.path.dirname(os.path.abspath(__file__)), "eol-daten.json")))
     how["warnungen"] = warnings
 
     log("Abgleich mit OSV-Daten %s ..." % ", ".join(a.dbdirs))
@@ -2116,6 +2212,7 @@ def main():
                     help="alle Container mit veröffentlichten Ports scannen, dazu deren Backends hinter einem Proxy")
     ap.add_argument("--db", help="Verzeichnis mit OSV-Daten (Standard: osv-daten und osv-db neben diesem Skript)")
     ap.add_argument("--daten-erzeugen", metavar="VERZEICHNIS", help=argparse.SUPPRESS)   # für die GitHub Action
+    ap.add_argument("--eol-daten-erzeugen", metavar="DATEI", help=argparse.SUPPRESS)
     ap.add_argument("--db-aktualisieren", action="store_true",
                     help="OSV-Datenbank aktualisieren (Internet nötig; nach dem ersten Mal nur Änderungen)")
     ap.add_argument("--voll", action="store_true", help="mit --db-aktualisieren: Gesamtexporte neu laden")
@@ -2130,6 +2227,9 @@ def main():
         a.ausgabe, a.container = a.container, None
     if a.daten_erzeugen:
         daten_erzeugen(a.daten_erzeugen)
+        return 0
+    if a.eol_daten_erzeugen:
+        eol_daten_erzeugen(a.eol_daten_erzeugen)
         return 0
     a.dbdirs = [a.db] if a.db else [d for d in (data_dir, local_db) if os.path.isdir(d)]
     if a.db_aktualisieren:

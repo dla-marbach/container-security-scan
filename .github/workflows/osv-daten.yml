@@ -33,3 +33,16 @@ jobs:
             git commit -q -m "OSV-Daten $(date -u +%F)"
             git push
           fi
+
+      - name: EOL-Daten aktualisieren
+        run: python3 container-security-scan.py --eol-daten-erzeugen eol-daten.json
+
+      - name: EOL-Daten committen
+        run: |
+          git add eol-daten.json
+          if git diff --cached --quiet; then
+            echo "Keine Änderungen."
+          else
+            git commit -q -m "EOL-Daten $(date -u +%F)"
+            git push
+          fi

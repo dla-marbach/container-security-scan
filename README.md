@@ -112,6 +112,7 @@ exit $rc
 
 - **1** → Funde prüfen und Images aktualisieren. Der Bericht markiert Funde, die seit dem letzten Lauf **neu** sind.
 - **2** → Ursache beheben (Daten, Ökosystem ergänzen, Container), sonst ist die Überwachung blind.
+- Warnungen zum Supportende sind keine OSV-Schwachstellen und ändern den Rückgabewert nicht.
 - Der Host selbst (SLES) ist nicht Teil des Scans: dafür `zypper list-patches --category security`.
 
 ## Ausgabe
@@ -161,6 +162,26 @@ Ausgabe ist deterministisch, Commits enthalten nur echte Änderungen. Quellen un
 Ohne Git-Checkout (oder für weitere Ökosysteme) lädt `--db-aktualisieren --oekosysteme …` direkt von OSV
 nach `osv-db/` – erst der Gesamtexport, danach nur Änderungen.
 
+Für Ubuntu-basierte Varianten von MariaDB, Solr und Elasticsearch ist einmalig
+`./container-security-scan.py --db-aktualisieren --oekosysteme Ubuntu` erforderlich. Der große Export
+liegt nur lokal in `osv-db/`, nicht im Repository; bei späteren Aktualisierungen denselben Befehl
+erneut ausführen. Maßgeblich ist die Distribution des jeweiligen Images, nicht der Imagename.
+Fehlen die Ubuntu-Daten, bleibt das Ergebnis ausdrücklich unvollständig (Rückgabewert 2).
+
+`eol-daten.json` enthält zusätzlich einen Auszug aus [endoflife.date](https://endoflife.date)
+(MIT-Lizenz, siehe [`EOL-LIZENZ.txt`](EOL-LIZENZ.txt)). Die Action aktualisiert ihn täglich aus dem
+vollständigen API-Export. Der mitgelieferte Ausgangsstand enthält Laravel und Vue; nach der ersten
+erfolgreichen Aktualisierung kommen weitere Produkte mit npm-, Composer-, PyPI- oder Maven-Paketkennung
+hinzu. Nur eindeutig zuordenbare numerische Versionszweige werden verglichen. Supportende erscheint
+als Warnung im Bericht und auf der Konsole, **nicht** als CVE oder Änderung des Rückgabewerts.
+Fehlende oder mindestens 30 Tage alte EOL-Daten werden ebenfalls als Warnung gemeldet; fehlende
+Kennungen und nicht zuordenbare Versionszweige sind damit nicht auf Supportende geprüft. Die Angaben
+beziehen sich auf das reguläre Supportende, nicht auf möglicherweise erhältlichen kommerziellen Support.
+Der Ausgangsstand stammt aus den Produktdateien von endoflife.date für
+[Laravel](https://github.com/endoflife-date/endoflife.date/blob/46d14de9ebb0e1643467baf895da62d06e8d1260/products/laravel.md)
+und [Vue](https://github.com/endoflife-date/endoflife.date/blob/a2cf8eba99d66faf1cec42ecd86f6f0b2f15a524/products/vue.md)
+(abgerufen am 4. November 2026).
+
 ## Rein lesend und ohne Datenabfluss
 
 - Im Container laufen nur: `find`/`tar` (Metadaten-Dateien lesen; Container-Dateisystem und Volumes,
@@ -181,12 +202,15 @@ nach `osv-db/` – erst der Gesamtexport, danach nur Änderungen.
 - Nicht erfasst: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung, Bundles ohne Kopfkommentar,
   Programme direkt auf dem Host, UDP-Dienste nur bei offenem Socket, Proxys außer nginx/Apache
   (Traefik, Caddy, HAProxy: Backends dann einzeln scannen).
-- Kein EOL-Abgleich für Frameworks und Laufzeitzweige (z. B. Laravel 8, Vue 2); veraltete Laufzeitzweige
-  erscheinen aber mit Fix im nächsten Zweig („Upgrade nötig“). Distributionen ohne aktuelle
-  Sicherheitsdaten werden erkannt (Rückgabewert 2).
+- EOL-Abgleich nur für Paketkennungen und numerische Versionszweige in `eol-daten.json`; OS-Pakete und
+  direkt erkannte Laufzeiten werden dabei nicht geprüft. Distributionen ohne aktuelle Sicherheitsdaten
+  werden separat erkannt (Rückgabewert 2).
 - Herstellerpaketquellen werden über typische Versionskennungen und Paketbetreuer erkannt
   (nginx.org, NodeSource, Sury, mariadb.org, PostgreSQL); andere Fremdquellen können unerkannt bleiben.
 - Ohne `--oeffentliche` kennt ein Einzelscan keine Proxys in *anderen* Containern; Backends erscheinen dann als P2.
+- Bei nginx mit `-c` oder `-p` kann die Abfrage `nginx -T` eine andere Konfiguration als die des
+  laufenden Prozesses lesen. Die Prüfung wird dann als unvollständig markiert (Rückgabewert 2);
+  Backends gesondert prüfen.
 
 ## Validierung
 
