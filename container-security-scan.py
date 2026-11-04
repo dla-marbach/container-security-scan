@@ -10,13 +10,14 @@ Kein Datenabfluss: Abgleich mit einer LOKALEN Kopie der OSV-Daten (https://osv.d
 
 Aufruf:
   ./container-security-scan.py --db-aktualisieren
-     im Git-Checkout: Skript und osv-daten per "git pull" aktualisieren (täglich per GitHub Action gepflegt);
+     im Git-Checkout: Skript und osv-daten per "git pull" aktualisieren (täglich per GitHub Action gepflegt;
+     nicht als root – dann Daten getrennt halten und mit --db angeben, siehe README "Code und Daten trennen");
      mit --oekosysteme X,Y: zusätzlich diese Ökosysteme direkt von OSV nach osv-db laden (z.B. Ubuntu)
   ./container-security-scan.py <container> [ausgabeverzeichnis] [--nur-behebbare] [--alle]
   ./container-security-scan.py --oeffentliche [ausgabeverzeichnis] [...]
      alle Container mit veröffentlichten Ports (bzw. im Host-Netzwerk) und deren Backends hinter einem
      Reverse Proxy; Dienste hinter einem öffentlichen Proxy gelten als öffentlich (P1)
-  Daten: osv-daten/ und osv-db/ neben diesem Skript (oder --db DIR)
+  Daten: osv-daten/ und osv-db/ neben diesem Skript (oder --db DIR, auch mehrfach)
 
 Ergebnis: scan_<name>_<zeit>.md        Bericht: Ergebnis, Dienste, Befunde nach Priorität, Anhang
           scan_<name>_<zeit>.cdx.json  SBOM (CycloneDX 1.5) als Beleg; auch mit Trivy/Grype/Dependency-Track nutzbar
@@ -2219,8 +2220,7 @@ def scan_container(name, a, via_proxy=None):
     log("Abgleich mit OSV-Daten %s ..." % ", ".join(a.dbdirs))
     findings, db_date, missing, os_newest = osv_scan(comps, osinfo, a.dbdirs)
     # nach osv_scan: erst dort werden Laufzeiten aus Fremdquellen (nginx.org, NodeSource …) erkannt
-    warnings.extend(eol_warnungen(comps, [os.path.join(os.path.dirname(os.path.abspath(__file__)), "eol-daten.json")] +
-                                  [os.path.join(d, "eol-daten.json") for d in a.dbdirs]))
+    warnings.extend(eol_warnungen(comps, [os.path.join(d, "eol-daten.json") for d in a.dbdirs]))
     if missing:
         problems.append("Daten fehlen für: " + ", ".join(missing) + " (--db-aktualisieren --oekosysteme " + ",".join(missing) + ")")
     if not pkgs:
@@ -2287,7 +2287,9 @@ def main():
     ap.add_argument("ausgabe", nargs="?", default=".", help="Ausgabeverzeichnis (Standard: aktuelles Verzeichnis)")
     ap.add_argument("--oeffentliche", action="store_true",
                     help="alle Container mit veröffentlichten Ports scannen, dazu deren Backends hinter einem Proxy")
-    ap.add_argument("--db", help="Verzeichnis mit OSV-Daten (Standard: osv-daten und osv-db neben diesem Skript)")
+    ap.add_argument("--db", action="append", metavar="DIR",
+                    help="Verzeichnis mit OSV-Daten, mehrfach möglich: je Ökosystem gilt das erste, das es enthält "
+                         "(Standard: osv-daten und osv-db neben diesem Skript)")
     ap.add_argument("--daten-erzeugen", metavar="VERZEICHNIS", help=argparse.SUPPRESS)   # für die GitHub Action
     ap.add_argument("--eol-daten-erzeugen", metavar="DATEI", help=argparse.SUPPRESS)
     ap.add_argument("--db-aktualisieren", action="store_true",
@@ -2308,29 +2310,36 @@ def main():
     if a.eol_daten_erzeugen:
         eol_daten_erzeugen(a.eol_daten_erzeugen)
         return 0
-    a.dbdirs = [a.db] if a.db else [d for d in (data_dir, local_db) if os.path.isdir(d)]
+    a.dbdirs = a.db or [d for d in (data_dir, local_db) if os.path.isdir(d)]
     if a.db_aktualisieren:
+        if a.db and len(a.db) > 1:
+            ap.error("--db-aktualisieren: nur ein --db angeben (Zielverzeichnis)")
         repo_data = not a.db and os.path.isdir(os.path.join(here, ".git")) and os.path.isdir(data_dir)
+        if repo_data and os.geteuid() == 0:
+            # git pull holt auch Code, der danach als root läuft: wer das Repository übernimmt, hätte root
+            raise ScanError("--db-aktualisieren im Git-Checkout als root abgelehnt: git pull würde Code holen, der "
+                            "danach als root läuft. Daten als eigener Benutzer aktualisieren und mit --db verwenden, "
+                            "Code nur nach Prüfung von Hand aktualisieren (README: \"Code und Daten trennen\").")
         if repo_data:                     # Daten aus dem Git-Repository: Skript und Daten per git pull aktualisieren
             rc, out = run(["git", "-C", here, "pull", "--ff-only", "--quiet"], stderr=True, timeout=600)
             if rc != 0:
                 raise ScanError("git pull fehlgeschlagen: " + out.strip()[-300:])
             log("Skript und osv-daten per git pull aktualisiert")
         if a.oekosysteme or not repo_data:
-            osv_update(a.db or local_db, [e for e in (a.oekosysteme or ",".join(OSV_ECOSYSTEMS)).split(",") if e], a.voll)
+            osv_update(a.db[0] if a.db else local_db, [e for e in (a.oekosysteme or ",".join(OSV_ECOSYSTEMS)).split(",") if e], a.voll)
         if not repo_data:                 # ohne Git-Checkout: EOL-Daten direkt von endoflife.date
             try:
-                eol_daten_erzeugen(os.path.join(a.db or local_db, "eol-daten.json"))
+                eol_daten_erzeugen(os.path.join(a.db[0] if a.db else local_db, "eol-daten.json"))
                 log("EOL-Daten von endoflife.date aktualisiert")
             except (OSError, ValueError, KeyError, TypeError, ScanError) as e:
                 log("WARNUNG: EOL-Daten nicht aktualisiert: %s" % e)
-        a.dbdirs = [a.db] if a.db else [d for d in (data_dir, local_db) if os.path.isdir(d)]
+        a.dbdirs = a.db or [d for d in (data_dir, local_db) if os.path.isdir(d)]
         if not a.container and not a.oeffentliche:
             return 0
     if not a.container and not a.oeffentliche:
         ap.error("Container fehlt (oder --oeffentliche)")
     if not a.dbdirs or not all(os.path.isdir(d) for d in a.dbdirs):
-        raise ScanError("keine OSV-Daten gefunden (%s) – zuerst: %s --db-aktualisieren" % (a.db or data_dir, sys.argv[0]))
+        raise ScanError("keine OSV-Daten gefunden (%s) – zuerst: %s --db-aktualisieren" % (", ".join(a.db or [data_dir]), sys.argv[0]))
     if not a.oeffentliche:
         return scan_container(a.container, a)[0]
     try:
