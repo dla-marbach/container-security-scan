@@ -7,7 +7,9 @@ import sys
 import tempfile
 import unittest
 
-from _laden import SKRIPT
+from unittest import mock
+
+from _laden import SKRIPT, scanner
 
 
 class Kommandozeile(unittest.TestCase):
@@ -102,6 +104,41 @@ class Kommandozeile(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         self.assertIn("per git pull aktualisiert", out)
         self.assertTrue(git)
+
+    def als_root(self, *args):
+        """Skript (kein Git-Checkout) mit vorgetäuschter UID 0 aufrufen."""
+        code = ("import os, runpy, sys; os.geteuid = lambda: 0; sys.argv = sys.argv[1:]; "
+                "runpy.run_path(sys.argv[0], run_name='__main__')")
+        p = subprocess.run([sys.executable, "-c", code, SKRIPT] + list(args), stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE, cwd=self.tmp, timeout=120)
+        return p.returncode, p.stderr.decode("utf-8", "replace")
+
+    def test_daten_nicht_als_root_laden(self):
+        # Daten aus dem Netz nie als root schreiben (Zielverzeichnis kann einem anderen Benutzer gehören)
+        ziel = os.path.join(self.tmp, "db")
+        rc, out = self.als_root("--db", ziel, "--db-aktualisieren", "--oekosysteme", "Ubuntu")
+        self.assertEqual(rc, 2)
+        self.assertIn("als root abgelehnt", out)
+        self.assertFalse(os.path.exists(ziel))
+
+    def test_berichte_nur_fuer_den_aufrufer_lesbar(self):
+        db = os.path.join(self.tmp, "db")
+        os.mkdir(db)
+        gesehen = []
+
+        def scan(name, a, via=None):
+            alt = os.umask(0)
+            os.umask(alt)
+            gesehen.append(alt)
+            return 0, [], None
+        alt = os.umask(0o022)
+        try:
+            with mock.patch.object(scanner, "scan_container", side_effect=scan), \
+                    mock.patch.object(sys, "argv", ["x", "--db", db, "web", self.tmp]):
+                self.assertEqual(scanner.main(), 0)
+        finally:
+            os.umask(alt)
+        self.assertEqual(gesehen, [0o077])
 
     def test_unerwarteter_fehler_ergibt_2(self):
         # docker inspect liefert Unsinn -> Ausnahme im Skript, darf nie als 0 oder 1 enden

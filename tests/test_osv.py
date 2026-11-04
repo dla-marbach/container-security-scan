@@ -210,6 +210,25 @@ class Aktualisierung(Tmp):
         self.assertEqual(recs["GHSA-2"]["withdrawn"], "entfernt")
         self.assertEqual(scanner.db_state(self.tmp)["npm"]["stand"], "2026-11-04T10:00:00Z")
 
+    def test_ungueltige_kennung_wird_kein_pfad(self):
+        ziel = os.path.join(self.tmp, "db")
+        os.makedirs(os.path.join(ziel, "npm.neu"))
+        with zipfile.ZipFile(os.path.join(ziel, "npm.zip"), "w") as z:
+            z.writestr("GHSA-1.json", '{"id": "GHSA-1"}')
+        with open(os.path.join(ziel, "stand.json"), "w") as f:
+            json.dump({"npm": {"stand": "2026-11-03T12:00:00Z", "geprueft": "2026-11-03T12:05:00Z"}}, f)
+        base = scanner.OSV_BASE + "npm/"
+        for vid in ("../../boese", "/etc/x", "..", "", "a/b"):
+            urls = {base + "modified_id.csv": ("2026-11-04T10:00:00Z,%s\n" % vid).encode()}
+            with mock.patch.object(scanner.urllib.request, "urlopen", side_effect=self.antworten(urls)), \
+                    mock.patch.object(scanner, "log"):
+                with self.assertRaisesRegex(scanner.ScanError, "Ungültige Kennung"):
+                    scanner.osv_update(ziel, ["npm"])
+        self.assertEqual(sorted(os.listdir(self.tmp)), ["db"])
+        self.assertEqual(os.listdir(os.path.join(ziel, "npm.neu")), [])
+        for vid in ("GHSA-abcd-1234-wxyz", "DEBIAN-CVE-2024-1", "SUSE-SU-2024:1234-1", "BIT-php-2024-1", "PYSEC-2021-1"):
+            self.assertTrue(scanner.OSV_ID.fullmatch(vid), vid)
+
     def test_erster_lauf_laedt_gesamtexport(self):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as z:
