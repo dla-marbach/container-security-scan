@@ -62,6 +62,47 @@ class Kommandozeile(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertIn("keine OSV-Daten gefunden", out)
 
+    def test_mehrere_db(self):
+        da, db = os.path.join(self.tmp, "a"), os.path.join(self.tmp, "b")
+        os.mkdir(da)
+        rc, out = self.aufruf("--db", da, "--db", db, "web")
+        self.assertEqual(rc, 2)
+        self.assertIn("keine OSV-Daten gefunden (%s, %s)" % (da, db), out)
+        rc, out = self.aufruf("--db", da, "--db", db, "--db-aktualisieren")
+        self.assertEqual(rc, 2)
+        self.assertIn("nur ein --db", out)
+
+    def git_checkout(self, euid):
+        """Kopie des Skripts in einem (scheinbaren) Git-Checkout, --db-aktualisieren mit vorgetäuschter UID;
+        git-Ersatz im PATH vermerkt, ob git pull aufgerufen wurde."""
+        repo = os.path.join(self.tmp, "repo")
+        for d in (".git", "osv-daten"):
+            os.makedirs(os.path.join(repo, d))
+        shutil.copy(SKRIPT, os.path.join(repo, "container-security-scan.py"))
+        marke = os.path.join(self.tmp, "git-aufgerufen")
+        path = os.path.join(self.bin, "git")
+        with open(path, "w") as f:
+            f.write('#!/bin/sh\necho "$@" > %s\n' % marke)
+        os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR)
+        code = ("import os, runpy, sys; os.geteuid = lambda: %d; sys.argv = [sys.argv[1], '--db-aktualisieren']; "
+                "runpy.run_path(sys.argv[0], run_name='__main__')" % euid)
+        e = dict(os.environ, PATH=self.bin + os.pathsep + os.environ.get("PATH", ""))
+        p = subprocess.run([sys.executable, "-c", code, os.path.join(repo, "container-security-scan.py")],
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=e, cwd=self.tmp, timeout=120)
+        return p.returncode, p.stderr.decode("utf-8", "replace"), os.path.exists(marke)
+
+    def test_git_pull_nicht_als_root(self):
+        rc, out, git = self.git_checkout(0)
+        self.assertEqual(rc, 2)
+        self.assertIn("als root abgelehnt", out)
+        self.assertFalse(git)
+
+    def test_git_pull_als_benutzer(self):
+        rc, out, git = self.git_checkout(1000)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("per git pull aktualisiert", out)
+        self.assertTrue(git)
+
     def test_unerwarteter_fehler_ergibt_2(self):
         # docker inspect liefert Unsinn -> Ausnahme im Skript, darf nie als 0 oder 1 enden
         self.docker('[ "$1" = inspect ] && echo "[{}]" && exit 0\nexit 1\n')
