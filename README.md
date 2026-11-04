@@ -115,6 +115,80 @@ exit $rc
 - Warnungen zum Supportende sind keine OSV-Schwachstellen und ändern den Rückgabewert nicht.
 - Der Host selbst (SLES) ist nicht Teil des Scans: dafür `zypper list-patches --category security`.
 
+### Mit Rundeck
+
+Rundeck übernimmt Zeitplan, Übersicht und Benachrichtigung; Skript und Daten bleiben auf jedem Server
+(`git pull` dort). Rundeck darf per sudo nur genau dieses eine Skript starten – keine allgemeinen
+root-Rechte, kein `docker`, kein `python3` mit beliebigen Argumenten. Wer Rundeck übernimmt, kann so
+Scans auslösen, aber nicht root auf den Servern werden.
+
+`/opt/container-security-scan/rundeck.sh` (statt `taeglich.sh` und cron):
+
+```bash
+#!/bin/bash
+# Aufruf durch Rundeck: sudo -n /opt/container-security-scan/rundeck.sh
+# Ausgabe ins Rundeck-Log, letzte Zeile "ERGEBNIS: ...", Rückgabewert wie beim Skript (0/1/2).
+DIR=/opt/container-security-scan
+LOGDIR=/var/log/container-security-scan
+umask 077                                  # Berichte enthalten u. a. Prozess-Kommandozeilen
+exec 9>/run/container-security-scan.lock
+if ! flock -n 9; then
+    echo "ERGEBNIS: UNVOLLSTAENDIG (Rückgabewert 2, Scan läuft bereits) – $(hostname)"
+    exit 2
+fi
+mkdir -p "$LOGDIR/berichte"
+LOG=$LOGDIR/$(date +%F_%H%M%S).txt
+# mit Ubuntu-basierten Images: --db-aktualisieren --oekosysteme Ubuntu
+{ cd "$DIR" &&
+  ./container-security-scan.py --db-aktualisieren &&
+  ./container-security-scan.py --oeffentliche "$LOGDIR/berichte" --nur-behebbare; } 2>&1 | tee "$LOG"
+rc=${PIPESTATUS[0]}
+case $rc in
+    0) ergebnis=OK ;;
+    1) ergebnis=FUNDE ;;
+    *) ergebnis=UNVOLLSTAENDIG; rc=2 ;;
+esac
+echo "ERGEBNIS: $ergebnis (Rückgabewert $rc) – $(hostname)" | tee -a "$LOG"
+exit $rc
+```
+
+Einrichtung auf jedem Server (als root):
+
+```bash
+chown -R root:root /opt/container-security-scan
+chmod 755 /opt/container-security-scan/rundeck.sh
+chmod -R go-w /opt/container-security-scan     # sonst könnte der Rundeck-Benutzer das Skript ändern
+
+cat > /etc/sudoers.d/rundeck-container-scan <<'EOF'
+rundeck ALL=(root) NOPASSWD: /opt/container-security-scan/rundeck.sh ""
+EOF
+chmod 440 /etc/sudoers.d/rundeck-container-scan
+visudo -c
+```
+
+`""` am Ende verbietet zusätzliche Argumente. Den Benutzernamen an Ihren Rundeck-Benutzer anpassen; ist
+`requiretty` gesetzt, zusätzlich `Defaults:rundeck !requiretty`. Optional lässt sich auch der SSH-Schlüssel
+auf diesen Befehl festlegen (`~rundeck/.ssh/authorized_keys` auf dem Server; dann eigener Schlüssel nur
+für diesen Job):
+
+```
+command="sudo -n /opt/container-security-scan/rundeck.sh",from="<IP des Rundeck-Servers>",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA… rundeck-container-scan
+```
+
+Rundeck-Job:
+
+- Schritt „Command“: `sudo -n /opt/container-security-scan/rundeck.sh` – kein Schritt „Script“, der eine
+  Datei auf den Server kopiert und ausführt (dafür bräuchte der Rundeck-Benutzer allgemeine root-Rechte).
+- Zeitplan täglich mit Abstand zur Action (siehe oben), z. B. 07:23.
+- Zeitlimit großzügig (mehrere Stunden): ein Container kann bis zu 30 Minuten dauern.
+- Teilen sich Server Ressourcen (VMs auf demselben Host, gemeinsamer Speicher), die Server nacheinander
+  oder in kleinen Gruppen abarbeiten statt alle parallel.
+- Benachrichtigung bei Fehlschlag. Rundeck kennt nur Erfolg oder Fehlschlag: Rückgabewert 1 und 2 sind
+  beide rot, die Zeile `ERGEBNIS: FUNDE` bzw. `ERGEBNIS: UNVOLLSTAENDIG` am Ende des Logs unterscheidet sie.
+
+Die Berichte und `bekannt_*.json` (Markierung „neu“) bleiben auf dem jeweiligen Server unter
+`/var/log/container-security-scan/`; die Konsolenausgabe steht zusätzlich im Rundeck-Log.
+
 ## Ausgabe
 
 Je Container im Ausgabeverzeichnis:
