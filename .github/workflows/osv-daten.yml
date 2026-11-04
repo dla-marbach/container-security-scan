@@ -1,0 +1,35 @@
+name: OSV-Daten aktualisieren
+
+on:
+  schedule:
+    - cron: "17 3 * * *"     # täglich 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: osv-daten
+  cancel-in-progress: false
+
+jobs:
+  aktualisieren:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: OSV-Exporte laden und gekürzt nach osv-daten/ schreiben
+        run: python3 container-security-scan.py --daten-erzeugen osv-daten
+
+      - name: Änderungen committen
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add osv-daten
+          if git diff --cached --quiet; then
+            echo "Keine Änderungen."
+          else
+            git commit -q -m "OSV-Daten $(date -u +%F)"
+            git push
+          fi

@@ -1,0 +1,5934 @@
+{
+ "bomFormat": "CycloneDX",
+ "specVersion": "1.5",
+ "serialNumber": "urn:uuid:7e0f1be4-f85d-4e71-856a-2aa56cbadbb3",
+ "version": 1,
+ "metadata": {
+  "timestamp": "2026-11-04T16:52:55Z",
+  "tools": {
+   "components": [
+    {
+     "type": "application",
+     "name": "container-security-scan.py"
+    }
+   ]
+  },
+  "component": {
+   "bom-ref": "container",
+   "type": "container",
+   "name": "mirror.gcr.io/library/php:8.3-fpm",
+   "version": "sha256:7c6bba25ec696f21a2e3ca0b7d3e4282c899095e7e628c1851b0432f14a49d76",
+   "properties": [
+    {
+     "name": "container-security-scan:container-name",
+     "value": "app-php-vol"
+    },
+    {
+     "name": "container-security-scan:container-id",
+     "value": "827fc68bdddf62c26ea44fbd609458bf217e3228910c89a124d1b6a51e15a27f"
+    },
+    {
+     "name": "container-security-scan:repo-digest",
+     "value": "mirror.gcr.io/library/php@sha256:7c6bba25ec696f21a2e3ca0b7d3e4282c899095e7e628c1851b0432f14a49d76"
+    }
+   ]
+  }
+ },
+ "components": [
+  {
+   "bom-ref": "os",
+   "type": "operating-system",
+   "name": "debian",
+   "version": "13.7",
+   "description": "Debian GNU/Linux 13 (trixie)"
+  },
+  {
+   "bom-ref": "c1",
+   "type": "library",
+   "name": "adduser",
+   "version": "3.152",
+   "purl": "pkg:deb/debian/adduser@3.152?arch=all&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "adduser"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.152"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c2",
+   "type": "library",
+   "name": "apt",
+   "version": "3.0.3",
+   "purl": "pkg:deb/debian/apt@3.0.3?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "apt"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.0.3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c3",
+   "type": "library",
+   "name": "autoconf",
+   "version": "2.72-3.1",
+   "purl": "pkg:deb/debian/autoconf@2.72-3.1?arch=all&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "autoconf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.72"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3.1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c4",
+   "type": "library",
+   "name": "base-files",
+   "version": "13.8+deb13u7",
+   "purl": "pkg:deb/debian/base-files@13.8%2Bdeb13u7?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "base-files"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "13.8+deb13u7"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c5",
+   "type": "library",
+   "name": "base-passwd",
+   "version": "3.6.7",
+   "purl": "pkg:deb/debian/base-passwd@3.6.7?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "base-passwd"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.6.7"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c6",
+   "type": "library",
+   "name": "bash",
+   "version": "5.2.37-2+b10",
+   "purl": "pkg:deb/debian/bash@5.2.37-2%2Bb10?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "bash"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.2.37"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c7",
+   "type": "library",
+   "name": "binutils",
+   "version": "2.44-3",
+   "purl": "pkg:deb/debian/binutils@2.44-3?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "binutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.44"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c8",
+   "type": "library",
+   "name": "binutils-common",
+   "version": "2.44-3",
+   "purl": "pkg:deb/debian/binutils-common@2.44-3?arch=amd64&upstream=binutils&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "binutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.44"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=binutils"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c9",
+   "type": "library",
+   "name": "binutils-x86-64-linux-gnu",
+   "version": "2.44-3",
+   "purl": "pkg:deb/debian/binutils-x86-64-linux-gnu@2.44-3?arch=amd64&upstream=binutils&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "binutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.44"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=binutils"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c10",
+   "type": "library",
+   "name": "bsdutils",
+   "version": "1:2.41.5-0+deb13u1",
+   "purl": "pkg:deb/debian/bsdutils@2.41.5-0%2Bdeb13u1?arch=amd64&epoch=1&upstream=util-linux&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.41.5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "0+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=util-linux"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c11",
+   "type": "library",
+   "name": "bzip2",
+   "version": "1.0.8-6",
+   "purl": "pkg:deb/debian/bzip2@1.0.8-6?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "bzip2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.0.8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c12",
+   "type": "library",
+   "name": "ca-certificates",
+   "version": "20250419+deb13u1",
+   "purl": "pkg:deb/debian/ca-certificates@20250419%2Bdeb13u1?arch=all&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "ca-certificates"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "20250419+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c13",
+   "type": "library",
+   "name": "coreutils",
+   "version": "9.7-3",
+   "purl": "pkg:deb/debian/coreutils@9.7-3?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "coreutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "9.7"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c14",
+   "type": "library",
+   "name": "cpp",
+   "version": "4:14.2.0-1",
+   "purl": "pkg:deb/debian/cpp@14.2.0-1?arch=amd64&epoch=4&upstream=gcc-defaults&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-defaults"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.220"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-defaults"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c15",
+   "type": "library",
+   "name": "cpp-14",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/cpp-14@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c16",
+   "type": "library",
+   "name": "cpp-14-x86-64-linux-gnu",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/cpp-14-x86-64-linux-gnu@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c17",
+   "type": "library",
+   "name": "cpp-x86-64-linux-gnu",
+   "version": "4:14.2.0-1",
+   "purl": "pkg:deb/debian/cpp-x86-64-linux-gnu@14.2.0-1?arch=amd64&epoch=4&upstream=gcc-defaults&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-defaults"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.220"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-defaults"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c18",
+   "type": "library",
+   "name": "curl",
+   "version": "8.14.1-2+deb13u7",
+   "purl": "pkg:deb/debian/curl@8.14.1-2%2Bdeb13u7?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "curl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "8.14.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2+deb13u7"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c19",
+   "type": "library",
+   "name": "dash",
+   "version": "0.5.12-12",
+   "purl": "pkg:deb/debian/dash@0.5.12-12?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dash"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.5.12"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "12"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c20",
+   "type": "library",
+   "name": "debconf",
+   "version": "1.5.91",
+   "purl": "pkg:deb/debian/debconf@1.5.91?arch=all&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "debconf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.5.91"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c21",
+   "type": "library",
+   "name": "debian-archive-keyring",
+   "version": "2025.1",
+   "purl": "pkg:deb/debian/debian-archive-keyring@2025.1?arch=all&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "debian-archive-keyring"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2025.1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c22",
+   "type": "library",
+   "name": "debianutils",
+   "version": "5.23.2",
+   "purl": "pkg:deb/debian/debianutils@5.23.2?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "debianutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.23.2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c23",
+   "type": "library",
+   "name": "diffutils",
+   "version": "1:3.10-4",
+   "purl": "pkg:deb/debian/diffutils@3.10-4?arch=amd64&epoch=1&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "diffutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.10"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c24",
+   "type": "library",
+   "name": "dpkg",
+   "version": "1.22.22",
+   "purl": "pkg:deb/debian/dpkg@1.22.22?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dpkg"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.22.22"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c25",
+   "type": "library",
+   "name": "dpkg-dev",
+   "version": "1.22.22",
+   "purl": "pkg:deb/debian/dpkg-dev@1.22.22?arch=all&upstream=dpkg&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dpkg"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.22.22"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all; src=dpkg"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c26",
+   "type": "library",
+   "name": "file",
+   "version": "1:5.46-5",
+   "purl": "pkg:deb/debian/file@5.46-5?arch=amd64&epoch=1&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "file"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.46"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c27",
+   "type": "library",
+   "name": "findutils",
+   "version": "4.10.0-3",
+   "purl": "pkg:deb/debian/findutils@4.10.0-3?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "findutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.10.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c28",
+   "type": "library",
+   "name": "g++",
+   "version": "4:14.2.0-1",
+   "purl": "pkg:deb/debian/g%2B%2B@14.2.0-1?arch=amd64&epoch=4&upstream=gcc-defaults&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-defaults"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.220"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-defaults"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c29",
+   "type": "library",
+   "name": "g++-14",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/g%2B%2B-14@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c30",
+   "type": "library",
+   "name": "g++-14-x86-64-linux-gnu",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/g%2B%2B-14-x86-64-linux-gnu@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c31",
+   "type": "library",
+   "name": "g++-x86-64-linux-gnu",
+   "version": "4:14.2.0-1",
+   "purl": "pkg:deb/debian/g%2B%2B-x86-64-linux-gnu@14.2.0-1?arch=amd64&epoch=4&upstream=gcc-defaults&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-defaults"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.220"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-defaults"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c32",
+   "type": "library",
+   "name": "gcc",
+   "version": "4:14.2.0-1",
+   "purl": "pkg:deb/debian/gcc@14.2.0-1?arch=amd64&epoch=4&upstream=gcc-defaults&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-defaults"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.220"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-defaults"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c33",
+   "type": "library",
+   "name": "gcc-14",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/gcc-14@14.2.0-19?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c34",
+   "type": "library",
+   "name": "gcc-14-base",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/gcc-14-base@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c35",
+   "type": "library",
+   "name": "gcc-14-x86-64-linux-gnu",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/gcc-14-x86-64-linux-gnu@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c36",
+   "type": "library",
+   "name": "gcc-x86-64-linux-gnu",
+   "version": "4:14.2.0-1",
+   "purl": "pkg:deb/debian/gcc-x86-64-linux-gnu@14.2.0-1?arch=amd64&epoch=4&upstream=gcc-defaults&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-defaults"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.220"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-defaults"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c37",
+   "type": "library",
+   "name": "grep",
+   "version": "3.11-4",
+   "purl": "pkg:deb/debian/grep@3.11-4?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "grep"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.11"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c38",
+   "type": "library",
+   "name": "gzip",
+   "version": "1.13-1+deb13u1",
+   "purl": "pkg:deb/debian/gzip@1.13-1%2Bdeb13u1?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gzip"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.13"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c39",
+   "type": "library",
+   "name": "hostname",
+   "version": "3.25",
+   "purl": "pkg:deb/debian/hostname@3.25?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "hostname"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.25"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c40",
+   "type": "library",
+   "name": "init-system-helpers",
+   "version": "1.69~deb13u1",
+   "purl": "pkg:deb/debian/init-system-helpers@1.69~deb13u1?arch=all&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "init-system-helpers"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.69~deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c41",
+   "type": "library",
+   "name": "libacl1",
+   "version": "2.3.2-2+b1",
+   "purl": "pkg:deb/debian/libacl1@2.3.2-2%2Bb1?arch=amd64&upstream=acl&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "acl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.3.2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=acl"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c42",
+   "type": "library",
+   "name": "libapt-pkg7.0",
+   "version": "3.0.3",
+   "purl": "pkg:deb/debian/libapt-pkg7.0@3.0.3?arch=amd64&upstream=apt&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "apt"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.0.3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=apt"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c43",
+   "type": "library",
+   "name": "libargon2-1",
+   "version": "0~20190702+dfsg-4+b2",
+   "purl": "pkg:deb/debian/libargon2-1@0~20190702%2Bdfsg-4%2Bb2?arch=amd64&upstream=argon2&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "argon2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0~20190702+dfsg"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=argon2"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c44",
+   "type": "library",
+   "name": "libasan8",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/libasan8@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c45",
+   "type": "library",
+   "name": "libatomic1",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/libatomic1@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c46",
+   "type": "library",
+   "name": "libattr1",
+   "version": "1:2.5.2-3",
+   "purl": "pkg:deb/debian/libattr1@2.5.2-3?arch=amd64&epoch=1&upstream=attr&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "attr"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.5.2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=attr"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c47",
+   "type": "library",
+   "name": "libaudit-common",
+   "version": "1:4.0.2-2+deb13u1",
+   "purl": "pkg:deb/debian/libaudit-common@4.0.2-2%2Bdeb13u1?arch=all&epoch=1&upstream=audit&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "audit"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.0.2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2+deb13u1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all; src=audit"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c48",
+   "type": "library",
+   "name": "libaudit1",
+   "version": "1:4.0.2-2+deb13u1",
+   "purl": "pkg:deb/debian/libaudit1@4.0.2-2%2Bdeb13u1?arch=amd64&epoch=1&upstream=audit&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "audit"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.0.2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2+deb13u1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=audit"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c49",
+   "type": "library",
+   "name": "libbinutils",
+   "version": "2.44-3",
+   "purl": "pkg:deb/debian/libbinutils@2.44-3?arch=amd64&upstream=binutils&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "binutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.44"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=binutils"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c50",
+   "type": "library",
+   "name": "libblkid1",
+   "version": "2.41.5-0+deb13u1",
+   "purl": "pkg:deb/debian/libblkid1@2.41.5-0%2Bdeb13u1?arch=amd64&upstream=util-linux&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.41.5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "0+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=util-linux"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c51",
+   "type": "library",
+   "name": "libbrotli1",
+   "version": "1.1.0-2+deb13u1",
+   "purl": "pkg:deb/debian/libbrotli1@1.1.0-2%2Bdeb13u1?arch=amd64&upstream=brotli&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "brotli"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.1.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=brotli"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c52",
+   "type": "library",
+   "name": "libbsd0",
+   "version": "0.12.2-2",
+   "purl": "pkg:deb/debian/libbsd0@0.12.2-2?arch=amd64&upstream=libbsd&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libbsd"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.12.2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libbsd"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c53",
+   "type": "library",
+   "name": "libbz2-1.0",
+   "version": "1.0.8-6",
+   "purl": "pkg:deb/debian/libbz2-1.0@1.0.8-6?arch=amd64&upstream=bzip2&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "bzip2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.0.8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=bzip2"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c54",
+   "type": "library",
+   "name": "libc-bin",
+   "version": "2.41-12+deb13u4",
+   "purl": "pkg:deb/debian/libc-bin@2.41-12%2Bdeb13u4?arch=amd64&upstream=glibc&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "glibc"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.41"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "12+deb13u4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=glibc"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c55",
+   "type": "library",
+   "name": "libc-dev-bin",
+   "version": "2.41-12+deb13u4",
+   "purl": "pkg:deb/debian/libc-dev-bin@2.41-12%2Bdeb13u4?arch=amd64&upstream=glibc&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "glibc"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.41"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "12+deb13u4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=glibc"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c56",
+   "type": "library",
+   "name": "libc6",
+   "version": "2.41-12+deb13u4",
+   "purl": "pkg:deb/debian/libc6@2.41-12%2Bdeb13u4?arch=amd64&upstream=glibc&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "glibc"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.41"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "12+deb13u4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=glibc"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c57",
+   "type": "library",
+   "name": "libc6-dev",
+   "version": "2.41-12+deb13u4",
+   "purl": "pkg:deb/debian/libc6-dev@2.41-12%2Bdeb13u4?arch=amd64&upstream=glibc&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "glibc"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.41"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "12+deb13u4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=glibc"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c58",
+   "type": "library",
+   "name": "libcap-ng0",
+   "version": "0.8.5-4+b1",
+   "purl": "pkg:deb/debian/libcap-ng0@0.8.5-4%2Bb1?arch=amd64&upstream=libcap-ng&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libcap-ng"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.8.5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libcap-ng"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c59",
+   "type": "library",
+   "name": "libcap2",
+   "version": "1:2.75-10+deb13u1+b3",
+   "purl": "pkg:deb/debian/libcap2@2.75-10%2Bdeb13u1%2Bb3?arch=amd64&epoch=1&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libcap2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.75"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "10+deb13u1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c60",
+   "type": "library",
+   "name": "libcc1-0",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/libcc1-0@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c61",
+   "type": "library",
+   "name": "libcom-err2",
+   "version": "1.47.2-3+b12",
+   "purl": "pkg:deb/debian/libcom-err2@1.47.2-3%2Bb12?arch=amd64&upstream=e2fsprogs&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "e2fsprogs"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.47.2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=e2fsprogs"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c62",
+   "type": "library",
+   "name": "libcrypt-dev",
+   "version": "1:4.4.38-1",
+   "purl": "pkg:deb/debian/libcrypt-dev@4.4.38-1?arch=amd64&epoch=1&upstream=libxcrypt&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libxcrypt"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.4.38"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libxcrypt"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c63",
+   "type": "library",
+   "name": "libcrypt1",
+   "version": "1:4.4.38-1",
+   "purl": "pkg:deb/debian/libcrypt1@4.4.38-1?arch=amd64&epoch=1&upstream=libxcrypt&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libxcrypt"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.4.38"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libxcrypt"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c64",
+   "type": "library",
+   "name": "libctf-nobfd0",
+   "version": "2.44-3",
+   "purl": "pkg:deb/debian/libctf-nobfd0@2.44-3?arch=amd64&upstream=binutils&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "binutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.44"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=binutils"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c65",
+   "type": "library",
+   "name": "libctf0",
+   "version": "2.44-3",
+   "purl": "pkg:deb/debian/libctf0@2.44-3?arch=amd64&upstream=binutils&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "binutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.44"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=binutils"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c66",
+   "type": "library",
+   "name": "libcurl4t64",
+   "version": "8.14.1-2+deb13u7",
+   "purl": "pkg:deb/debian/libcurl4t64@8.14.1-2%2Bdeb13u7?arch=amd64&upstream=curl&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "curl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "8.14.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2+deb13u7"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=curl"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c67",
+   "type": "library",
+   "name": "libdb5.3t64",
+   "version": "5.3.28+dfsg2-9",
+   "purl": "pkg:deb/debian/libdb5.3t64@5.3.28%2Bdfsg2-9?arch=amd64&upstream=db5.3&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "db5.3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.3.28+dfsg2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "9"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=db5.3"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c68",
+   "type": "library",
+   "name": "libdebconfclient0",
+   "version": "0.280",
+   "purl": "pkg:deb/debian/libdebconfclient0@0.280?arch=amd64&upstream=cdebconf&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "cdebconf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.280"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=cdebconf"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c69",
+   "type": "library",
+   "name": "libdpkg-perl",
+   "version": "1.22.22",
+   "purl": "pkg:deb/debian/libdpkg-perl@1.22.22?arch=all&upstream=dpkg&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "dpkg"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.22.22"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all; src=dpkg"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c70",
+   "type": "library",
+   "name": "libffi8",
+   "version": "3.4.8-2",
+   "purl": "pkg:deb/debian/libffi8@3.4.8-2?arch=amd64&upstream=libffi&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libffi"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.4.8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libffi"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c71",
+   "type": "library",
+   "name": "libgcc-14-dev",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/libgcc-14-dev@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c72",
+   "type": "library",
+   "name": "libgcc-s1",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/libgcc-s1@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c73",
+   "type": "library",
+   "name": "libgdbm-compat4t64",
+   "version": "1.24-2",
+   "purl": "pkg:deb/debian/libgdbm-compat4t64@1.24-2?arch=amd64&upstream=gdbm&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gdbm"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.24"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gdbm"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c74",
+   "type": "library",
+   "name": "libgdbm6t64",
+   "version": "1.24-2",
+   "purl": "pkg:deb/debian/libgdbm6t64@1.24-2?arch=amd64&upstream=gdbm&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gdbm"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.24"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gdbm"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c75",
+   "type": "library",
+   "name": "libgmp10",
+   "version": "2:6.3.0+dfsg-3",
+   "purl": "pkg:deb/debian/libgmp10@6.3.0%2Bdfsg-3?arch=amd64&epoch=2&upstream=gmp&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gmp"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "6.3.0+dfsg"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gmp"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c76",
+   "type": "library",
+   "name": "libgnutls30t64",
+   "version": "3.8.9-3+deb13u4",
+   "purl": "pkg:deb/debian/libgnutls30t64@3.8.9-3%2Bdeb13u4?arch=amd64&upstream=gnutls28&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gnutls28"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.8.9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3+deb13u4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gnutls28"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c77",
+   "type": "library",
+   "name": "libgomp1",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/libgomp1@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c78",
+   "type": "library",
+   "name": "libgprofng0",
+   "version": "2.44-3",
+   "purl": "pkg:deb/debian/libgprofng0@2.44-3?arch=amd64&upstream=binutils&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "binutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.44"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=binutils"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c79",
+   "type": "library",
+   "name": "libgssapi-krb5-2",
+   "version": "1.21.3-5+deb13u1",
+   "purl": "pkg:deb/debian/libgssapi-krb5-2@1.21.3-5%2Bdeb13u1?arch=amd64&upstream=krb5&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "krb5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.21.3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=krb5"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c80",
+   "type": "library",
+   "name": "libhogweed6t64",
+   "version": "3.10.1-1",
+   "purl": "pkg:deb/debian/libhogweed6t64@3.10.1-1?arch=amd64&upstream=nettle&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "nettle"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.10.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=nettle"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c81",
+   "type": "library",
+   "name": "libhwasan0",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/libhwasan0@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c82",
+   "type": "library",
+   "name": "libidn2-0",
+   "version": "2.3.8-2",
+   "purl": "pkg:deb/debian/libidn2-0@2.3.8-2?arch=amd64&upstream=libidn2&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libidn2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.3.8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libidn2"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c83",
+   "type": "library",
+   "name": "libisl23",
+   "version": "0.27-1",
+   "purl": "pkg:deb/debian/libisl23@0.27-1?arch=amd64&upstream=isl&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "isl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.27"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=isl"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c84",
+   "type": "library",
+   "name": "libitm1",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/libitm1@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c85",
+   "type": "library",
+   "name": "libjansson4",
+   "version": "2.14-2+b3",
+   "purl": "pkg:deb/debian/libjansson4@2.14-2%2Bb3?arch=amd64&upstream=jansson&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "jansson"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=jansson"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c86",
+   "type": "library",
+   "name": "libk5crypto3",
+   "version": "1.21.3-5+deb13u1",
+   "purl": "pkg:deb/debian/libk5crypto3@1.21.3-5%2Bdeb13u1?arch=amd64&upstream=krb5&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "krb5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.21.3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=krb5"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c87",
+   "type": "library",
+   "name": "libkeyutils1",
+   "version": "1.6.3-6",
+   "purl": "pkg:deb/debian/libkeyutils1@1.6.3-6?arch=amd64&upstream=keyutils&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "keyutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.6.3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=keyutils"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c88",
+   "type": "library",
+   "name": "libkrb5-3",
+   "version": "1.21.3-5+deb13u1",
+   "purl": "pkg:deb/debian/libkrb5-3@1.21.3-5%2Bdeb13u1?arch=amd64&upstream=krb5&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "krb5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.21.3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=krb5"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c89",
+   "type": "library",
+   "name": "libkrb5support0",
+   "version": "1.21.3-5+deb13u1",
+   "purl": "pkg:deb/debian/libkrb5support0@1.21.3-5%2Bdeb13u1?arch=amd64&upstream=krb5&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "krb5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.21.3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=krb5"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c90",
+   "type": "library",
+   "name": "liblastlog2-2",
+   "version": "2.41.5-0+deb13u1",
+   "purl": "pkg:deb/debian/liblastlog2-2@2.41.5-0%2Bdeb13u1?arch=amd64&upstream=util-linux&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.41.5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "0+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=util-linux"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c91",
+   "type": "library",
+   "name": "libldap2",
+   "version": "2.6.10+dfsg-1",
+   "purl": "pkg:deb/debian/libldap2@2.6.10%2Bdfsg-1?arch=amd64&upstream=openldap&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "openldap"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.6.10+dfsg"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=openldap"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c92",
+   "type": "library",
+   "name": "liblsan0",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/liblsan0@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c93",
+   "type": "library",
+   "name": "liblz4-1",
+   "version": "1.10.0-4",
+   "purl": "pkg:deb/debian/liblz4-1@1.10.0-4?arch=amd64&upstream=lz4&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "lz4"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.10.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=lz4"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c94",
+   "type": "library",
+   "name": "liblzma5",
+   "version": "5.8.1-1+deb13u2",
+   "purl": "pkg:deb/debian/liblzma5@5.8.1-1%2Bdeb13u2?arch=amd64&upstream=xz-utils&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "xz-utils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.8.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1+deb13u2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=xz-utils"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c95",
+   "type": "library",
+   "name": "libmagic-mgc",
+   "version": "1:5.46-5",
+   "purl": "pkg:deb/debian/libmagic-mgc@5.46-5?arch=amd64&epoch=1&upstream=file&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "file"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.46"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=file"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c96",
+   "type": "library",
+   "name": "libmagic1t64",
+   "version": "1:5.46-5",
+   "purl": "pkg:deb/debian/libmagic1t64@5.46-5?arch=amd64&epoch=1&upstream=file&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "file"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.46"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=file"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c97",
+   "type": "library",
+   "name": "libmd0",
+   "version": "1.1.0-2+b1",
+   "purl": "pkg:deb/debian/libmd0@1.1.0-2%2Bb1?arch=amd64&upstream=libmd&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libmd"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.1.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libmd"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c98",
+   "type": "library",
+   "name": "libmount1",
+   "version": "2.41.5-0+deb13u1",
+   "purl": "pkg:deb/debian/libmount1@2.41.5-0%2Bdeb13u1?arch=amd64&upstream=util-linux&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.41.5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "0+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=util-linux"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c99",
+   "type": "library",
+   "name": "libmpc3",
+   "version": "1.3.1-1+b3",
+   "purl": "pkg:deb/debian/libmpc3@1.3.1-1%2Bb3?arch=amd64&upstream=mpclib3&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "mpclib3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.3.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=mpclib3"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c100",
+   "type": "library",
+   "name": "libmpfr6",
+   "version": "4.2.2-1",
+   "purl": "pkg:deb/debian/libmpfr6@4.2.2-1?arch=amd64&upstream=mpfr4&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "mpfr4"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.2.2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=mpfr4"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c101",
+   "type": "library",
+   "name": "libnettle8t64",
+   "version": "3.10.1-1",
+   "purl": "pkg:deb/debian/libnettle8t64@3.10.1-1?arch=amd64&upstream=nettle&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "nettle"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.10.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=nettle"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c102",
+   "type": "library",
+   "name": "libnghttp2-14",
+   "version": "1.64.0-1.1+deb13u1",
+   "purl": "pkg:deb/debian/libnghttp2-14@1.64.0-1.1%2Bdeb13u1?arch=amd64&upstream=nghttp2&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "nghttp2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.64.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.1+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=nghttp2"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c103",
+   "type": "library",
+   "name": "libnghttp3-9",
+   "version": "1.8.0-1",
+   "purl": "pkg:deb/debian/libnghttp3-9@1.8.0-1?arch=amd64&upstream=nghttp3&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "nghttp3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.8.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=nghttp3"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c104",
+   "type": "library",
+   "name": "libonig5",
+   "version": "6.9.9-1+b1",
+   "purl": "pkg:deb/debian/libonig5@6.9.9-1%2Bb1?arch=amd64&upstream=libonig&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libonig"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "6.9.9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libonig"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c105",
+   "type": "library",
+   "name": "libp11-kit0",
+   "version": "0.25.5-3",
+   "purl": "pkg:deb/debian/libp11-kit0@0.25.5-3?arch=amd64&upstream=p11-kit&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "p11-kit"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.25.5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=p11-kit"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c106",
+   "type": "library",
+   "name": "libpam-modules",
+   "version": "1.7.0-5",
+   "purl": "pkg:deb/debian/libpam-modules@1.7.0-5?arch=amd64&upstream=pam&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pam"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.7.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=pam"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c107",
+   "type": "library",
+   "name": "libpam-modules-bin",
+   "version": "1.7.0-5",
+   "purl": "pkg:deb/debian/libpam-modules-bin@1.7.0-5?arch=amd64&upstream=pam&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pam"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.7.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=pam"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c108",
+   "type": "library",
+   "name": "libpam-runtime",
+   "version": "1.7.0-5",
+   "purl": "pkg:deb/debian/libpam-runtime@1.7.0-5?arch=all&upstream=pam&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pam"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.7.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all; src=pam"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c109",
+   "type": "library",
+   "name": "libpam0g",
+   "version": "1.7.0-5",
+   "purl": "pkg:deb/debian/libpam0g@1.7.0-5?arch=amd64&upstream=pam&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pam"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.7.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "5"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=pam"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c110",
+   "type": "library",
+   "name": "libpcre2-8-0",
+   "version": "10.46-1~deb13u3",
+   "purl": "pkg:deb/debian/libpcre2-8-0@10.46-1~deb13u3?arch=amd64&upstream=pcre2&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pcre2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "10.46"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1~deb13u3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=pcre2"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c111",
+   "type": "library",
+   "name": "libperl5.40",
+   "version": "5.40.1-6+deb13u1",
+   "purl": "pkg:deb/debian/libperl5.40@5.40.1-6%2Bdeb13u1?arch=amd64&upstream=perl&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "perl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.40.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=perl"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c112",
+   "type": "library",
+   "name": "libpkgconf3",
+   "version": "1.8.1-4",
+   "purl": "pkg:deb/debian/libpkgconf3@1.8.1-4?arch=amd64&upstream=pkgconf&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pkgconf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.8.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=pkgconf"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c113",
+   "type": "library",
+   "name": "libpsl5t64",
+   "version": "0.21.2-1.1+b1",
+   "purl": "pkg:deb/debian/libpsl5t64@0.21.2-1.1%2Bb1?arch=amd64&upstream=libpsl&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libpsl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.21.2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1.1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libpsl"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c114",
+   "type": "library",
+   "name": "libquadmath0",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/libquadmath0@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c115",
+   "type": "library",
+   "name": "libreadline8t64",
+   "version": "8.2-6",
+   "purl": "pkg:deb/debian/libreadline8t64@8.2-6?arch=amd64&upstream=readline&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "readline"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "8.2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=readline"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c116",
+   "type": "library",
+   "name": "librtmp1",
+   "version": "2.4+20151223.gitfa8646d.1-2+b5",
+   "purl": "pkg:deb/debian/librtmp1@2.4%2B20151223.gitfa8646d.1-2%2Bb5?arch=amd64&upstream=rtmpdump&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "rtmpdump"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.4+20151223.gitfa8646d.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=rtmpdump"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c117",
+   "type": "library",
+   "name": "libsasl2-2",
+   "version": "2.1.28+dfsg1-9",
+   "purl": "pkg:deb/debian/libsasl2-2@2.1.28%2Bdfsg1-9?arch=amd64&upstream=cyrus-sasl2&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "cyrus-sasl2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.1.28+dfsg1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "9"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=cyrus-sasl2"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c118",
+   "type": "library",
+   "name": "libsasl2-modules-db",
+   "version": "2.1.28+dfsg1-9",
+   "purl": "pkg:deb/debian/libsasl2-modules-db@2.1.28%2Bdfsg1-9?arch=amd64&upstream=cyrus-sasl2&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "cyrus-sasl2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.1.28+dfsg1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "9"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=cyrus-sasl2"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c119",
+   "type": "library",
+   "name": "libseccomp2",
+   "version": "2.6.0-2",
+   "purl": "pkg:deb/debian/libseccomp2@2.6.0-2?arch=amd64&upstream=libseccomp&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libseccomp"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.6.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libseccomp"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c120",
+   "type": "library",
+   "name": "libselinux1",
+   "version": "3.8.1-1",
+   "purl": "pkg:deb/debian/libselinux1@3.8.1-1?arch=amd64&upstream=libselinux&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libselinux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.8.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libselinux"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c121",
+   "type": "library",
+   "name": "libsemanage-common",
+   "version": "3.8.1-1",
+   "purl": "pkg:deb/debian/libsemanage-common@3.8.1-1?arch=all&upstream=libsemanage&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libsemanage"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.8.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all; src=libsemanage"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c122",
+   "type": "library",
+   "name": "libsemanage2",
+   "version": "3.8.1-1",
+   "purl": "pkg:deb/debian/libsemanage2@3.8.1-1?arch=amd64&upstream=libsemanage&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libsemanage"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.8.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libsemanage"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c123",
+   "type": "library",
+   "name": "libsepol2",
+   "version": "3.8.1-1",
+   "purl": "pkg:deb/debian/libsepol2@3.8.1-1?arch=amd64&upstream=libsepol&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libsepol"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.8.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libsepol"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c124",
+   "type": "library",
+   "name": "libsframe1",
+   "version": "2.44-3",
+   "purl": "pkg:deb/debian/libsframe1@2.44-3?arch=amd64&upstream=binutils&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "binutils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.44"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=binutils"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c125",
+   "type": "library",
+   "name": "libsmartcols1",
+   "version": "2.41.5-0+deb13u1",
+   "purl": "pkg:deb/debian/libsmartcols1@2.41.5-0%2Bdeb13u1?arch=amd64&upstream=util-linux&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.41.5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "0+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=util-linux"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c126",
+   "type": "library",
+   "name": "libsodium23",
+   "version": "1.0.18-1+deb13u1",
+   "purl": "pkg:deb/debian/libsodium23@1.0.18-1%2Bdeb13u1?arch=amd64&upstream=libsodium&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libsodium"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.0.18"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libsodium"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c127",
+   "type": "library",
+   "name": "libsqlite3-0",
+   "version": "3.46.1-7+deb13u2",
+   "purl": "pkg:deb/debian/libsqlite3-0@3.46.1-7%2Bdeb13u2?arch=amd64&upstream=sqlite3&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "sqlite3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.46.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "7+deb13u2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=sqlite3"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c128",
+   "type": "library",
+   "name": "libssh2-1t64",
+   "version": "1.11.1-1+deb13u2",
+   "purl": "pkg:deb/debian/libssh2-1t64@1.11.1-1%2Bdeb13u2?arch=amd64&upstream=libssh2&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libssh2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.11.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1+deb13u2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libssh2"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c129",
+   "type": "library",
+   "name": "libssl3t64",
+   "version": "3.5.7-1~deb13u3",
+   "purl": "pkg:deb/debian/libssl3t64@3.5.7-1~deb13u3?arch=amd64&upstream=openssl&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "openssl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.5.7"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1~deb13u3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=openssl"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c130",
+   "type": "library",
+   "name": "libstdc++-14-dev",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/libstdc%2B%2B-14-dev@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c131",
+   "type": "library",
+   "name": "libstdc++6",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/libstdc%2B%2B6@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c132",
+   "type": "library",
+   "name": "libsystemd0",
+   "version": "257.13-1~deb13u1",
+   "purl": "pkg:deb/debian/libsystemd0@257.13-1~deb13u1?arch=amd64&upstream=systemd&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "systemd"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "257.13"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1~deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=systemd"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c133",
+   "type": "library",
+   "name": "libtasn1-6",
+   "version": "4.20.0-2+deb13u1",
+   "purl": "pkg:deb/debian/libtasn1-6@4.20.0-2%2Bdeb13u1?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libtasn1-6"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.20.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c134",
+   "type": "library",
+   "name": "libtinfo6",
+   "version": "6.5+20250216-2",
+   "purl": "pkg:deb/debian/libtinfo6@6.5%2B20250216-2?arch=amd64&upstream=ncurses&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "ncurses"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "6.5+20250216"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=ncurses"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c135",
+   "type": "library",
+   "name": "libtsan2",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/libtsan2@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c136",
+   "type": "library",
+   "name": "libubsan1",
+   "version": "14.2.0-19",
+   "purl": "pkg:deb/debian/libubsan1@14.2.0-19?arch=amd64&upstream=gcc-14&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc-14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "14.2.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "19"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=gcc-14"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c137",
+   "type": "library",
+   "name": "libudev1",
+   "version": "257.13-1~deb13u1",
+   "purl": "pkg:deb/debian/libudev1@257.13-1~deb13u1?arch=amd64&upstream=systemd&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "systemd"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "257.13"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1~deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=systemd"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c138",
+   "type": "library",
+   "name": "libunistring5",
+   "version": "1.3-2",
+   "purl": "pkg:deb/debian/libunistring5@1.3-2?arch=amd64&upstream=libunistring&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libunistring"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libunistring"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c139",
+   "type": "library",
+   "name": "libuuid1",
+   "version": "2.41.5-0+deb13u1",
+   "purl": "pkg:deb/debian/libuuid1@2.41.5-0%2Bdeb13u1?arch=amd64&upstream=util-linux&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.41.5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "0+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=util-linux"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c140",
+   "type": "library",
+   "name": "libxml2",
+   "version": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+   "purl": "pkg:deb/debian/libxml2@2.12.7%2Bdfsg%2Breally2.9.14-2.1%2Bdeb13u3?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libxml2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.12.7+dfsg+really2.9.14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2.1+deb13u3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c141",
+   "type": "library",
+   "name": "libxxhash0",
+   "version": "0.8.3-2",
+   "purl": "pkg:deb/debian/libxxhash0@0.8.3-2?arch=amd64&upstream=xxhash&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "xxhash"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "0.8.3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=xxhash"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c142",
+   "type": "library",
+   "name": "libzstd1",
+   "version": "1.5.7+dfsg-1",
+   "purl": "pkg:deb/debian/libzstd1@1.5.7%2Bdfsg-1?arch=amd64&upstream=libzstd&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "libzstd"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.5.7+dfsg"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=libzstd"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c143",
+   "type": "library",
+   "name": "linux-libc-dev",
+   "version": "6.12.113-1",
+   "purl": "pkg:deb/debian/linux-libc-dev@6.12.113-1?arch=all&upstream=linux&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "6.12.113"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all; src=linux"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c144",
+   "type": "library",
+   "name": "login",
+   "version": "1:4.16.0-2+really2.41.5-0+deb13u1",
+   "purl": "pkg:deb/debian/login@4.16.0-2%2Breally2.41.5-0%2Bdeb13u1?arch=amd64&epoch=1&upstream=util-linux&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.41.5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "0+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=util-linux"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c145",
+   "type": "library",
+   "name": "login.defs",
+   "version": "1:4.17.4-2",
+   "purl": "pkg:deb/debian/login.defs@4.17.4-2?arch=all&epoch=1&upstream=shadow&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "shadow"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.17.4"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all; src=shadow"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c146",
+   "type": "library",
+   "name": "m4",
+   "version": "1.4.19-8",
+   "purl": "pkg:deb/debian/m4@1.4.19-8?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "m4"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.4.19"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "8"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c147",
+   "type": "library",
+   "name": "make",
+   "version": "4.4.1-2",
+   "purl": "pkg:deb/debian/make@4.4.1-2?arch=amd64&upstream=make-dfsg&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "make-dfsg"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.4.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=make-dfsg"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c148",
+   "type": "library",
+   "name": "mawk",
+   "version": "1.3.4.20250131-1",
+   "purl": "pkg:deb/debian/mawk@1.3.4.20250131-1?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "mawk"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.3.4.20250131"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c149",
+   "type": "library",
+   "name": "mount",
+   "version": "2.41.5-0+deb13u1",
+   "purl": "pkg:deb/debian/mount@2.41.5-0%2Bdeb13u1?arch=amd64&upstream=util-linux&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.41.5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "0+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=util-linux"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c150",
+   "type": "library",
+   "name": "ncurses-base",
+   "version": "6.5+20250216-2",
+   "purl": "pkg:deb/debian/ncurses-base@6.5%2B20250216-2?arch=all&upstream=ncurses&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "ncurses"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "6.5+20250216"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all; src=ncurses"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c151",
+   "type": "library",
+   "name": "ncurses-bin",
+   "version": "6.5+20250216-2",
+   "purl": "pkg:deb/debian/ncurses-bin@6.5%2B20250216-2?arch=amd64&upstream=ncurses&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "ncurses"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "6.5+20250216"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=ncurses"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c152",
+   "type": "library",
+   "name": "openssl",
+   "version": "3.5.7-1~deb13u3",
+   "purl": "pkg:deb/debian/openssl@3.5.7-1~deb13u3?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "openssl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.5.7"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1~deb13u3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c153",
+   "type": "library",
+   "name": "openssl-provider-legacy",
+   "version": "3.5.7-1~deb13u3",
+   "purl": "pkg:deb/debian/openssl-provider-legacy@3.5.7-1~deb13u3?arch=amd64&upstream=openssl&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "openssl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.5.7"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1~deb13u3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=openssl"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c154",
+   "type": "library",
+   "name": "passwd",
+   "version": "1:4.17.4-2",
+   "purl": "pkg:deb/debian/passwd@4.17.4-2?arch=amd64&epoch=1&upstream=shadow&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "shadow"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.17.4"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=shadow"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c155",
+   "type": "library",
+   "name": "patch",
+   "version": "2.8-2",
+   "purl": "pkg:deb/debian/patch@2.8-2?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "patch"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.8"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c156",
+   "type": "library",
+   "name": "perl",
+   "version": "5.40.1-6+deb13u1",
+   "purl": "pkg:deb/debian/perl@5.40.1-6%2Bdeb13u1?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "perl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.40.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c157",
+   "type": "library",
+   "name": "perl-base",
+   "version": "5.40.1-6+deb13u1",
+   "purl": "pkg:deb/debian/perl-base@5.40.1-6%2Bdeb13u1?arch=amd64&upstream=perl&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "perl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.40.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=perl"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c158",
+   "type": "library",
+   "name": "perl-modules-5.40",
+   "version": "5.40.1-6+deb13u1",
+   "purl": "pkg:deb/debian/perl-modules-5.40@5.40.1-6%2Bdeb13u1?arch=all&upstream=perl&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "perl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.40.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all; src=perl"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c159",
+   "type": "library",
+   "name": "pkg-config",
+   "version": "1.8.1-4",
+   "purl": "pkg:deb/debian/pkg-config@1.8.1-4?arch=amd64&upstream=pkgconf&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pkgconf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.8.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=pkgconf"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c160",
+   "type": "library",
+   "name": "pkgconf",
+   "version": "1.8.1-4",
+   "purl": "pkg:deb/debian/pkgconf@1.8.1-4?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pkgconf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.8.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c161",
+   "type": "library",
+   "name": "pkgconf-bin",
+   "version": "1.8.1-4",
+   "purl": "pkg:deb/debian/pkgconf-bin@1.8.1-4?arch=amd64&upstream=pkgconf&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pkgconf"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.8.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=pkgconf"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c162",
+   "type": "library",
+   "name": "re2c",
+   "version": "4.1-1",
+   "purl": "pkg:deb/debian/re2c@4.1-1?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "re2c"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c163",
+   "type": "library",
+   "name": "readline-common",
+   "version": "8.2-6",
+   "purl": "pkg:deb/debian/readline-common@8.2-6?arch=all&upstream=readline&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "readline"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "8.2"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "6"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all; src=readline"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c164",
+   "type": "library",
+   "name": "rpcsvc-proto",
+   "version": "1.4.3-1",
+   "purl": "pkg:deb/debian/rpcsvc-proto@1.4.3-1?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "rpcsvc-proto"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.4.3"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c165",
+   "type": "library",
+   "name": "sed",
+   "version": "4.9-2+deb13u1",
+   "purl": "pkg:deb/debian/sed@4.9-2%2Bdeb13u1?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "sed"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "4.9"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "2+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c166",
+   "type": "library",
+   "name": "sqv",
+   "version": "1.3.0-3+b2",
+   "purl": "pkg:deb/debian/sqv@1.3.0-3%2Bb2?arch=amd64&upstream=rust-sequoia-sqv&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "rust-sequoia-sqv"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.3.0"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=rust-sequoia-sqv"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c167",
+   "type": "library",
+   "name": "sysvinit-utils",
+   "version": "3.14-4",
+   "purl": "pkg:deb/debian/sysvinit-utils@3.14-4?arch=amd64&upstream=sysvinit&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "sysvinit"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.14"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "4"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=sysvinit"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c168",
+   "type": "library",
+   "name": "tar",
+   "version": "1.35+dfsg-3.1",
+   "purl": "pkg:deb/debian/tar@1.35%2Bdfsg-3.1?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "tar"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.35+dfsg"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "3.1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c169",
+   "type": "library",
+   "name": "tzdata",
+   "version": "2026e-0+deb13u1",
+   "purl": "pkg:deb/debian/tzdata@2026e-0%2Bdeb13u1?arch=all&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "tzdata"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2026e"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "0+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=all"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c170",
+   "type": "library",
+   "name": "util-linux",
+   "version": "2.41.5-0+deb13u1",
+   "purl": "pkg:deb/debian/util-linux@2.41.5-0%2Bdeb13u1?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "util-linux"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.41.5"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "0+deb13u1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c171",
+   "type": "library",
+   "name": "xz-utils",
+   "version": "5.8.1-1+deb13u2",
+   "purl": "pkg:deb/debian/xz-utils@5.8.1-1%2Bdeb13u2?arch=amd64&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "xz-utils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "5.8.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1+deb13u2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c172",
+   "type": "library",
+   "name": "zlib1g",
+   "version": "1:1.3.dfsg+really1.3.1-1+b1",
+   "purl": "pkg:deb/debian/zlib1g@1.3.dfsg%2Breally1.3.1-1%2Bb1?arch=amd64&epoch=1&upstream=zlib&distro=debian-13.7",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "zlib"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.3.dfsg+really1.3.1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcRelease",
+     "value": "1"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcEpoch",
+     "value": "1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=amd64; src=zlib"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c173",
+   "type": "library",
+   "name": "guzzlehttp/guzzle",
+   "version": "7.4.0",
+   "purl": "pkg:composer/guzzlehttp/guzzle@7.4.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "composer"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/srv/app"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000 (Docroot unbekannt)"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c174",
+   "type": "library",
+   "name": "guzzlehttp/promises",
+   "version": "1.5.3",
+   "purl": "pkg:composer/guzzlehttp/promises@1.5.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "composer"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/srv/app"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000 (Docroot unbekannt)"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c175",
+   "type": "library",
+   "name": "guzzlehttp/psr7",
+   "version": "2.13.2",
+   "purl": "pkg:composer/guzzlehttp/psr7@2.13.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "composer"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/srv/app"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000 (Docroot unbekannt)"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c176",
+   "type": "library",
+   "name": "monolog/monolog",
+   "version": "3.12.1",
+   "purl": "pkg:composer/monolog/monolog@3.12.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "composer"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/srv/app"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000 (Docroot unbekannt)"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c177",
+   "type": "library",
+   "name": "psr/http-client",
+   "version": "1.0.3",
+   "purl": "pkg:composer/psr/http-client@1.0.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "composer"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/srv/app"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000 (Docroot unbekannt)"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c178",
+   "type": "library",
+   "name": "psr/http-factory",
+   "version": "1.1.0",
+   "purl": "pkg:composer/psr/http-factory@1.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "composer"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/srv/app"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000 (Docroot unbekannt)"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c179",
+   "type": "library",
+   "name": "psr/http-message",
+   "version": "2.0",
+   "purl": "pkg:composer/psr/http-message@2.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "composer"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/srv/app"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000 (Docroot unbekannt)"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c180",
+   "type": "library",
+   "name": "psr/log",
+   "version": "3.0.2",
+   "purl": "pkg:composer/psr/log@3.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "composer"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/srv/app"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000 (Docroot unbekannt)"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c181",
+   "type": "library",
+   "name": "ralouphie/getallheaders",
+   "version": "3.0.3",
+   "purl": "pkg:composer/ralouphie/getallheaders@3.0.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "composer"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/srv/app"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000 (Docroot unbekannt)"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c182",
+   "type": "library",
+   "name": "symfony/deprecation-contracts",
+   "version": "v2.5.4",
+   "purl": "pkg:composer/symfony/deprecation-contracts@v2.5.4",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "composer"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/srv/app"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000 (Docroot unbekannt)"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c183",
+   "type": "library",
+   "name": "symfony/polyfill-php80",
+   "version": "v1.43.0",
+   "purl": "pkg:composer/symfony/polyfill-php80@v1.43.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "composer"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/srv/app"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000 (Docroot unbekannt)"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c184",
+   "type": "application",
+   "name": "php-fpm",
+   "version": "8.3.36",
+   "purl": "pkg:generic/php-fpm@8.3.36",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/sbin/php-fpm"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "gleicher Build wie php-CLI angenommen"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c185",
+   "type": "application",
+   "name": "php",
+   "version": "8.3.36",
+   "purl": "pkg:generic/php@8.3.36",
+   "cpe": "cpe:2.3:a:php:php:8.3.36:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/php"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "cli"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c186",
+   "type": "library",
+   "name": "openssl",
+   "version": "3.5.7",
+   "purl": "pkg:generic/openssl@3.5.7",
+   "cpe": "cpe:2.3:a:openssl:openssl:3.5.7:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/php"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "von php gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c187",
+   "type": "library",
+   "name": "curl",
+   "version": "8.14.1",
+   "purl": "pkg:generic/curl@8.14.1",
+   "cpe": "cpe:2.3:a:haxx:curl:8.14.1:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/php"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "von php gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c188",
+   "type": "library",
+   "name": "libxml2",
+   "version": "2.9.14",
+   "purl": "pkg:generic/libxml2@2.9.14",
+   "cpe": "cpe:2.3:a:xmlsoft:libxml2:2.9.14:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/php"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "von php gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c189",
+   "type": "library",
+   "name": "pcre2",
+   "version": "10.42",
+   "purl": "pkg:generic/pcre2@10.42",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/php"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "von php gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c190",
+   "type": "library",
+   "name": "sqlite",
+   "version": "3.46.1",
+   "purl": "pkg:generic/sqlite@3.46.1",
+   "cpe": "cpe:2.3:a:sqlite:sqlite:3.46.1:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/php"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "von php gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c191",
+   "type": "library",
+   "name": "libsodium",
+   "version": "1.0.18",
+   "purl": "pkg:generic/libsodium@1.0.18",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/php"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "von php gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c192",
+   "type": "library",
+   "name": "zlib",
+   "version": "1.3.1",
+   "purl": "pkg:generic/zlib@1.3.1",
+   "cpe": "cpe:2.3:a:zlib:zlib:1.3.1:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/php"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "von php gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c193",
+   "type": "platform",
+   "name": "linux-kernel",
+   "version": "6.18.44-fc-v233",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "host"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "Host"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "Ubuntu 24.04.5 LTS"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "Host"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c194",
+   "type": "library",
+   "name": "docker-engine",
+   "version": "29.9.2",
+   "purl": "pkg:generic/docker-engine@29.9.2",
+   "cpe": "cpe:2.3:a:docker:docker:29.9.2:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "host"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "Host"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "Host"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c195",
+   "type": "library",
+   "name": "containerd",
+   "version": "v2.4.2",
+   "purl": "pkg:generic/containerd@v2.4.2",
+   "cpe": "cpe:2.3:a:linuxfoundation:containerd:2.4.2:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "host"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "Host"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "Host"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c196",
+   "type": "library",
+   "name": "runc",
+   "version": "1.5.2",
+   "purl": "pkg:generic/runc@1.5.2",
+   "cpe": "cpe:2.3:a:linuxfoundation:runc:1.5.2:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "host"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "Host"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "Host"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c197",
+   "type": "library",
+   "name": "docker-init",
+   "version": "0.19.0",
+   "purl": "pkg:generic/docker-init@0.19.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "host"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "Host"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "Host"
+    }
+   ]
+  }
+ ],
+ "services": [
+  {
+   "bom-ref": "dienst:php-fpm:9000",
+   "name": "php-fpm",
+   "version": "8.3.36",
+   "description": "Port 9000/tcp (alle) öffentlich über nginx:8081,80 in app-nginx; Arbeitsverzeichnis: /var/www/html",
+   "properties": [
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "php-fpm:9000"
+    },
+    {
+     "name": "container-security-scan:programm",
+     "value": "/usr/local/sbin/php-fpm"
+    }
+   ]
+  }
+ ],
+ "dependencies": [
+  {
+   "ref": "container",
+   "dependsOn": [
+    "os"
+   ]
+  },
+  {
+   "ref": "os",
+   "dependsOn": [
+    "c1",
+    "c2",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c7",
+    "c8",
+    "c9",
+    "c10",
+    "c11",
+    "c12",
+    "c13",
+    "c14",
+    "c15",
+    "c16",
+    "c17",
+    "c18",
+    "c19",
+    "c20",
+    "c21",
+    "c22",
+    "c23",
+    "c24",
+    "c25",
+    "c26",
+    "c27",
+    "c28",
+    "c29",
+    "c30",
+    "c31",
+    "c32",
+    "c33",
+    "c34",
+    "c35",
+    "c36",
+    "c37",
+    "c38",
+    "c39",
+    "c40",
+    "c41",
+    "c42",
+    "c43",
+    "c44",
+    "c45",
+    "c46",
+    "c47",
+    "c48",
+    "c49",
+    "c50",
+    "c51",
+    "c52",
+    "c53",
+    "c54",
+    "c55",
+    "c56",
+    "c57",
+    "c58",
+    "c59",
+    "c60",
+    "c61",
+    "c62",
+    "c63",
+    "c64",
+    "c65",
+    "c66",
+    "c67",
+    "c68",
+    "c69",
+    "c70",
+    "c71",
+    "c72",
+    "c73",
+    "c74",
+    "c75",
+    "c76",
+    "c77",
+    "c78",
+    "c79",
+    "c80",
+    "c81",
+    "c82",
+    "c83",
+    "c84",
+    "c85",
+    "c86",
+    "c87",
+    "c88",
+    "c89",
+    "c90",
+    "c91",
+    "c92",
+    "c93",
+    "c94",
+    "c95",
+    "c96",
+    "c97",
+    "c98",
+    "c99",
+    "c100",
+    "c101",
+    "c102",
+    "c103",
+    "c104",
+    "c105",
+    "c106",
+    "c107",
+    "c108",
+    "c109",
+    "c110",
+    "c111",
+    "c112",
+    "c113",
+    "c114",
+    "c115",
+    "c116",
+    "c117",
+    "c118",
+    "c119",
+    "c120",
+    "c121",
+    "c122",
+    "c123",
+    "c124",
+    "c125",
+    "c126",
+    "c127",
+    "c128",
+    "c129",
+    "c130",
+    "c131",
+    "c132",
+    "c133",
+    "c134",
+    "c135",
+    "c136",
+    "c137",
+    "c138",
+    "c139",
+    "c140",
+    "c141",
+    "c142",
+    "c143",
+    "c144",
+    "c145",
+    "c146",
+    "c147",
+    "c148",
+    "c149",
+    "c150",
+    "c151",
+    "c152",
+    "c153",
+    "c154",
+    "c155",
+    "c156",
+    "c157",
+    "c158",
+    "c159",
+    "c160",
+    "c161",
+    "c162",
+    "c163",
+    "c164",
+    "c165",
+    "c166",
+    "c167",
+    "c168",
+    "c169",
+    "c170",
+    "c171",
+    "c172"
+   ]
+  }
+ ]
+}

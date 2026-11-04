@@ -1,0 +1,4 @@
+osv-db/
+__pycache__/
+berichte/
+bekannt_*.json
