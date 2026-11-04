@@ -29,7 +29,9 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 
 ## Voraussetzungen
 
-- Linux-Host mit Docker; Aufruf als root (empfohlen) oder Mitglied der Gruppe `docker`
+- Linux-Host mit Docker; Aufruf als root (empfohlen) oder Mitglied der Gruppe `docker` – beides gleichwertig:
+  Wer docker steuern darf, ist faktisch root. Für den Code gilt daher in beiden Fällen
+  [Code und Daten trennen](#code-und-daten-trennen).
 - Python ≥ 3.6 (SLES 15: `python3`) und `git`
 - optional `rpm` auf dem Host (nur für RPM-Container ohne eigenes `rpm`)
 
@@ -42,7 +44,8 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 # einen einzelnen Container
 ./container-security-scan.py <container> [ausgabeverzeichnis]
 
-# Skript und Daten aktualisieren (= git pull) – nicht als root, siehe „Code und Daten trennen“
+# Skript und Daten aktualisieren (= git pull) – nicht als root; einen so aktualisierten Checkout danach
+# nicht als root oder mit docker-Rechten ausführen, siehe „Code und Daten trennen“
 ./container-security-scan.py --db-aktualisieren
 
 # als root: festgehaltener Code, Daten aus einem eigenen Clone (siehe „Code und Daten trennen“)
@@ -52,9 +55,9 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 # wie mariadb, solr oder elasticsearch (ca. 800 MB)
 ./container-security-scan.py --db-aktualisieren --oekosysteme Ubuntu
 
-# alle Daten direkt von OSV und endoflife.date statt über GitHub (siehe „Daten“)
-./container-security-scan.py --db /var/lib/container-security-scan --db-aktualisieren
-./container-security-scan.py --db /var/lib/container-security-scan --oeffentliche [ausgabeverzeichnis]
+# alle Daten direkt von OSV und endoflife.date statt über GitHub (siehe „Daten“): laden als csscan, scannen als root
+runuser -u csscan -- ./container-security-scan.py --db /var/lib/container-security-scan/osv-db --db-aktualisieren
+./container-security-scan.py --db /var/lib/container-security-scan/osv-db --oeffentliche [ausgabeverzeichnis]
 ```
 
 | Option | Bedeutung |
@@ -62,7 +65,7 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 | `--oeffentliche` | alle öffentlich erreichbaren Container; Backends hinter einem öffentlichen Proxy (auch in anderen Containern) werden mitgeprüft und zählen als öffentlich |
 | `--nur-behebbare` | für den Rückgabewert nur Funde zählen, für die es einen Fix gibt – **empfohlen** für die Alarmierung, sonst melden Container mit offenen, noch unbehobenen CVEs dauerhaft `1` |
 | `--alle` | alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH) |
-| `--db-aktualisieren` | im Git-Checkout `git pull` (als root abgelehnt, da so Code aus dem Repository als root liefe); mit `--oekosysteme A,B` zusätzlich diese Ökosysteme direkt von OSV nach `osv-db/` (inkrementell, `--voll` lädt alles neu). Ohne Git-Checkout oder mit `--db`: alle Ökosysteme und die EOL-Daten direkt |
+| `--db-aktualisieren` | als root abgelehnt (Rückgabewert 2): nie Code oder Daten aus dem Netz als root holen bzw. schreiben. Im Git-Checkout `git pull`; mit `--oekosysteme A,B` zusätzlich diese Ökosysteme direkt von OSV nach `osv-db/` (inkrementell, `--voll` lädt alles neu). Ohne Git-Checkout oder mit `--db`: alle Ökosysteme und die EOL-Daten direkt |
 | `--db DIR` | nur diese Datenverzeichnisse verwenden; mehrfach möglich, je Ökosystem gilt das erste, das es enthält. Mit `--db-aktualisieren` genau eines (Ziel). Standard: `osv-daten/` und `osv-db/` neben dem Skript |
 | `--user` | Benutzer für `docker exec` (Standard `0`) |
 
@@ -101,7 +104,11 @@ Das Skript läuft als root. Käme sein Code automatisch aus GitHub, hätte jeder
   und wird nur von Hand nach Prüfung aktualisiert.
 - **Daten** holt ein Benutzer ohne Rechte (`csscan`) täglich in einen eigenen Clone. Der Scan als root
   liest daraus nur JSON-Dateien (`--db`) und führt dort nichts aus.
-- `--db-aktualisieren` lehnt `git pull` als root im Git-Checkout ab (Rückgabewert 2).
+- `--db-aktualisieren` lehnt jeden Aufruf als root ab (Rückgabewert 2): `git pull` würde Code holen, der
+  danach als root läuft, und Daten aus dem Netz soll root nicht in ein Verzeichnis schreiben, das einem
+  anderen Benutzer gehört (symbolische Links).
+- Gleiches gilt für Mitglieder der Gruppe `docker`: Ein Checkout, den jemand anders (oder `git pull`)
+  aktualisiert, darf nicht mit root- oder docker-Rechten laufen – sonst hat, wer ihn ändern kann, root.
 
 ```
 /opt/container-security-scan/              Code: root, festgehalten
@@ -417,12 +424,23 @@ Ohne Git-Checkout oder mit `--db DIR` lädt `--db-aktualisieren` die EOL-Daten d
 - Im Container laufen nur: `find`/`tar` (Metadaten-Dateien lesen; Container-Dateisystem und Volumes,
   nicht eingebundene Host-Verzeichnisse wie `/var/lib/docker`), ein POSIX-sh-Skript, das `/proc` liest –
   je Prozess-Benutzer, da Docker auch root im Container keinen Zugriff auf fremde Prozesse gibt –, und
-  Versionsabfragen der gefundenen Programme (`node -e`, `php -r`, `python -I -S -c`, `nginx -T`,
-  `java -version` …) mit Zeitlimit, im Verzeichnis `/` und **nie mit mehr Rechten als der laufende Prozess**.
+  Versionsabfragen der gefundenen Programme (`node -e`, `php -r`, `python -I -S -c`, `java -version` …)
+  mit Zeitlimit, im Verzeichnis `/` und **nie mit mehr Rechten als der laufende Prozess**.
+- Die Konfiguration der Webserver (`nginx -T`, `apache2 -S/-M/-t`) wird mit dem Benutzer des jeweiligen
+  Hauptprozesses abgefragt, nicht als root: Programm, Optionen und Konfiguration bestimmt der Container,
+  und `load_module`/`LoadModule` würde dabei Code laden. `nginx -T` kann wie `nginx -t` fehlende Log- oder
+  Temp-Verzeichnisse anlegen, die der Hauptprozess ohnehin anlegt.
+- Befehle im Container (`sh`, `find`, `tar`, `awk`, `rpm` …) werden über einen festen Suchpfad
+  (`/usr/sbin:/usr/bin:/sbin:/bin`) gesucht, nicht über den `PATH` des Images – liegt dort ein Verzeichnis,
+  in das die Anwendung schreiben darf (z. B. ein venv), könnte sie sonst ein `sh` unterschieben, das der
+  Scan als root startet. Nur `node`, `php`, `python3` … ohne Pfad werden über den `PATH` des Images
+  gesucht, dann aber als `nobody` abgefragt.
 - Ohne Shell oder Werkzeuge im Container wird passiv gelesen (`docker export`, `docker cp`, `/proc` des Hosts).
 - Der tar-Strom aus dem Container wird im Speicher gelesen; nichts wird auf dem Host entpackt.
 - Getestet: `docker diff` zeigt vor und nach dem Scan keine Änderung im Container.
 - Es werden nur Daten **heruntergeladen** (GitHub bzw. OSV und endoflife.date); Paketlisten verlassen den Server nicht.
+- Berichte und SBOM enthalten Kommandozeilen der Prozesse (oft mit Passwörtern) und Konfigurationsauszüge;
+  das Skript legt sie daher nur für den aufrufenden Benutzer lesbar an (`umask 077`).
 
 ## Grenzen
 
@@ -466,13 +484,13 @@ CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # m
 | `test_versionen.py` | Versionsvergleiche (dpkg, rpm, apk, SemVer, PEP 440, Maven, PHP) und OSV-Versionsbereiche |
 | `test_schweregrad.py` | CVSS 3/4, Vorrang von Quellen-Einstufung, Debian-Dringlichkeit, Ubuntu-Priorität, `MAL-…` |
 | `test_inventar.py` | dpkg (auch distroless), apk, rpm, npm/Composer/PyPI, JS-Bibliotheken, JARs, Go-Build-Info, tar-Strom |
-| `test_prozesse.py` | Prozesse, Ports und Dateien aus `/proc` (je Prozess-Benutzer bzw. über den Host), Volumes |
-| `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c`, veröffentlichte Ports, Backends |
+| `test_prozesse.py` | Prozesse, Ports und Dateien aus `/proc` (je Prozess-Benutzer bzw. über den Host, nie alle Host-Prozesse), Volumes, fester Suchpfad im Container, Benutzer der Versionsabfragen |
+| `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c` und dem Benutzer des Hauptprozesses (nie root für fremde Programme/Optionen), veröffentlichte Ports, Backends |
 | `test_nutzung.py` | Zuordnung Komponente → Dienst, Erreichbarkeit, Priorität P1–P4 |
-| `test_osv.py` | Abgleich je Ökosystem, Quellpakete, Fremdquellen über Bitnami, Datenformat, inkrementelle Aktualisierung |
+| `test_osv.py` | Abgleich je Ökosystem, Quellpakete, Fremdquellen über Bitnami, Datenformat, inkrementelle Aktualisierung, ungültige Kennungen (kein Pfad) |
 | `test_eol.py` | EOL-Daten erzeugen, Supportende und Vorwarnung |
 | `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden |
-| `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), `git pull` als root abgelehnt, docker nicht erreichbar, unerwartete Fehler → 2 |
+| `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), `--db-aktualisieren` als root abgelehnt, Berichte nur für den Aufrufer lesbar, docker nicht erreichbar, unerwartete Fehler → 2 |
 | `test_docker.py` | nginx (`-c`) als Proxy vor Node: Proxy-Erkennung, EOL-Warnungen, Berichte, `docker diff` unverändert |
 
 Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11 und 3.13

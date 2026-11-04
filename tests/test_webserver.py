@@ -47,14 +47,44 @@ class Nginx(unittest.TestCase):
     def test_eigene_konfiguration_wird_an_nginx_t_uebergeben(self):
         c = self.container()
         master = proc(1, "/usr/sbin/nginx", ["nginx: master process nginx -p /srv/ -c conf/nginx.conf -g daemon off;"])
-        worker = proc(2, "/usr/sbin/nginx", ["nginx: worker process"])
+        worker = proc(2, "/usr/sbin/nginx", ["nginx: worker process"], user="101:101", ppid=1)
         with mock.patch.object(scanner, "run", return_value=(0, "")):
             w = scanner.collect_web(c, {"1": master, "2": worker})
             self.assertEqual(w["problems"], [])
+            self.assertEqual(c.exec.call_count, 1)        # Worker: keine eigene Abfrage
             self.assertEqual(c.exec.call_args[0][0], ["/usr/sbin/nginx", "-p", "/srv/", "-c", "conf/nginx.conf", "-T"])
+            self.assertEqual(c.exec.call_args[1]["user"], "0:0")
             master["argv"] = ["nginx", "-g", "daemon off;"]
             scanner.collect_web(c, {"1": master})
             self.assertEqual(c.exec.call_args[0][0], ["/usr/sbin/nginx", "-T"])
+
+    def test_nginx_t_mit_benutzer_des_masters(self):
+        # nginx ohne root (z.B. Bitnami, nginx-unprivileged): Konfiguration und Module darf dieser Benutzer
+        # ändern -> nginx -T nie als root, sonst würde load_module als root ausgeführt
+        c = self.container()
+        procs = {"1": proc(1, "/opt/bitnami/nginx/sbin/nginx", ["nginx: master process nginx -c /opt/bitnami/nginx/conf/nginx.conf"],
+                           user="1001:0"),
+                 "2": proc(2, "/opt/bitnami/nginx/sbin/nginx", ["nginx: worker process"], user="1001:0", ppid=1)}
+        with mock.patch.object(scanner, "run", return_value=(0, "")):
+            scanner.collect_web(c, procs)
+        self.assertEqual([kw["user"] for _, kw in c.exec.call_args_list], ["1001:0"])
+
+    def test_fremdes_programm_namens_nginx_nie_als_root(self):
+        c = self.container()
+        procs = {"1": proc(1, "/usr/sbin/nginx", ["nginx: master process nginx -g daemon off;"], user="0:0"),
+                 "2": proc(2, "/usr/sbin/nginx", ["nginx: worker process"], user="33:33", ppid=1),
+                 # Angreifer als www-data: eigenes Programm "nginx" und echtes nginx mit eigener Konfiguration
+                 "7": proc(7, "/tmp/x/nginx", ["/tmp/x/nginx", "-c", "/tmp/x/evil.conf"], user="33:33", ppid=6),
+                 "8": proc(8, "/usr/sbin/nginx", ["/usr/sbin/nginx", "-c", "/tmp/x/evil.conf"], user="33:33", ppid=6),
+                 "9": proc(9, "/usr/sbin/nginx", ["nginx"], user="", ppid=6)}
+        with mock.patch.object(scanner, "run", return_value=(0, "")):
+            scanner.collect_web(c, procs)
+        calls = [(cmd[0], tuple(cmd[1:]), kw["user"]) for (cmd,), kw in c.exec.call_args_list]
+        self.assertIn(("/usr/sbin/nginx", ("-T",), "0:0"), calls)
+        self.assertIn(("/usr/sbin/nginx", ("-c", "/tmp/x/evil.conf", "-T"), "33:33"), calls)
+        self.assertIn(("/tmp/x/nginx", ("-c", "/tmp/x/evil.conf", "-T"), "33:33"), calls)
+        self.assertIn(("/usr/sbin/nginx", ("-T",), scanner.NOBODY), calls)     # Benutzer unbekannt
+        self.assertFalse([x for x in calls if x[2] == "0:0" and (x[0] != "/usr/sbin/nginx" or "-c" in x[1])])
 
     def test_nginx_t_fehlgeschlagen_ist_unvollstaendig(self):
         c = self.container(exec_rc=1, conf="nginx: [emerg] open() failed")
@@ -109,6 +139,20 @@ class Apache(unittest.TestCase):
         self.assertEqual(w["modphp"], {"/usr/sbin/apache2"})
         self.assertEqual(w["vhosts"]["/usr/sbin/apache2"],
                          ["VirtualHost *:80 ServerName shop.example.org DocumentRoot /var/www/html/public"])
+
+
+class ApacheBenutzer(unittest.TestCase):
+    def test_abfrage_mit_benutzer_des_hauptprozesses(self):
+        for master_user, erwartet in (("1001:0", "1001:0"), ("0:0", "0:0"), ("", scanner.NOBODY)):
+            c = mock.Mock(has_sh=True, info={"Config": {"Env": []}, "HostConfig": {}, "NetworkSettings": {}})
+            c.exec.return_value = (0, "")
+            c.read_file.return_value = ""
+            procs = {"1": proc(1, "/usr/sbin/apache2", ["apache2", "-DFOREGROUND"], user=master_user),
+                     "2": proc(2, "/usr/sbin/apache2", ["apache2", "-DFOREGROUND"], user="33:33", ppid=1)}
+            with mock.patch.object(scanner, "run", return_value=(0, "")):
+                scanner.collect_web(c, procs)
+            self.assertEqual({kw["user"] for _, kw in c.exec.call_args_list}, {erwartet})
+            self.assertEqual(c.exec.call_count, 3)      # -S, -M, -t -D DUMP_INCLUDES; Worker nicht
 
 
 class Backends(unittest.TestCase):

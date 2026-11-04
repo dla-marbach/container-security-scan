@@ -100,9 +100,17 @@ class ScanError(Exception):
     """Fehler, nach dem kein verlässliches Ergebnis vorliegt (Rückgabewert 2)."""
 
 
-DOCKER_ENV = ["-e", "JAVA_TOOL_OPTIONS=", "-e", "JDK_JAVA_OPTIONS=", "-e", "_JAVA_OPTIONS=", 
+DOCKER_ENV = ["-e", "JAVA_TOOL_OPTIONS=", "-e", "JDK_JAVA_OPTIONS=", "-e", "_JAVA_OPTIONS=",
               "-e", "NO_UPDATE_NOTIFIER=1", "-e", "NPM_CONFIG_UPDATE_NOTIFIER=false",
               "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "NODE_OPTIONS=", "-e", "PYTHONPATH="]
+# Suchpfad für Befehle im Container (sh, find, tar, awk, rpm …). Nicht der PATH des Images: Enthält er ein
+# Verzeichnis, in das die Anwendung schreiben darf (z.B. /opt/venv/bin), könnte sie dort ein "sh" ablegen,
+# das der Scan dann als root ausführt. Nur für die Versionsabfrage von Namen ohne Pfad (als nobody) gilt
+# der PATH des Images.
+SAFE_PATH = "/usr/sbin:/usr/bin:/sbin:/bin"
+NOBODY = "65534:65534"
+# OSV-Kennungen (GHSA-…, DEBIAN-CVE-…, SUSE-SU-2024:1234-1 …) werden zu Dateinamen: kein "/" und kein ".." möglich
+OSV_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:+-]*")
 
 
 def log(msg):
@@ -303,18 +311,19 @@ class Container(object):
                               and (m.get("Type") == "volume" or not re.match(
                                   r"/$|/(proc|sys|dev|run|var/run|var/lib/docker|var/lib/containerd)(/|$)", m.get("Source", "/")))})
 
-    def exec(self, cmd, input=None, binary=False, stderr=False, user=None, timeout=900):
-        """Programm im Container direkt (ohne Shell) ausführen. Versionsabfragen bekommen ein kurzes
-        Zeitlimit, damit ein hängendes Programm den (täglichen) Lauf nicht blockiert."""
+    def exec(self, cmd, input=None, binary=False, stderr=False, user=None, timeout=900, path=SAFE_PATH):
+        """Programm im Container direkt (ohne Shell) ausführen, Befehle über SAFE_PATH gesucht. Versionsabfragen
+        bekommen ein kurzes Zeitlimit, damit ein hängendes Programm den (täglichen) Lauf nicht blockiert."""
         user = user or self.user
         args = ["docker", "exec", "-w", "/"] + (["-i"] if input is not None else []) + (["-u", user] if user else [])
-        return run(args + DOCKER_ENV + [self.id] + cmd, input, binary, stderr, timeout)
+        return run(args + DOCKER_ENV + (["-e", "PATH=" + path] if path else []) + [self.id] + cmd,
+                   input, binary, stderr, timeout)
 
-    def probe(self, cmd, user, stderr=False):
+    def probe(self, cmd, user, stderr=False, path=SAFE_PATH):
         """Versionsabfrage: mit den Rechten des laufenden Prozesses (nie mehr), Zeitlimit auch im Container."""
         if self.has_timeout:
             cmd = ["timeout", "50"] + cmd
-        return self.exec(cmd, stderr=stderr, user=user, timeout=60)
+        return self.exec(cmd, stderr=stderr, user=user, timeout=60, path=path)
 
     def sh(self, script, binary=False, user=None, args=()):
         """POSIX-sh-Skript im Container ausführen."""
@@ -537,7 +546,8 @@ def collect_files(c):
     """Liefert (Dateien, weitere Komponenten, Beschreibung, Probleme)."""
     files, extra, problems = {}, [], []
     if c.has_find_tar:
-        ok = stream_tar(["docker", "exec", "-i", "-u", c.user or "0", c.id, "sh", "-s", "--"] + c.mounts,
+        ok = stream_tar(["docker", "exec", "-i", "-w", "/", "-u", c.user or "0", "-e", "PATH=" + SAFE_PATH,
+                         c.id, "sh", "-s", "--"] + c.mounts,
                         files, extra, input=FIND_SH)
         if not ok:
             problems.append("Dateien im Container nicht vollständig lesbar (Fehler oder Zeitüberschreitung)")
@@ -752,21 +762,22 @@ def pypi_packages(files):
 # ===========================================================================
 # 4. Laufende Prozesse: Programm, Arbeitsverzeichnis, Kommandozeile, geladene Dateien, Ports
 # ===========================================================================
-# Ausgabe je Zeile: P <pid> <exe> <cwd> <argv mit \037 getrennt> <uid:gid> | M <pid> <datei> | F <pid> <offene datei>
-#                   E <pid> <PATH=... bzw. VIRTUAL_ENV=...> | S <pid> <socket-inode>
+# Ausgabe je Zeile: P <pid> <exe> <cwd> <argv mit \037 getrennt> <uid:gid> <ppid> | M <pid> <datei>
+#                   F <pid> <offene datei> | E <pid> <PATH=... bzw. VIRTUAL_ENV=...> | S <pid> <socket-inode>
 #                   T <inode> <lokale-adresse:port> <tcp|udp>  (lauschende Sockets)
+# Nur die übergebenen PIDs (ohne Argumente: nichts) – über den Host aufgerufen sonst alle Host-Prozesse.
 PROC_SH = r"""
 self=$$
-[ $# -eq 0 ] && set -- $(cd /proc && ls -d [0-9]*)
 first=""
 for pid in "$@"; do
     [ "$pid" = "$self" ] && continue
     d=/proc/$pid
     e=$(readlink "$d/exe" 2>/dev/null) || continue
-    [ "$(sed -n 's/^PPid:[[:space:]]*//p' "$d/status" 2>/dev/null)" = "$self" ] && continue
+    pp=$(sed -n 's/^PPid:[[:space:]]*//p' "$d/status" 2>/dev/null)
+    [ "$pp" = "$self" ] && continue
     [ -z "$first" ] && first=$pid
-    printf 'P\t%s\t%s\t%s\t%s\t%s\n' "$pid" "$e" "$(readlink "$d/cwd" 2>/dev/null)" "$(tr '\000\t\n' '\037  ' < "$d/cmdline" 2>/dev/null)" \
-        "$(awk '/^Uid:/ { u = $3 } /^Gid:/ { g = $3 } END { print u ":" g }' "$d/status" 2>/dev/null)"
+    printf 'P\t%s\t%s\t%s\t%s\t%s\t%s\n' "$pid" "$e" "$(readlink "$d/cwd" 2>/dev/null)" "$(tr '\000\t\n' '\037  ' < "$d/cmdline" 2>/dev/null)" \
+        "$(awk '/^Uid:/ { u = $3 } /^Gid:/ { g = $3 } END { print u ":" g }' "$d/status" 2>/dev/null)" "$pp"
     tr '\000' '\n' < "$d/environ" 2>/dev/null | sed -n "s/^\(PATH\|VIRTUAL_ENV\)=/E\t$pid\t&/p"
     awk -v p="$pid" '$6 ~ /^\// { f = $6; for (i = 7; i <= NF; i++) f = f " " $i; print "M\t" p "\t" f }' "$d/maps" 2>/dev/null | sort -u
     for fd in "$d"/fd/*; do
@@ -808,7 +819,10 @@ def collect_procs(c):
         how = "im Container (je Prozess-Benutzer)"
     else:   # ohne Shell/Werkzeuge über die Host-PIDs (root auf dem Host nötig; Volume-Pfade erscheinen als Host-Pfade)
         rc, top = run(["docker", "top", c.id, "-eo", "pid"])
-        rc, out = run(["sh", "-s", "--"] + top.split()[1:], input=PROC_SH)
+        pids = top.split()[1:]
+        if rc != 0 or not pids or not all(p.isdigit() for p in pids):
+            raise ScanError("Prozesse des Containers nicht ermittelbar (docker top fehlgeschlagen)")
+        rc, out = run(["sh", "-s", "--"] + pids, input=PROC_SH)
         how = "über /proc des Hosts"
     procs, sockets, listen = OrderedDict(), defaultdict(set), {}
     for line in out.splitlines():
@@ -816,6 +830,7 @@ def collect_procs(c):
         if f[0] == "P" and len(f) >= 5:
             procs[f[1]] = {"pid": f[1], "exe": re.sub(r" \(deleted\)$", "", f[2]), "cwd": f[3],
                            "argv": [a for a in f[4].split("\x1f") if a], "user": f[5] if len(f) > 5 and f[5] != ":" else "",
+                           "ppid": f[6] if len(f) > 6 else "",
                            "maps": set(), "files": set(), "env": {}, "ports": OrderedDict()}
         elif f[0] == "E" and f[1] in procs and "=" in f[2]:
             k, _, v = f[2].partition("=")
@@ -882,7 +897,7 @@ def probe_runtimes(c, procs, owners):
     # Abfrage nie mit mehr Rechten als der laufende Prozess; Programme nur im PATH: als nobody
     users = {}
     for p in procs.values():
-        users.setdefault(p["exe"], p["user"] or c.user)
+        users.setdefault(p["exe"], p["user"] or NOBODY)   # Benutzer unbekannt: nobody
     candidates = list(OrderedDict.fromkeys([p["exe"] for p in procs.values()] +
                                            ["node", "php", "python3", "python", "nginx", "httpd", "apache2", "java", "mariadbd", "mysqld", "postgres"]))
     result, seen = [], set()
@@ -905,9 +920,16 @@ def probe_runtimes(c, procs, owners):
 
     for exe in candidates:
         base = posixpath.basename(exe)
-        user = users.get(exe, "65534:65534")
+        user = users.get(exe, NOBODY)
+        if "/" not in exe:      # Name ohne Pfad: über den PATH des Images suchen, dann aber nur als nobody
+            user, path = NOBODY, None
+        else:
+            path = SAFE_PATH
+
+        def probe(cmd, stderr=False):
+            return c.probe(cmd, user, stderr=stderr, path=path)
         if base in ("node", "nodejs"):
-            d = as_json(c.probe([exe, "-e", NODE_JS], user))
+            d = as_json(probe([exe, "-e", NODE_JS]))
             if d:
                 add("runtime", "node", d["versions"].get("node"), d["exe"])
                 for k, v in d["versions"].items():
@@ -915,13 +937,13 @@ def probe_runtimes(c, procs, owners):
                         add("runtime-lib", k, v, d["exe"], "in node enthalten/gelinkt")
         elif re.match(r"python([23](\.\d+)?)?$", base):
             # -I: kein Arbeitsverzeichnis/PYTHON*-Variablen im Suchpfad, -S: keine site-Module (.pth); Python 2: -E -s -S
-            d = as_json(c.probe([exe, "-I", "-S", "-c", PY_CODE], user)) or as_json(c.probe([exe, "-E", "-s", "-S", "-c", PY_CODE], user))
+            d = as_json(probe([exe, "-I", "-S", "-c", PY_CODE])) or as_json(probe([exe, "-E", "-s", "-S", "-c", PY_CODE]))
             if d:
                 add("runtime", "python", d["version"], d["exe"])
                 for k, v in d["libs"].items():
                     add("runtime-lib", k, v, d["exe"], "von python gelinkt")
         elif re.match(r"php[\d.]*$", base):
-            d = as_json(c.probe([exe, "-r", PHP_CODE], user))
+            d = as_json(probe([exe, "-r", PHP_CODE]))
             if d:
                 add("runtime", "php", d["version"], d["exe"], d["sapi"])
                 for k, v in (d["ext"] or {}).items():
@@ -929,24 +951,24 @@ def probe_runtimes(c, procs, owners):
                 for k, v in (d["libs"] or {}).items():
                     add("runtime-lib", k, v, d["exe"], "von php gelinkt")
         elif base.startswith("php-fpm"):
-            m = re.match(r"PHP (\S+)", c.probe([exe, "-v"], user)[1])
+            m = re.match(r"PHP (\S+)", probe([exe, "-v"])[1])
             add("runtime", "php-fpm", m and m.group(1), exe, "gleicher Build wie php-CLI angenommen")
         elif base == "nginx":
-            m = re.search(r"nginx/(\S+)", c.probe([exe, "-v"], user, stderr=True)[1])
+            m = re.search(r"nginx/(\S+)", probe([exe, "-v"], stderr=True)[1])
             add("server", "nginx", m and m.group(1), exe)
         elif base in ("httpd", "apache2"):
-            m = re.search(r"Apache/(\S+)", c.probe([exe, "-v"], user, stderr=True)[1])
+            m = re.search(r"Apache/(\S+)", probe([exe, "-v"], stderr=True)[1])
             add("server", "apache-httpd", m and m.group(1), exe)
         elif base == "java":
-            m = re.search(r'version "([^"]+)"', c.probe([exe, "-XX:-UsePerfData", "-version"], user, stderr=True)[1])
+            m = re.search(r'version "([^"]+)"', probe([exe, "-XX:-UsePerfData", "-version"], stderr=True)[1])
             v = m and re.sub(r"^1\.(\d+)\.(\d+)_(\d+).*", r"\1.\2.\3", m.group(1))   # Java 8: 1.8.0_412 -> 8.0.412
             add("runtime", "java", v, exe)
         elif base in ("mariadbd", "mysqld"):
-            out = c.probe([exe, "--version"], user, stderr=True)[1]
+            out = probe([exe, "--version"], stderr=True)[1]
             m = re.search(r"Ver (\d+\.\d+\.\d+)", out)
             add("server", "mariadb" if "MariaDB" in out else "mysql", m and m.group(1), exe)
         elif base == "postgres":
-            m = re.search(r"\(PostgreSQL\) (\d+(?:\.\d+)*)", c.probe([exe, "--version"], user, stderr=True)[1])
+            m = re.search(r"\(PostgreSQL\) (\d+(?:\.\d+)*)", probe([exe, "--version"], stderr=True)[1])
             add("server", "postgresql", m and m.group(1), exe)
     return result
 
@@ -1009,12 +1031,26 @@ def parse_nginx(conf, web, exe):
             stmt += tok
 
 
-def parse_apache(c, exe, web):
+def server_masters(procs, exe):
+    """Hauptprozesse eines Webservers: Prozesse mit diesem Programm, deren Elternprozess ein anderes Programm ist
+    (nicht die Worker). Ihr Benutzer und ihre Optionen gelten für die Abfrage der Konfiguration."""
+    same = [p for p in procs.values() if p["exe"] == exe]
+    return [p for p in same if (procs.get(p.get("ppid", "")) or {}).get("exe") != exe] or same
+
+
+def server_user(p):
+    """Benutzer für die Abfrage der Webserver-Konfiguration: der des Hauptprozesses, nie mehr. Programm,
+    Optionen und Konfiguration bestimmt der Container; als root ausgeführt, könnte ein unprivilegierter Prozess
+    so root im Container werden (eigenes Programm namens nginx, load_module/LoadModule in der Konfiguration)."""
+    return p["user"] or NOBODY
+
+
+def parse_apache(c, exe, web, user=NOBODY):
     def ap(*args):   # Debian/Ubuntu brauchen /etc/apache2/envvars
         if c.has_sh:
             return c.exec(["sh", "-c", '[ -r /etc/apache2/envvars ] && . /etc/apache2/envvars; exec "$0" "$@"', exe] +
-                          list(args), stderr=True, timeout=60)[1]
-        return c.exec([exe] + list(args), stderr=True, timeout=60)[1]
+                          list(args), stderr=True, timeout=60, user=user)[1]
+        return c.exec([exe] + list(args), stderr=True, timeout=60, user=user)[1]
     raw = "--- %s -S\n%s--- %s -M\n%s" % (exe, ap("-S"), exe, ap("-M"))
     web["raw"].append(raw)
     env = dict(e.split("=", 1) for e in c.info["Config"].get("Env") or [] if "=" in e)
@@ -1058,23 +1094,28 @@ def collect_web(c, procs):
            "via_proxy": {}, "problems": [],
            "host_network": (c.info.get("HostConfig") or {}).get("NetworkMode") == "host"}
     for exe in sorted({p["exe"] for p in procs.values() if p["base"] in ("nginx", "apache2", "httpd")}):
+        masters = server_masters(procs, exe)
         if posixpath.basename(exe) == "nginx":
-            # -p/-c des laufenden Masterprozesses übernehmen, sonst liest nginx -T eine andere Konfiguration
-            opts = OrderedDict()
-            for p in procs.values():
-                if p["exe"] == exe:
-                    for flag, value in re.findall(r"(?:^|\s)-([cp])\s*([^\s;]+)", " ".join(p["argv"])):
-                        opts.setdefault(flag, value)
-            args = [x for flag in ("p", "c") if flag in opts for x in ("-" + flag, opts[flag])]
-            rc, conf = c.exec([exe] + args + ["-T"], timeout=60)
-            if rc != 0 or not conf.strip():
-                web["problems"].append("%s %s-T fehlgeschlagen: Konfiguration (vHosts, Proxy-Backends) nicht lesbar"
-                                       % (exe, " ".join(args) + " " if args else ""))
-            web["raw"].append("--- %s -T (Auszug)\n" % exe + "\n".join(
-                l for l in conf.splitlines() if re.match(r"# configuration file|\s*(server|listen|server_name|root|location|\w+_pass|upstream)[\s;{]", l)))
-            parse_nginx(conf, web, exe)
+            # je Masterprozess: dessen -p/-c übernehmen (sonst liest nginx -T eine andere Konfiguration),
+            # mit dessen Benutzer
+            calls = OrderedDict()
+            for p in masters:
+                opts = OrderedDict()
+                for flag, value in re.findall(r"(?:^|\s)-([cp])\s*([^\s;]+)", " ".join(p["argv"])):
+                    opts.setdefault(flag, value)
+                args = [x for flag in ("p", "c") if flag in opts for x in ("-" + flag, opts[flag])]
+                calls.setdefault((server_user(p), tuple(args)), None)
+            for user, args in calls:
+                rc, conf = c.exec([exe] + list(args) + ["-T"], timeout=60, user=user)
+                if rc != 0 or not conf.strip():
+                    web["problems"].append("%s %s-T fehlgeschlagen: Konfiguration (vHosts, Proxy-Backends) nicht lesbar"
+                                           % (exe, " ".join(args) + " " if args else ""))
+                web["raw"].append("--- %s -T (Auszug)\n" % exe + "\n".join(
+                    l for l in conf.splitlines() if re.match(r"# configuration file|\s*(server|listen|server_name|root|location|\w+_pass|upstream)[\s;{]", l)))
+                parse_nginx(conf, web, exe)
         else:
-            parse_apache(c, exe, web)
+            for user in OrderedDict.fromkeys(server_user(p) for p in masters):
+                parse_apache(c, exe, web, user)
     for port, bindings in (c.info["NetworkSettings"].get("Ports") or {}).items():
         for b in bindings or []:
             ip = b.get("HostIp") or "0.0.0.0"
@@ -1915,6 +1956,8 @@ def osv_update(dbdir, ecosystems, full=False):
                 ts, _, vid = line.decode("utf-8", "replace").strip().partition(",")
                 if not complete and ts[:19] < known[:19]:
                     break                                   # ab hier bereits bekannt
+                if not OSV_ID.fullmatch(vid):               # wird Dateiname in <eco>.neu/: kein Pfad
+                    raise ScanError("Ungültige Kennung in %s/modified_id.csv: %r" % (eco, vid[:100]))
                 changed.append((ts, vid))
                 if complete or len(changed) > INKREMENT_MAX:
                     break
@@ -2320,6 +2363,12 @@ def main():
             raise ScanError("--db-aktualisieren im Git-Checkout als root abgelehnt: git pull würde Code holen, der "
                             "danach als root läuft. Daten als eigener Benutzer aktualisieren und mit --db verwenden, "
                             "Code nur nach Prüfung von Hand aktualisieren (README: \"Code und Daten trennen\").")
+        if os.geteuid() == 0:
+            # Daten aus dem Netz nicht als root schreiben: Gehört das Zielverzeichnis einem anderen Benutzer, könnte
+            # er root über symbolische Links (z.B. stand.json.tmp -> /etc/...) beliebige Dateien überschreiben lassen
+            raise ScanError("--db-aktualisieren als root abgelehnt: Daten als eigener Benutzer ohne Rechte laden "
+                            "(z.B. runuser -u csscan -- ... --db DIR --db-aktualisieren) und beim Scan mit --db "
+                            "verwenden (README: \"Code und Daten trennen\").")
         if repo_data:                     # Daten aus dem Git-Repository: Skript und Daten per git pull aktualisieren
             rc, out = run(["git", "-C", here, "pull", "--ff-only", "--quiet"], stderr=True, timeout=600)
             if rc != 0:
@@ -2338,6 +2387,9 @@ def main():
             return 0
     if not a.container and not a.oeffentliche:
         ap.error("Container fehlt (oder --oeffentliche)")
+    # Berichte enthalten Kommandozeilen der Prozesse (oft mit Passwörtern) und Konfigurationsauszüge:
+    # nur für den aufrufenden Benutzer lesbar, auch ohne umask im Aufruf (cron, Rundeck, von Hand)
+    os.umask(0o077)
     if not a.dbdirs or not all(os.path.isdir(d) for d in a.dbdirs):
         raise ScanError("keine OSV-Daten gefunden (%s) – zuerst: %s --db-aktualisieren" % (", ".join(a.db or [data_dir]), sys.argv[0]))
     if not a.oeffentliche:
