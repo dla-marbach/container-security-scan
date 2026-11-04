@@ -252,7 +252,7 @@ CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # m
 | `test_kommandozeile.py` | Aufruf als Programm: Optionen, docker nicht erreichbar, unerwartete Fehler → 2 |
 | `test_docker.py` | nginx (`-c`) als Proxy vor Node: Proxy-Erkennung, EOL-Warnungen, Berichte, `docker diff` unverändert |
 
-Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.9 und 3.13
+Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11 und 3.13
 sowie den Docker-Test aus.
 
 ## Verwandte Werkzeuge

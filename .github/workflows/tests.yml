@@ -13,24 +13,15 @@ jobs:
   unittest:
     name: Unit-Tests (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
+    # offizielle Python-Images statt setup-python: dort gibt es auch ältere Versionen (3.6 wie SLES 15)
+    container: python:${{ matrix.python }}-slim
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.9", "3.13"]
+        python: ["3.6", "3.11", "3.13"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
       - run: python -W error::ResourceWarning -m unittest discover -s tests -v
-
-  python36:
-    name: Unit-Tests (Python 3.6, wie SLES 15)
-    runs-on: ubuntu-latest
-    container: python:3.6-slim
-    steps:
-      - uses: actions/checkout@v4
-      - run: python -m unittest discover -s tests -v
 
   docker:
     name: Integrationstest mit Docker
