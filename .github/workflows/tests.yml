@@ -1,0 +1,35 @@
+name: Tests
+
+on:
+  push:
+    paths: ["container-security-scan.py", "tests/**", ".github/workflows/tests.yml"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    name: Unit-Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    # offizielle Python-Images statt setup-python: dort gibt es auch ältere Versionen (3.6 wie SLES 15)
+    container: python:${{ matrix.python }}-slim
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.6", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -W error::ResourceWarning -m unittest discover -s tests -v
+
+  docker:
+    name: Integrationstest mit Docker
+    runs-on: ubuntu-latest
+    needs: unittest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker pull -q nginx:1.27-alpine && docker pull -q node:20-alpine
+      - run: python3 -m unittest discover -s tests -p "test_docker.py" -v
+        env:
+          CSS_DOCKER_TESTS: "1"

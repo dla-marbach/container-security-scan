@@ -64,7 +64,7 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 |---|---|
 | `0` | keine relevanten Schwachstellen |
 | `1` | relevante Schwachstellen gefunden |
-| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar, Distribution ohne aktuelle Sicherheitsdaten (EOL). |
+| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar, nginx-Konfiguration nicht lesbar, Distribution ohne aktuelle Sicherheitsdaten (EOL). |
 
 **Relevant** ist P1 CRITICAL/HIGH und P2 CRITICAL (anpassbar über `RELEVANT` am Anfang des Skripts).
 
@@ -112,6 +112,7 @@ exit $rc
 
 - **1** → Funde prüfen und Images aktualisieren. Der Bericht markiert Funde, die seit dem letzten Lauf **neu** sind.
 - **2** → Ursache beheben (Daten, Ökosystem ergänzen, Container), sonst ist die Überwachung blind.
+- Warnungen zum Supportende sind keine OSV-Schwachstellen und ändern den Rückgabewert nicht.
 - Der Host selbst (SLES) ist nicht Teil des Scans: dafür `zypper list-patches --category security`.
 
 ## Ausgabe
@@ -161,6 +162,33 @@ Ausgabe ist deterministisch, Commits enthalten nur echte Änderungen. Quellen un
 Ohne Git-Checkout (oder für weitere Ökosysteme) lädt `--db-aktualisieren --oekosysteme …` direkt von OSV
 nach `osv-db/` – erst der Gesamtexport, danach nur Änderungen.
 
+Für Ubuntu-basierte Varianten von MariaDB, Solr und Elasticsearch ist einmalig
+`./container-security-scan.py --db-aktualisieren --oekosysteme Ubuntu` erforderlich. Der große Export
+liegt nur lokal in `osv-db/`, nicht im Repository; bei späteren Aktualisierungen denselben Befehl
+erneut ausführen. Maßgeblich ist die Distribution des jeweiligen Images, nicht der Imagename.
+Fehlen die Ubuntu-Daten, bleibt das Ergebnis ausdrücklich unvollständig (Rückgabewert 2).
+
+### Supportende (EOL)
+
+`eol-daten.json` enthält einen Auszug aus [endoflife.date](https://endoflife.date) (MIT-Lizenz, siehe
+[`EOL-LIZENZ.txt`](EOL-LIZENZ.txt)), den die Action täglich aus dem vollständigen API-Export
+(`/api/v1/products/full/`) erzeugt. Geprüft werden:
+
+- **Pakete** mit npm-, Composer-, PyPI- oder Maven-Kennung bei endoflife.date (z. B. Laravel, Vue,
+  Angular, jQuery, Bootstrap, Django, Drupal, TYPO3, Spring, Log4j) sowie ergänzend Symfony, CakePHP,
+  Twig, Shopware, Craft CMS, Contao, Electron und Tomcat (`EOL_ZUSATZ` im Skript);
+- **Laufzeiten und Server**, die nicht aus einem OS-Paket stammen (offizielle Images, Herstellerquellen):
+  PHP/PHP-FPM, Node.js, Python, nginx, Apache httpd, MariaDB, MySQL, PostgreSQL. Stammen sie aus einem
+  OS-Paket, zählt der Support der Distribution (Debian portiert Sicherheitskorrekturen zurück); deren
+  Supportende wird über die Sicherheitsdaten erkannt (Rückgabewert 2).
+
+Verglichen werden nur numerische Versionszweige (`2.7.16` → Zweig `2.7`, sonst `2`). Ein abgelaufener
+Zweig erscheint als **Warnung** „Supportende“, ein Zweig mit Supportende in den nächsten 90 Tagen als
+„Supportende bald“ – im Bericht und auf der Konsole, **nicht** als CVE und ohne Einfluss auf den
+Rückgabewert. Fehlende oder mindestens 30 Tage alte EOL-Daten werden ebenfalls als Warnung gemeldet.
+Maßgeblich ist das reguläre Supportende, nicht kommerzieller Zusatzsupport (z. B. für PHP oder Node.js).
+Ohne Git-Checkout lädt `--db-aktualisieren` die EOL-Daten direkt nach `osv-db/eol-daten.json`.
+
 ## Rein lesend und ohne Datenabfluss
 
 - Im Container laufen nur: `find`/`tar` (Metadaten-Dateien lesen; Container-Dateisystem und Volumes,
@@ -171,7 +199,7 @@ nach `osv-db/` – erst der Gesamtexport, danach nur Änderungen.
 - Ohne Shell oder Werkzeuge im Container wird passiv gelesen (`docker export`, `docker cp`, `/proc` des Hosts).
 - Der tar-Strom aus dem Container wird im Speicher gelesen; nichts wird auf dem Host entpackt.
 - Getestet: `docker diff` zeigt vor und nach dem Scan keine Änderung im Container.
-- Es werden nur Daten **heruntergeladen** (GitHub bzw. OSV); Paketlisten verlassen den Server nicht.
+- Es werden nur Daten **heruntergeladen** (GitHub bzw. OSV und endoflife.date); Paketlisten verlassen den Server nicht.
 
 ## Grenzen
 
@@ -181,12 +209,14 @@ nach `osv-db/` – erst der Gesamtexport, danach nur Änderungen.
 - Nicht erfasst: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung, Bundles ohne Kopfkommentar,
   Programme direkt auf dem Host, UDP-Dienste nur bei offenem Socket, Proxys außer nginx/Apache
   (Traefik, Caddy, HAProxy: Backends dann einzeln scannen).
-- Kein EOL-Abgleich für Frameworks und Laufzeitzweige (z. B. Laravel 8, Vue 2); veraltete Laufzeitzweige
-  erscheinen aber mit Fix im nächsten Zweig („Upgrade nötig“). Distributionen ohne aktuelle
-  Sicherheitsdaten werden erkannt (Rückgabewert 2).
+- EOL-Abgleich nur für Produkte mit Paketkennung bzw. die genannten Laufzeiten/Server und nur für
+  numerische Versionszweige; einzelne OS-Pakete, Java-Laufzeiten (herstellerabhängig) und Anwendungen
+  ohne Paketkennung (z. B. WordPress, Nextcloud) werden nicht auf Supportende geprüft.
 - Herstellerpaketquellen werden über typische Versionskennungen und Paketbetreuer erkannt
   (nginx.org, NodeSource, Sury, mariadb.org, PostgreSQL); andere Fremdquellen können unerkannt bleiben.
 - Ohne `--oeffentliche` kennt ein Einzelscan keine Proxys in *anderen* Containern; Backends erscheinen dann als P2.
+- nginx-Konfiguration: `nginx -T` wird mit `-p`/`-c` des laufenden Masterprozesses aufgerufen. Schlägt
+  die Abfrage fehl, ist die Prüfung unvollständig (Rückgabewert 2), da Proxy-Backends fehlen könnten.
 
 ## Validierung
 
@@ -200,6 +230,30 @@ erreichbar). Abgleich mit Trivy (Image-Scan derselben Images, gleiche Datenstän
 - Schwachstellen: Trivy fand nichts, was das Skript nicht fand – bis auf Debians vorläufige
   `TEMP-…`-Kennungen ohne CVE und einzelne tzdata-Meldungen. Mehr Funde vor allem bei eingebetteten
   JavaScript-Bibliotheken, bei Laufzeiten aus offiziellen Images und bei offenen Ubuntu-CVEs ohne Fix.
+
+### Tests
+
+```bash
+python3 -m unittest discover -s tests                                   # Unit-Tests, ohne Docker (ca. 1 s)
+CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit echten Containern
+```
+
+| Datei | Prüft |
+|---|---|
+| `test_versionen.py` | Versionsvergleiche (dpkg, rpm, apk, SemVer, PEP 440, Maven, PHP) und OSV-Versionsbereiche |
+| `test_schweregrad.py` | CVSS 3/4, Vorrang von Quellen-Einstufung, Debian-Dringlichkeit, Ubuntu-Priorität, `MAL-…` |
+| `test_inventar.py` | dpkg (auch distroless), apk, rpm, npm/Composer/PyPI, JS-Bibliotheken, JARs, Go-Build-Info, tar-Strom |
+| `test_prozesse.py` | Prozesse, Ports und Dateien aus `/proc` (je Prozess-Benutzer bzw. über den Host), Volumes |
+| `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c`, veröffentlichte Ports, Backends |
+| `test_nutzung.py` | Zuordnung Komponente → Dienst, Erreichbarkeit, Priorität P1–P4 |
+| `test_osv.py` | Abgleich je Ökosystem, Quellpakete, Fremdquellen über Bitnami, Datenformat, inkrementelle Aktualisierung |
+| `test_eol.py` | EOL-Daten erzeugen, Supportende und Vorwarnung |
+| `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden |
+| `test_kommandozeile.py` | Aufruf als Programm: Optionen, docker nicht erreichbar, unerwartete Fehler → 2 |
+| `test_docker.py` | nginx (`-c`) als Proxy vor Node: Proxy-Erkennung, EOL-Warnungen, Berichte, `docker diff` unverändert |
+
+Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11 und 3.13
+sowie den Docker-Test aus.
 
 ## Verwandte Werkzeuge
 
