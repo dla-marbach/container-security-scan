@@ -47,6 +47,10 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 # zusätzliche Ökosysteme direkt von OSV laden (nach osv-db/), z. B. für Ubuntu-basierte Images
 # wie mariadb, solr oder elasticsearch (ca. 800 MB)
 ./container-security-scan.py --db-aktualisieren --oekosysteme Ubuntu
+
+# alle Daten direkt von OSV und endoflife.date statt über GitHub (siehe „Daten“)
+./container-security-scan.py --db /var/lib/container-security-scan --db-aktualisieren
+./container-security-scan.py --db /var/lib/container-security-scan --oeffentliche [ausgabeverzeichnis]
 ```
 
 | Option | Bedeutung |
@@ -54,8 +58,8 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 | `--oeffentliche` | alle öffentlich erreichbaren Container; Backends hinter einem öffentlichen Proxy (auch in anderen Containern) werden mitgeprüft und zählen als öffentlich |
 | `--nur-behebbare` | für den Rückgabewert nur Funde zählen, für die es einen Fix gibt – **empfohlen** für die Alarmierung, sonst melden Container mit offenen, noch unbehobenen CVEs dauerhaft `1` |
 | `--alle` | alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH) |
-| `--db-aktualisieren` | im Git-Checkout `git pull`; mit `--oekosysteme A,B` zusätzlich direkt von OSV laden (inkrementell, `--voll` lädt alles neu) |
-| `--db DIR` | anderes Datenverzeichnis (Standard: `osv-daten/` und `osv-db/` neben dem Skript) |
+| `--db-aktualisieren` | im Git-Checkout `git pull`; mit `--oekosysteme A,B` zusätzlich diese Ökosysteme direkt von OSV nach `osv-db/` (inkrementell, `--voll` lädt alles neu). Ohne Git-Checkout oder mit `--db`: alle Ökosysteme und die EOL-Daten direkt |
+| `--db DIR` | nur dieses Datenverzeichnis verwenden – bei Aktualisierung und Scan gleich angeben (Standard: `osv-daten/` und `osv-db/` neben dem Skript) |
 | `--user` | Benutzer für `docker exec` (Standard `0`) |
 
 ### Rückgabewert
@@ -89,11 +93,17 @@ Neue Schwachstellen erscheinen in den OSV-Daten typischerweise 1–2 Tage nach V
 GitHub Action übernimmt sie täglich um 03:17 UTC in `osv-daten/`. Ein täglicher Lauf erkennt sie für
 die bereits laufenden Versionen, ohne dass dafür etwas angepasst werden muss.
 
+Den Scan **nicht zu früh** nach der Action ansetzen: Geplante GitHub-Läufe starten oft mit Verzögerung
+(bis etwa eine Stunde, selten mehr). Läuft der Scan vorher, prüft er mit dem Stand des Vortags. Bei
+mitteleuropäischer Zeit wäre z. B. 05:23 im Sommer schon 03:23 UTC. 07:23 Ortszeit (05:23 bzw. 06:23 UTC)
+lässt genug Abstand; die Daten sind beim Scan dann nur wenige Stunden alt. Welcher Stand verwendet wurde,
+steht im Bericht unter „Datenbank“.
+
 `/etc/cron.d/container-security-scan` (Mail nur bei Rückgabewert ≠ 0):
 
 ```cron
 MAILTO=""
-23 5 * * * root /opt/container-security-scan/taeglich.sh
+23 7 * * * root /opt/container-security-scan/taeglich.sh
 ```
 
 `/opt/container-security-scan/taeglich.sh`:
@@ -103,6 +113,7 @@ MAILTO=""
 cd /opt/container-security-scan || exit 2
 LOG=/var/log/container-security-scan/$(date +%F).txt
 mkdir -p /var/log/container-security-scan/berichte
+# mit Ubuntu-basierten Images: --db-aktualisieren --oekosysteme Ubuntu (sonst veralten diese Daten -> 2)
 { ./container-security-scan.py --db-aktualisieren &&
   ./container-security-scan.py --oeffentliche /var/log/container-security-scan/berichte --nur-behebbare; } > "$LOG" 2>&1
 rc=$?
@@ -159,14 +170,46 @@ nötigen Felder; die Ergebnisse sind mit den vollständigen Exporten identisch (
 Ausgabe ist deterministisch, Commits enthalten nur echte Änderungen. Quellen und Lizenzen:
 [`osv-daten/QUELLEN.md`](osv-daten/QUELLEN.md).
 
-Ohne Git-Checkout (oder für weitere Ökosysteme) lädt `--db-aktualisieren --oekosysteme …` direkt von OSV
-nach `osv-db/` – erst der Gesamtexport, danach nur Änderungen.
+Ökosysteme, die nicht im Repository liegen, lädt `--db-aktualisieren --oekosysteme …` direkt von OSV
+nach `osv-db/`. Für Ökosysteme, die es in `osv-daten/` schon gibt, ist das wirkungslos: Je Ökosystem
+gilt das erste Verzeichnis, das es enthält, und `osv-daten/` kommt vor `osv-db/`.
 
 Für Ubuntu-basierte Varianten von MariaDB, Solr und Elasticsearch ist einmalig
 `./container-security-scan.py --db-aktualisieren --oekosysteme Ubuntu` erforderlich. Der große Export
 liegt nur lokal in `osv-db/`, nicht im Repository; bei späteren Aktualisierungen denselben Befehl
 erneut ausführen. Maßgeblich ist die Distribution des jeweiligen Images, nicht der Imagename.
 Fehlen die Ubuntu-Daten, bleibt das Ergebnis ausdrücklich unvollständig (Rückgabewert 2).
+
+### Direkt von OSV statt über GitHub
+
+Ohne Git-Checkout oder mit `--db DIR` lädt `--db-aktualisieren` alle Ökosysteme direkt von OSV
+(`storage.googleapis.com`) und die EOL-Daten von endoflife.date in dieses Verzeichnis. `--db DIR` dann
+auch beim Scan angeben, sonst werden die Repository-Daten verwendet.
+
+- **Erster Lauf:** die Gesamtexporte, zusammen ca. 390 MB (Stand 11/2026: npm 220 MB, Debian 81 MB,
+  PyPI 38 MB, die übrigen je ca. 10 MB; endoflife.date 3 MB).
+- **Danach inkrementell:** Das Skript liest die Änderungsliste `modified_id.csv` bis zum letzten
+  bekannten Stand und lädt nur die geänderten Einträge einzeln. Den Gesamtexport eines Ökosystems lädt
+  es neu, wenn seit dem letzten Lauf mehr als 2000 Einträge geändert wurden oder sich mehr als 10 000
+  Einzeldateien angesammelt haben. Debian ändert oft Tausende Einträge an einem Tag; im Mittel sind
+  daher ca. 30–40 MB pro Tag zu erwarten, gelegentlich mehr (npm neu: 220 MB).
+- **Auf der Platte** liegen die ungekürzten Exporte (`<Ökosystem>.zip`, ca. 390 MB) und geänderte
+  Einträge (`<Ökosystem>.neu/`), nicht der gekürzte Auszug aus dem Repository. Die Ergebnisse sind
+  gleich; das Einlesen dauert etwas länger (Debian: ca. 3,5 s statt 1,9 s je Container).
+
+| | über GitHub (Standard) | direkt (`--db DIR`) |
+|---|---|---|
+| Übertragung | erstmals ca. 15–25 MB, täglich nur die Änderungen | erstmals ca. 390 MB, täglich ca. 30–40 MB |
+| Speicher | ca. 170 MB plus Git | ca. 390 MB |
+| Freigabe im Proxy/Firewall | `github.com` | `osv-vulnerabilities.storage.googleapis.com`, `endoflife.date` |
+| Datenstand beim Scan | letzte Action (03:17 UTC) | Zeitpunkt der Aktualisierung |
+| Nachvollziehbarkeit | Git-Historie der Daten | nur `stand.json` |
+| Skript | wird mit `git pull` aktualisiert | wird nicht automatisch aktualisiert |
+| bei Ausfall | von GitHub/Action: Daten veralten (nach 3 Tagen Rückgabewert 2) | von OSV: Aktualisierung schlägt fehl |
+
+Der Zeitgewinn beim direkten Abruf ist gering, wenn der Scan wie empfohlen einige Stunden nach der
+Action läuft. Der direkte Weg lohnt sich vor allem, wenn der Server `github.com` nicht erreichen darf
+oder sich das Skript (das als root läuft) nicht automatisch aktualisieren soll.
 
 ### Supportende (EOL)
 
@@ -187,7 +230,8 @@ Zweig erscheint als **Warnung** „Supportende“, ein Zweig mit Supportende in 
 „Supportende bald“ – im Bericht und auf der Konsole, **nicht** als CVE und ohne Einfluss auf den
 Rückgabewert. Fehlende oder mindestens 30 Tage alte EOL-Daten werden ebenfalls als Warnung gemeldet.
 Maßgeblich ist das reguläre Supportende, nicht kommerzieller Zusatzsupport (z. B. für PHP oder Node.js).
-Ohne Git-Checkout lädt `--db-aktualisieren` die EOL-Daten direkt nach `osv-db/eol-daten.json`.
+Ohne Git-Checkout oder mit `--db DIR` lädt `--db-aktualisieren` die EOL-Daten direkt nach
+`osv-db/eol-daten.json` bzw. `DIR/eol-daten.json`.
 
 ## Rein lesend und ohne Datenabfluss
 
