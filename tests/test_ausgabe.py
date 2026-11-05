@@ -205,7 +205,13 @@ class Gesamtlauf(unittest.TestCase):
         self.lauf()
         self.assertIn("app:   CVE-2026-9 (HIGH) in libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u2 – "
                       "genutzt von nginx:80\n", self.konsole)
-        self.lauf()     # zweiter Lauf: nichts mehr neu
+        self.assertNotIn("NEU:", self.konsole)     # erster Lauf ohne Vergleich: keine Markierung
+        with open(os.path.join(self.a.ausgabe, "bekannt_app.json"), "w") as f:
+            json.dump([], f)                        # letzter Lauf ohne relevante Funde
+        self.lauf()
+        self.assertIn("app:   NEU: CVE-2026-9 (HIGH) in libssl3", self.konsole)
+        self.lauf()     # danach bekannt: nicht mehr neu
+        self.assertIn("app:   CVE-2026-9 (HIGH) in libssl3", self.konsole)
         self.assertNotIn("NEU:", self.konsole)
 
     def test_behoben_ergibt_0(self):
