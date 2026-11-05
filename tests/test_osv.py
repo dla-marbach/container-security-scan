@@ -249,7 +249,7 @@ class Aktualisierung(Tmp):
         urls = {base + "modified_id.csv": b"2026-11-04T10:00:00Z,GHSA-1\n2026-11-04T09:00:00Z,GHSA-2\n"
                                           b"2026-11-03T00:00:00Z,GHSA-alt\n",
                 base + "GHSA-1.json": b'{"id": "GHSA-1", "v": 2}',
-                base + "GHSA-2.json": urllib.error.HTTPError(base + "GHSA-2.json", 404, "nf", {}, None)}
+                base + "GHSA-2.json": urllib.error.HTTPError(base + "GHSA-2.json", 404, "nf", {}, io.BytesIO(b"nf"))}
         with mock.patch.object(scanner.urllib.request, "urlopen", side_effect=self.antworten(urls)), \
                 mock.patch.object(scanner, "log"):
             scanner.osv_update(self.tmp, ["npm"])

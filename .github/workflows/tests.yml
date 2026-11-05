@@ -12,25 +12,25 @@ permissions:
 jobs:
   unittest:
     name: Unit-Tests (Python ${{ matrix.python }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # offizielle Python-Images statt setup-python: dort gibt es auch ältere Versionen (3.6 wie SLES 15)
     container: python:${{ matrix.python }}-slim
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.6", "3.11", "3.13"]
+        python: ["3.6", "3.11", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: python -W error::ResourceWarning -m unittest discover -s tests -v
 
   docker:
     name: Integrationstest mit Docker
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: unittest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Daten (Branch daten) nach daten/ auschecken
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: daten
           path: daten
