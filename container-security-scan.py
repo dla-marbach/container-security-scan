@@ -10,14 +10,15 @@ Kein Datenabfluss: Abgleich mit einer LOKALEN Kopie der OSV-Daten (https://osv.d
 
 Aufruf:
   ./container-security-scan.py --db-aktualisieren
-     im Git-Checkout: Skript und osv-daten per "git pull" aktualisieren (täglich per GitHub Action gepflegt;
-     nicht als root – dann Daten getrennt halten und mit --db angeben, siehe README "Code und Daten trennen");
+     im Git-Checkout: Daten aus dem Branch "daten" nach daten/ holen bzw. per "git pull" aktualisieren
+     (täglich per GitHub Action gepflegt). Nie den Code: den nur nach Prüfung von Hand aktualisieren.
+     Nicht als root – siehe README "Installation und Betrieb";
      mit --oekosysteme X,Y: zusätzlich diese Ökosysteme direkt von OSV nach osv-db laden (z.B. Ubuntu)
   ./container-security-scan.py <container> [ausgabeverzeichnis] [--nur-behebbare] [--alle] [--ausnahmen DATEI]
   ./container-security-scan.py --oeffentliche [ausgabeverzeichnis] [...]
      alle Container mit veröffentlichten Ports (bzw. im Host-Netzwerk) und deren Backends hinter einem
      Reverse Proxy; Dienste hinter einem öffentlichen Proxy gelten als öffentlich (P1)
-  Daten: osv-daten/ und osv-db/ neben diesem Skript (oder --db DIR, auch mehrfach)
+  Daten: daten/ (Branch daten) und osv-db/ neben diesem Skript (oder --db DIR, auch mehrfach)
 
 Ergebnis: scan_<name>_<zeit>.md        Bericht: Ergebnis, Dienste, Befunde nach Priorität, Anhang
           scan_<name>_<zeit>.cdx.json  SBOM (CycloneDX 1.5) als Beleg; auch mit Trivy/Grype/Dependency-Track nutzbar
@@ -2104,7 +2105,7 @@ def db_state(dbdir):
         raw = json_datei(os.path.join(dbdir, "stand.json"))
     except (OSError, ValueError):
         return {}
-    return {k: (v if isinstance(v, dict) else {"stand": v, "geprueft": v}) for k, v in raw.items() if not k.startswith("_")}
+    return {k: v for k, v in raw.items() if not k.startswith("_") and isinstance(v, dict)}
 
 
 def osv_update(dbdir, ecosystems, full=False):
@@ -2174,6 +2175,7 @@ def osv_update(dbdir, ecosystems, full=False):
         save()
 
 
+DATEN_BRANCH = "daten"         # Branch mit den Daten (ohne Code), siehe README "Installation und Betrieb"
 DATEN_OEKOSYSTEME = ["Debian", "Alpine", "npm", "PyPI", "Packagist", "Maven", "Go", "Bitnami"]
 DATEN_TEILE = {"Debian": 8, "npm": 8, "PyPI": 2}     # Dateien je Ökosystem (jede deutlich < 50 MB)
 
@@ -2543,7 +2545,7 @@ def public_containers():
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    data_dir, local_db = os.path.join(here, "osv-daten"), os.path.join(here, "osv-db")
+    data_dir, local_db = os.path.join(here, "daten"), os.path.join(here, "osv-db")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("container", nargs="?", help="Name oder ID des laufenden Containers")
     ap.add_argument("ausgabe", nargs="?", default=".", help="Ausgabeverzeichnis (Standard: aktuelles Verzeichnis)")
@@ -2551,7 +2553,7 @@ def main():
                     help="alle Container mit veröffentlichten Ports scannen, dazu deren Backends hinter einem Proxy")
     ap.add_argument("--db", action="append", metavar="DIR",
                     help="Verzeichnis mit OSV-Daten, mehrfach möglich: je Ökosystem gilt das erste, das es enthält "
-                         "(Standard: osv-daten und osv-db neben diesem Skript)")
+                         "(Standard: daten und osv-db neben diesem Skript)")
     ap.add_argument("--daten-erzeugen", metavar="VERZEICHNIS", help=argparse.SUPPRESS)   # für die GitHub Action
     ap.add_argument("--eol-daten-erzeugen", metavar="DATEI", help=argparse.SUPPRESS)
     ap.add_argument("--kev-daten-erzeugen", metavar="DATEI", help=argparse.SUPPRESS)
@@ -2559,10 +2561,11 @@ def main():
                     help="Ausnahmeliste: je Zeile \"<Kennung> <Paket oder *> <gültig bis JJJJ-MM-TT> <Begründung>\"; "
                          "passende Funde zählen nicht als relevant (README: Ausnahmen)")
     ap.add_argument("--db-aktualisieren", action="store_true",
-                    help="OSV-Datenbank aktualisieren (Internet nötig; nach dem ersten Mal nur Änderungen)")
+                    help="Daten aktualisieren: im Git-Checkout den Branch daten nach daten/ (nie den Code), sonst direkt "
+                         "von OSV (Internet nötig; nach dem ersten Mal nur Änderungen)")
     ap.add_argument("--voll", action="store_true", help="mit --db-aktualisieren: Gesamtexporte neu laden")
     ap.add_argument("--oekosysteme", help="mit --db-aktualisieren: zusätzlich diese Ökosysteme direkt von OSV laden "
-                                           "(z.B. Ubuntu); ohne osv-daten Standard: " + ",".join(OSV_ECOSYSTEMS))
+                                           "(z.B. Ubuntu); ohne daten/ Standard: " + ",".join(OSV_ECOSYSTEMS))
     ap.add_argument("--nur-behebbare", action="store_true",
                     help="für den Rückgabewert nur Funde zählen, für die es einen Fix gibt")
     ap.add_argument("--alle", action="store_true", help="alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH)")
@@ -2583,26 +2586,38 @@ def main():
     if a.db_aktualisieren:
         if a.db and len(a.db) > 1:
             ap.error("--db-aktualisieren: nur ein --db angeben (Zielverzeichnis)")
-        repo_data = not a.db and os.path.isdir(os.path.join(here, ".git")) and os.path.isdir(data_dir)
-        if repo_data and os.geteuid() == 0:
-            # git pull holt auch Code, der danach als root läuft: wer das Repository übernimmt, hätte root
-            raise ScanError("--db-aktualisieren im Git-Checkout als root abgelehnt: git pull würde Code holen, der "
-                            "danach als root läuft. Daten als eigener Benutzer aktualisieren und mit --db verwenden, "
-                            "Code nur nach Prüfung von Hand aktualisieren (README: \"Code und Daten trennen\").")
         if os.geteuid() == 0:
             # Daten aus dem Netz nicht als root schreiben: Gehört das Zielverzeichnis einem anderen Benutzer, könnte
             # er root über symbolische Links (z.B. stand.json.tmp -> /etc/...) beliebige Dateien überschreiben lassen
             raise ScanError("--db-aktualisieren als root abgelehnt: Daten als eigener Benutzer ohne Rechte laden "
                             "(z.B. runuser -u csscan -- ... --db DIR --db-aktualisieren) und beim Scan mit --db "
-                            "verwenden (README: \"Code und Daten trennen\").")
-        if repo_data:                     # Daten aus dem Git-Repository: Skript und Daten per git pull aktualisieren
-            rc, out = run(["git", "-C", here, "pull", "--ff-only", "--quiet"], stderr=True, timeout=600)
+                            "verwenden (README: \"Installation und Betrieb\").")
+        # Daten liegen im Branch "daten" (ohne Code), Code im Branch "main". Hier wird nur der Daten-Branch geholt
+        # bzw. aktualisiert, nie der Code: den aktualisiert man von Hand nach Prüfung (git pull im Code-Checkout).
+        daten_git = not a.db and os.path.isdir(os.path.join(data_dir, ".git"))
+        code_git = not a.db and not os.path.exists(data_dir) and os.path.isdir(os.path.join(here, ".git"))
+        repo_data = daten_git or code_git
+        if not a.db and not daten_git and os.path.isdir(data_dir) and os.path.isdir(os.path.join(here, ".git")):
+            raise ScanError("%s ist kein Git-Checkout des Branches %s: entfernen und --db-aktualisieren erneut "
+                            "aufrufen oder das Verzeichnis mit --db angeben" % (data_dir, DATEN_BRANCH))
+        if daten_git:
+            rc, out = run(["git", "-C", data_dir, "pull", "--ff-only", "--quiet"], stderr=True, timeout=600)
             if rc != 0:
-                raise ScanError("git pull fehlgeschlagen: " + out.strip()[-300:])
-            log("Skript und osv-daten per git pull aktualisiert")
+                raise ScanError("git pull in daten/ fehlgeschlagen: " + out.strip()[-300:])
+            log("Daten (Branch %s) in daten/ per git pull aktualisiert" % DATEN_BRANCH)
+        elif code_git:
+            rc, url = run(["git", "-C", here, "remote", "get-url", "origin"], timeout=60)
+            if rc != 0 or not url.strip():
+                raise ScanError("Git-Remote origin nicht ermittelbar; Daten von Hand holen: git clone --single-branch "
+                                "--branch %s <url> daten" % DATEN_BRANCH)
+            rc, out = run(["git", "clone", "--quiet", "--single-branch", "--branch", DATEN_BRANCH, url.strip(), data_dir],
+                          stderr=True, timeout=1800)
+            if rc != 0:
+                raise ScanError("git clone des Branches %s fehlgeschlagen: %s" % (DATEN_BRANCH, out.strip()[-300:]))
+            log("Daten (Branch %s) nach daten/ geholt" % DATEN_BRANCH)
         if a.oekosysteme or not repo_data:
             osv_update(a.db[0] if a.db else local_db, [e for e in (a.oekosysteme or ",".join(OSV_ECOSYSTEMS)).split(",") if e], a.voll)
-        if not repo_data:                 # ohne Git-Checkout: EOL- und KEV-Daten direkt von der Quelle
+        if not repo_data:                 # ohne Git: EOL- und KEV-Daten direkt von der Quelle
             for label, func, fname in (("EOL-Daten von endoflife.date", eol_daten_erzeugen, "eol-daten.json"),
                                        ("KEV-Daten der CISA", kev_daten_erzeugen, "kev.json")):
                 try:

@@ -166,12 +166,10 @@ class Datenformat(Tmp):
         recs = sorted((r["id"], r["v"]) for r in map(json.loads, scanner.osv_records(self.tmp, "npm")))
         self.assertEqual(recs, [("A", 1), ("B", 2), ("C", 1)])
 
-    def test_db_state_altes_format(self):
+    def test_db_state(self):
         with open(os.path.join(self.tmp, "stand.json"), "w") as f:
-            json.dump({"_format": "osv-kompakt-1", "npm": "2026-01-01T00:00:00Z",
-                       "Go": {"stand": "a", "geprueft": "b"}}, f)
-        self.assertEqual(scanner.db_state(self.tmp), {"npm": {"stand": "2026-01-01T00:00:00Z", "geprueft": "2026-01-01T00:00:00Z"},
-                                                      "Go": {"stand": "a", "geprueft": "b"}})
+            json.dump({"_format": "osv-kompakt-1", "Go": {"stand": "a", "geprueft": "b"}}, f)
+        self.assertEqual(scanner.db_state(self.tmp), {"Go": {"stand": "a", "geprueft": "b"}})
         self.assertEqual(scanner.db_state(os.path.join(self.tmp, "fehlt")), {})
 
 
@@ -249,7 +247,7 @@ class Aktualisierung(Tmp):
                                                           "affected": [{"package": {"ecosystem": "npm", "name": vid}}]}))
             with open(os.path.join(tmp, "stand.json"), "w") as f:
                 json.dump({"npm": {"stand": "s", "geprueft": "g"}}, f)
-        ziel = os.path.join(self.tmp, "osv-daten")
+        ziel = os.path.join(self.tmp, "daten")
         os.makedirs(os.path.join(ziel, "npm"))
         open(os.path.join(ziel, "npm", "99.jsonl"), "w").close()
         with mock.patch.object(scanner, "osv_update", side_effect=osv_update), mock.patch.object(scanner, "log"):
