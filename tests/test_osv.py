@@ -155,6 +155,56 @@ class Datenformat(Tmp):
         self.assertEqual(nur_versionen["affected"][0]["versions"], ["1"])
         self.assertEqual(len(scanner.osv_compact({"id": "X", "summary": "a" * 500, "affected": []})["summary"]), 200)
 
+    def test_osv_compact_ubuntu(self):
+        def aff(eco, name):
+            return {"package": {"ecosystem": eco, "name": name}, "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}]}],
+                    "versions": ["1.0-1"], "ecosystem_specific": {"availability": "x", "binaries": [
+                        {"binary_name": "libexample1", "binary_version": "1.0-2"}]}}
+        rec = {"id": "UBUNTU-CVE-2026-1", "upstream": ["CVE-2026-1"], "summary": "s",
+               "affected": [aff("Ubuntu:22.04:LTS", "example"), aff("Ubuntu:Pro:22.04:LTS", "example"),
+                            aff("Ubuntu:Pro:FIPS-updates:22.04:LTS", "example"), aff("Ubuntu:24.04:LTS", "linux"),
+                            aff("Ubuntu:24.04:LTS", "linux-aws-6.8"), aff("Ubuntu:24.04:LTS", "linux-firmware")]}
+        kurz = scanner.osv_compact(rec, "Ubuntu")
+        # nur, was der Abgleich liest: Release ohne Pro/FIPS, keine Kernel-Quellpakete, keine Binärpakete
+        self.assertEqual([(a["package"]["ecosystem"], a["package"]["name"]) for a in kurz["affected"]],
+                         [("Ubuntu:22.04:LTS", "example"), ("Ubuntu:24.04:LTS", "linux-firmware")])
+        self.assertTrue(all("ecosystem_specific" not in a and "versions" not in a for a in kurz["affected"]))
+        # ohne Ökosystem bzw. für andere Ökosysteme bleibt alles außer den Binärpaketen erhalten
+        self.assertEqual(len(scanner.osv_compact(rec)["affected"]), 6)
+        # USN-Sammelmeldungen und Einträge ganz ohne abgleichbare Pakete entfallen
+        self.assertIsNone(scanner.osv_compact(dict(rec, id="USN-7000-1"), "Ubuntu"))
+        self.assertIsNone(scanner.osv_compact(dict(rec, id="LSN-0100-1", affected=[aff("Ubuntu:24.04:LTS", "linux")]), "Ubuntu"))
+        self.assertIsNotNone(scanner.osv_compact(dict(rec, id="USN-7000-1"), "Debian"))
+
+    def test_ubuntu_gekuerzt_wie_vollstaendig(self):
+        """Abgleich mit dem gekürzten Auszug liefert dieselben Funde wie mit dem vollständigen Export."""
+        def aff(eco, name, fixed):
+            return {"package": {"ecosystem": eco, "name": name},
+                    "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": fixed}]}],
+                    "ecosystem_specific": {"binaries": [{"binary_name": "openssl", "binary_version": fixed}]}}
+        recs = [{"id": "UBUNTU-CVE-2026-1", "upstream": ["CVE-2026-1"], "published": "2026-10-01T00:00:00Z",
+                 "severity": [{"type": "Ubuntu", "score": "high"}],
+                 "affected": [aff("Ubuntu:22.04:LTS", "openssl", "3.0.2-0ubuntu1.20"),
+                              aff("Ubuntu:Pro:22.04:LTS", "openssl", "3.0.2-0ubuntu1.21"),
+                              aff("Ubuntu:22.04:LTS", "linux", "5.15.0-200.210")]},
+                {"id": "USN-7000-1", "upstream": ["CVE-2026-2"], "published": "2026-10-02T00:00:00Z",
+                 "affected": [aff("Ubuntu:22.04:LTS", "openssl", "3.0.2-0ubuntu1.22")]}]
+        voll, kurz = os.path.join(self.tmp, "voll"), os.path.join(self.tmp, "kurz")
+        os.makedirs(voll)
+        with zipfile.ZipFile(os.path.join(voll, "Ubuntu.zip"), "w") as z:
+            for r in recs:
+                z.writestr(r["id"] + ".json", json.dumps(r))
+        schreibe_jsonl(kurz, "Ubuntu", [x for x in (scanner.osv_compact(r, "Ubuntu") for r in recs) if x])
+        osinfo = {"id": "ubuntu", "version": "22.04", "pretty": "Ubuntu 22.04"}
+        comps = [C("os-paket", "libssl3", "3.0.2-0ubuntu1.19", src="openssl", srcver="3.0.2-0ubuntu1.19"),
+                 C("os-paket", "linux-libc-dev", "5.15.0-100.110", src="linux", srcver="5.15.0-100.110")]
+        ergebnisse = []
+        for d in (voll, kurz):
+            findings, _, missing, neuester = scanner.osv_scan(comps, osinfo, [d])
+            ergebnisse.append((sorted((f["comp"]["name"], f["id"], f["sev"], f["fix"]) for f in findings), missing, neuester))
+        self.assertEqual(ergebnisse[0], ergebnisse[1])
+        self.assertEqual(ergebnisse[1][0], [("libssl3", "CVE-2026-1", "HIGH", "3.0.2-0ubuntu1.20")])
+
     def test_osv_records_zip_mit_ueberlagerung(self):
         with zipfile.ZipFile(os.path.join(self.tmp, "npm.zip"), "w") as z:
             z.writestr("A.json", '{"id": "A", "v": 1}')

@@ -19,7 +19,7 @@ concurrency:
 jobs:
   aktualisieren:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45      # Ubuntu: ca. 800 MB laden, 8 GB entpackt kürzen
     steps:
       - name: Code (main) auschecken, ohne Schreibrechte
         uses: actions/checkout@v4
