@@ -216,6 +216,50 @@ class Gesamtlauf(unittest.TestCase):
                                                    [{"introduced": "0"}, {"fixed": "1"}], published="2020-01-01T00:00:00Z")])
         self.assertEqual(self.lauf()[0], 2)
 
+    def kev(self, cves):
+        with open(os.path.join(self.db, "kev.json"), "w") as f:
+            json.dump({"geprueft": "2026-11-04T00:00:00Z", "cves": cves}, f)
+
+    def test_kev_macht_auch_p4_medium_relevant(self):
+        # Fund in einem nicht genutzten Paket (P4) mit MEDIUM: normalerweise nicht relevant
+        self.files["/var/lib/dpkg/status"] += b"\nPackage: libfreetype6\nStatus: install ok installed\nSource: freetype\n" \
+                                              b"Version: 2.12.1+dfsg-5\n"
+        schreibe_jsonl(self.db, "Debian", [
+            eintrag("DEBIAN-CVE-2025-27363", "Debian:12", "freetype", [{"introduced": "0"}, {"fixed": "2.12.1+dfsg-5+deb12u4"}],
+                    upstream=["CVE-2025-27363"], published="2026-11-01T00:00:00Z",
+                    affected_extra={"ecosystem_specific": {"urgency": "medium"}})])
+        self.assertEqual(self.lauf()[0], 0)
+        self.kev({"CVE-2025-27363": "2025-05-06"})
+        code, _, base = self.lauf()
+        self.assertEqual(code, 1)
+        with open(base + ".md", encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("**CVE-2025-27363** (MEDIUM KEV) in libfreetype6", text)
+        self.assertIn("**aktiv ausgenutzt** (KEV seit 2025-05-06)", text)
+
+    def test_ohne_kev_daten_nur_warnung(self):
+        code, _, base = self.lauf()
+        self.assertEqual(code, 1)
+        with open(base + ".md", encoding="utf-8") as f:
+            self.assertIn("**Warnung:** KEV-Daten fehlen", f.read())
+
+    def test_ausnahme_unterdrueckt_fund(self):
+        self.a.ausnahmen_liste = [{"id": "CVE-2026-9", "paket": "libssl3", "bis": scanner.datetime.date(2026, 12, 31),
+                                   "grund": "nicht erreichbar laut Prüfung vom 2026-11-04", "zeile": 1}]
+        code, _, base = self.lauf()
+        self.assertEqual(code, 0)
+        with open(base + ".md", encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("Nicht gezählt (wären sonst relevant):\n- CVE-2026-9 (HIGH) in libssl3", text)
+        self.assertIn("[nicht gezählt: Ausnahme bis 2026-12-31: nicht erreichbar", text)
+
+    def test_kernel_pakete_im_bericht(self):
+        self.files["/var/lib/dpkg/status"] += b"\nPackage: linux-libc-dev\nStatus: install ok installed\nSource: linux\n" \
+                                              b"Version: 6.1.94-1\n"
+        code, _, base = self.lauf()
+        with open(base + ".md", encoding="utf-8") as f:
+            self.assertIn("1 Kernel-Pakete nicht geprüft (Container nutzen den Kernel des Hosts)", f.read())
+
     def test_port_ohne_prozess_wird_als_oeffentlich_gewertet(self):
         code, _, base = self.lauf(ports={"8080": "alle"})
         with open(base + ".md", encoding="utf-8") as f:

@@ -29,6 +29,12 @@ jobs:
         continue-on-error: true
         run: python3 container-security-scan.py --eol-daten-erzeugen osv-daten/eol-daten.json
 
+      # Katalog aktiv ausgenutzter Schwachstellen (CISA KEV); fehlt er länger als 7 Tage, warnt der Scanner.
+      - name: KEV-Daten der CISA laden
+        id: kev
+        continue-on-error: true
+        run: python3 container-security-scan.py --kev-daten-erzeugen osv-daten/kev.json
+
       - name: Änderungen committen
         run: |
           git config user.name "github-actions[bot]"
@@ -45,4 +51,10 @@ jobs:
         if: steps.eol.outcome == 'failure'
         run: |
           echo "::warning::EOL-Daten konnten nicht aktualisiert werden"
+          exit 1
+
+      - name: KEV-Fehler melden
+        if: steps.kev.outcome == 'failure'
+        run: |
+          echo "::warning::KEV-Daten konnten nicht aktualisiert werden"
           exit 1

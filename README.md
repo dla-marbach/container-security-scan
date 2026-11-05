@@ -64,8 +64,9 @@ runuser -u csscan -- ./container-security-scan.py --db /var/lib/container-securi
 |---|---|
 | `--oeffentliche` | alle öffentlich erreichbaren Container; Backends hinter einem öffentlichen Proxy (auch in anderen Containern) werden mitgeprüft und zählen als öffentlich |
 | `--nur-behebbare` | für den Rückgabewert nur Funde zählen, für die es einen Fix gibt – **empfohlen** für die Alarmierung, sonst melden Container mit offenen, noch unbehobenen CVEs dauerhaft `1` |
-| `--alle` | alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH) |
-| `--db-aktualisieren` | als root abgelehnt (Rückgabewert 2): nie Code oder Daten aus dem Netz als root holen bzw. schreiben. Im Git-Checkout `git pull`; mit `--oekosysteme A,B` zusätzlich diese Ökosysteme direkt von OSV nach `osv-db/` (inkrementell, `--voll` lädt alles neu). Ohne Git-Checkout oder mit `--db`: alle Ökosysteme und die EOL-Daten direkt |
+| `--alle` | alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV) |
+| `--ausnahmen DATEI` | Ausnahmeliste: passende Funde zählen nicht als relevant, jede Ausnahme mit Begründung und Ablaufdatum (siehe [Ausnahmen](#ausnahmen)) |
+| `--db-aktualisieren` | als root abgelehnt (Rückgabewert 2): nie Code oder Daten aus dem Netz als root holen bzw. schreiben. Im Git-Checkout `git pull`; mit `--oekosysteme A,B` zusätzlich diese Ökosysteme direkt von OSV nach `osv-db/` (inkrementell, `--voll` lädt alles neu). Ohne Git-Checkout oder mit `--db`: alle Ökosysteme, die EOL- und die KEV-Daten direkt |
 | `--db DIR` | nur diese Datenverzeichnisse verwenden; mehrfach möglich, je Ökosystem gilt das erste, das es enthält. Mit `--db-aktualisieren` genau eines (Ziel). Standard: `osv-daten/` und `osv-db/` neben dem Skript |
 | `--user` | Benutzer für `docker exec` (Standard `0`) |
 
@@ -75,9 +76,14 @@ runuser -u csscan -- ./container-security-scan.py --db /var/lib/container-securi
 |---|---|
 | `0` | keine relevanten Schwachstellen |
 | `1` | relevante Schwachstellen gefunden |
-| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar, nginx-Konfiguration nicht lesbar, Distribution ohne aktuelle Sicherheitsdaten (EOL). |
+| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar, nginx-Konfiguration nicht lesbar, Distribution ohne aktuelle Sicherheitsdaten (EOL), Ausnahmeliste fehlerhaft. |
 
-**Relevant** ist P1 CRITICAL/HIGH und P2 CRITICAL (anpassbar über `RELEVANT` am Anfang des Skripts).
+**Relevant** ist P1 CRITICAL/HIGH und P2 CRITICAL (anpassbar über `RELEVANT` am Anfang des Skripts), dazu
+**jede aktiv ausgenutzte Lücke** aus dem [KEV-Katalog der CISA](https://www.cisa.gov/known-exploited-vulnerabilities-catalog),
+unabhängig von Priorität und Schweregrad. Grund: „Genutzt von“ ist eine Momentaufnahme. Programme, die eine
+Anwendung nur bei Bedarf startet (ImageMagick, Ghostscript, ffmpeg beim Hochladen), erscheinen als P4; ist
+eine solche Lücke aktiv ausgenutzt, soll sie trotzdem melden. Nicht relevant sind Funde aus der
+Ausnahmeliste und Funde, die laut Titel nur Windows betreffen (siehe [Bewertung](#bewertung-der-funde)).
 
 ### Priorität
 
@@ -93,6 +99,47 @@ offene TCP/UDP-Ports; für npm/Composer/PyPI über das Projektverzeichnis (Arbei
 venv, Docroot aus der nginx-/Apache-Konfiguration). Welche Pakete eine Anwendung tatsächlich importiert,
 ist von außen nicht sichtbar. Lässt sich ein veröffentlichter Port keinem Prozess zuordnen, werden
 vorsichtshalber alle Komponenten des Containers als öffentlich genutzt gewertet (mit Warnung).
+
+### Bewertung der Funde
+
+- **Schweregrad:** Einstufung der Distribution (Debian, Ubuntu), sonst Angabe der Quelle, sonst CVSS. Hat
+  der zutreffende Eintrag keinen (z. B. Go-Daten, Debian „not yet assigned“), wird die Bewertung derselben
+  CVE aus den Bitnami- bzw. Alpine-Daten (CVSS der NVD) übernommen, bei mehreren die höchste. Solche Werte
+  sind im Bericht mit `*` markiert.
+- **KEV:** aktiv ausgenutzte Lücken sind im Bericht mit `KEV` markiert und immer relevant (siehe oben).
+- **Nur Windows:** Daten außerhalb der Distributionen (GitHub, Bitnami) führen auch Lücken, die nur unter
+  Windows auftreten (z. B. „On Windows a directory returned by tempfile.mkdtemp() …“). Nennt der Titel das
+  eindeutig, steht der Fund mit „nicht gezählt: betrifft laut Titel nur Windows“ in der Tabelle, zählt aber
+  nicht als relevant. Die Erkennung ist bewusst vorsichtig (Titel mit „Linux“, „macOS“, „Windows and …“
+  bleiben relevant); was sie nicht erkennt, gehört in die Ausnahmeliste.
+- **Kernel-Pakete** (`linux-libc-dev`, `linux-headers`, `linux-image-*`, `kernel-*`) werden nicht geprüft:
+  Container nutzen den Kernel des Hosts, und Debian/Ubuntu führen alle Kernel-CVEs am Quellpaket `linux` –
+  ohne diese Regel sind in einem Debian-Image oft über 90 % der Funde Kernel-CVEs in den Headern.
+- **Versionsbereiche der Distribution:** OSV ergänzt Alpine-Daten teils um eine erste betroffene Version
+  aus einem anderen Versionszweig („betroffen ab 3.4.0, behoben in 3.3.7-r1“). Liegt der Fix der
+  Distribution vor dieser Version, hat sie ihn zurückportiert, ihr Zweig war also betroffen: Solche
+  Bereiche gelten ab Version 0. Gültige Angaben bleiben wirksam (curl 8.12.1 ist von einer Lücke ab 8.13.0
+  nicht betroffen).
+
+### Ausnahmen
+
+Für Fehlalarme und bewusst akzeptierte Risiken, die die automatische Bewertung nicht erkennt, z. B.
+CVE-2024-8926: Der Titel nennt nur „PHP CGI Parameter Injection“, die Lücke betrifft aber nur PHP-CGI unter
+Windows. Die Liste liegt auf dem Server, root-eigen und nur für root beschreibbar (sonst Rückgabewert 2),
+nicht im Repository:
+
+```
+# /etc/container-security-scan/ausnahmen.txt
+# Kennung         Paket oder *  gültig bis  Begründung
+CVE-2024-8926     php           2027-06-30  betrifft nur PHP-CGI unter Windows (geprüft 2026-11-05)
+CVE-2026-107814   mariadb       2027-03-31  betrifft nur die RPM-Pakete von MariaDB, hier Ubuntu-Image
+```
+
+- Kennung wie im Bericht (CVE oder Kennung der Quelle), Paket wie in der Spalte „Paket“ oder `*` für alle.
+- Jede Ausnahme braucht ein Ablaufdatum und eine Begründung: Danach zählt der Fund wieder, mit Warnung im
+  Bericht. So bleibt keine Ausnahme unbemerkt für immer.
+- Ausgenommene Funde stehen im Bericht unter „Nicht gezählt“ und in der Tabelle mit Begründung.
+- Eine fehlerhafte Zeile bricht den Scan ab (Rückgabewert 2) statt still etwas auszublenden.
 
 ## Code und Daten trennen
 
@@ -192,11 +239,13 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 D=/var/lib/container-security-scan
 OUT=/var/log/container-security-scan
 UBUNTU=nein                    # ja: Ubuntu-Daten (ca. 800 MB) nach $D/osv-db laden und verwenden
+AUSNAHMEN=/etc/container-security-scan/ausnahmen.txt   # optional, siehe „Ausnahmen“
 cd / && umask 077              # Berichte enthalten u. a. Prozess-Kommandozeilen
 mkdir -p "$OUT/berichte"
 LOG=$OUT/$(date +%F).txt
 DB=(--db "$D/daten/osv-daten")
 [ "$UBUNTU" = ja ] && DB+=(--db "$D/osv-db")
+[ -f "$AUSNAHMEN" ] && DB+=(--ausnahmen "$AUSNAHMEN")
 (
   if ! runuser -u csscan -- git -C "$D/daten" pull --ff-only --quiet; then
       echo "FEHLER: Daten nicht aktualisiert (git pull als csscan)"; exit 2
@@ -218,6 +267,8 @@ Tage aus, meldet auch der Scan veraltete Daten (Rückgabewert 2).
 - **1** → Funde prüfen und Images aktualisieren. Der Bericht markiert Funde, die seit dem letzten Lauf **neu** sind.
 - **2** → Ursache beheben (Daten, Ökosystem ergänzen, Container), sonst ist die Überwachung blind.
 - Warnungen zum Supportende sind keine OSV-Schwachstellen und ändern den Rückgabewert nicht.
+- Fehlalarme nicht durch Abschalten der Alarmierung lösen, sondern mit Begründung und Ablaufdatum in die
+  [Ausnahmeliste](#ausnahmen) eintragen.
 - Der Host selbst (SLES) ist nicht Teil des Scans: dafür `zypper list-patches --category security`.
 
 ### Mit Rundeck
@@ -238,6 +289,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 D=/var/lib/container-security-scan
 OUT=/var/log/container-security-scan
 UBUNTU=nein                    # ja: Ubuntu-Daten (ca. 800 MB) nach $D/osv-db laden und verwenden
+AUSNAHMEN=/etc/container-security-scan/ausnahmen.txt   # optional, siehe „Ausnahmen“
 cd / && umask 077              # Berichte enthalten u. a. Prozess-Kommandozeilen
 exec 9>/run/container-security-scan.lock
 if ! flock -n 9; then
@@ -248,6 +300,7 @@ mkdir -p "$OUT/berichte"
 LOG=$OUT/$(date +%F_%H%M%S).txt
 DB=(--db "$D/daten/osv-daten")
 [ "$UBUNTU" = ja ] && DB+=(--db "$D/osv-db")
+[ -f "$AUSNAHMEN" ] && DB+=(--ausnahmen "$AUSNAHMEN")
 {
   if ! runuser -u csscan -- git -C "$D/daten" pull --ff-only --quiet; then
       echo "FEHLER: Daten nicht aktualisiert (git pull als csscan)"; exit 2
@@ -344,8 +397,9 @@ Dateien, die zu einem OS-Paket gehören (z. B. `gosu` aus dem Ubuntu-Paket), wer
 Maven, Go und Bitnami (ca. 170 MB, in Git komprimiert ca. 15 MB). Gekürzt heißt: nur die für den Abgleich
 nötigen Felder; die Ergebnisse sind mit den vollständigen Exporten identisch (geprüft). Die GitHub Action
 [`.github/workflows/osv-daten.yml`](.github/workflows/osv-daten.yml) erzeugt die Daten täglich neu; die
-Ausgabe ist deterministisch, Commits enthalten nur echte Änderungen. Quellen und Lizenzen:
-[`osv-daten/QUELLEN.md`](osv-daten/QUELLEN.md).
+Ausgabe ist deterministisch, Commits enthalten nur echte Änderungen. Dazu kommen `eol-daten.json`
+([Supportende](#supportende-eol)) und `kev.json` ([aktiv ausgenutzte Lücken](#aktiv-ausgenutzte-lücken-kev)).
+Quellen und Lizenzen: [`osv-daten/QUELLEN.md`](osv-daten/QUELLEN.md).
 
 Ökosysteme, die nicht im Repository liegen, lädt `--db-aktualisieren --oekosysteme …` direkt von OSV
 nach `osv-db/`. Für Ökosysteme, die es in `osv-daten/` schon gibt, ist das wirkungslos: Je Ökosystem
@@ -361,7 +415,7 @@ Fehlen die Ubuntu-Daten, bleibt das Ergebnis ausdrücklich unvollständig (Rück
 ### Direkt von OSV statt über GitHub
 
 Ohne Git-Checkout oder mit `--db DIR` lädt `--db-aktualisieren` alle Ökosysteme direkt von OSV
-(`storage.googleapis.com`) und die EOL-Daten von endoflife.date in dieses Verzeichnis. `--db DIR` dann
+(`storage.googleapis.com`), die EOL-Daten von endoflife.date und den KEV-Katalog der CISA in dieses Verzeichnis. `--db DIR` dann
 auch beim Scan angeben, sonst werden die Repository-Daten verwendet. Bei getrennten Daten ersetzt das den
 Clone von `csscan`; GitHub ist dann gar nicht mehr beteiligt:
 
@@ -373,7 +427,7 @@ runuser -u csscan -- /opt/container-security-scan/container-security-scan.py \
 ```
 
 - **Erster Lauf:** die Gesamtexporte, zusammen ca. 390 MB (Stand 11/2026: npm 220 MB, Debian 81 MB,
-  PyPI 38 MB, die übrigen je ca. 10 MB; endoflife.date 3 MB).
+  PyPI 38 MB, die übrigen je ca. 10 MB; endoflife.date 3 MB, KEV-Katalog 2 MB).
 - **Danach inkrementell:** Das Skript liest die Änderungsliste `modified_id.csv` bis zum letzten
   bekannten Stand und lädt nur die geänderten Einträge einzeln. Den Gesamtexport eines Ökosystems lädt
   es neu, wenn seit dem letzten Lauf mehr als 2000 Einträge geändert wurden oder sich mehr als 10 000
@@ -387,7 +441,7 @@ runuser -u csscan -- /opt/container-security-scan/container-security-scan.py \
 |---|---|---|
 | Übertragung | erstmals ca. 15–25 MB, täglich nur die Änderungen | erstmals ca. 390 MB, täglich ca. 30–40 MB |
 | Speicher | ca. 170 MB plus Git | ca. 390 MB |
-| Freigabe im Proxy/Firewall | `github.com` | `osv-vulnerabilities.storage.googleapis.com`, `endoflife.date` |
+| Freigabe im Proxy/Firewall | `github.com` | `osv-vulnerabilities.storage.googleapis.com`, `endoflife.date`, `www.cisa.gov` |
 | Datenstand beim Scan | letzte Action (03:17 UTC) | Zeitpunkt der Aktualisierung |
 | Nachvollziehbarkeit | Git-Historie der Daten | nur `stand.json` |
 | Übernahme des GitHub-Repositorys | bei getrennten Daten: Daten fälschbar (falsche Ergebnisse), kein Code als root | ohne Folgen für die Daten |
@@ -419,6 +473,19 @@ Maßgeblich ist das reguläre Supportende, nicht kommerzieller Zusatzsupport (z.
 Ohne Git-Checkout oder mit `--db DIR` lädt `--db-aktualisieren` die EOL-Daten direkt nach
 `osv-db/eol-daten.json` bzw. `DIR/eol-daten.json`.
 
+### Aktiv ausgenutzte Lücken (KEV)
+
+`osv-daten/kev.json` enthält aus dem [Katalog der CISA](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
+(Known Exploited Vulnerabilities, CC0) je CVE das Datum der Aufnahme; die Action lädt ihn täglich. Funde mit
+einer dieser CVEs sind im Bericht mit `KEV` markiert, stehen auch als P3/P4 in der Tabelle und sind
+**immer relevant** (Rückgabewert 1), unabhängig von Priorität und Schweregrad; `--nur-behebbare` gilt
+auch für sie. Fehlende oder mindestens 7 Tage alte KEV-Daten sind eine Warnung, kein Rückgabewert 2:
+Die Bewertung nach Priorität und Schweregrad bleibt vollständig. Ohne Git-Checkout oder mit `--db DIR`
+lädt `--db-aktualisieren` den Katalog direkt nach `DIR/kev.json`.
+
+Ein Beispiel aus dem Test: freetype CVE-2025-27363 (MEDIUM laut Debian, Paket nicht geladen, also P4) in
+einem Solr-Image. Ohne KEV nie gemeldet; laut CISA wird die Lücke aktiv ausgenutzt.
+
 ## Rein lesend und ohne Datenabfluss
 
 - Im Container laufen nur: `find`/`tar` (Metadaten-Dateien lesen; Container-Dateisystem und Volumes,
@@ -438,15 +505,17 @@ Ohne Git-Checkout oder mit `--db DIR` lädt `--db-aktualisieren` die EOL-Daten d
 - Ohne Shell oder Werkzeuge im Container wird passiv gelesen (`docker export`, `docker cp`, `/proc` des Hosts).
 - Der tar-Strom aus dem Container wird im Speicher gelesen; nichts wird auf dem Host entpackt.
 - Getestet: `docker diff` zeigt vor und nach dem Scan keine Änderung im Container.
-- Es werden nur Daten **heruntergeladen** (GitHub bzw. OSV und endoflife.date); Paketlisten verlassen den Server nicht.
+- Es werden nur Daten **heruntergeladen** (GitHub bzw. OSV, endoflife.date und CISA); Paketlisten verlassen den Server nicht.
 - Berichte und SBOM enthalten Kommandozeilen der Prozesse (oft mit Passwörtern) und Konfigurationsauszüge;
   das Skript legt sie daher nur für den aufrufenden Benutzer lesbar an (`umask 077`).
 
 ## Grenzen
 
 - Schweregrad: Einstufung der Distribution (Debian, Ubuntu), sonst Angabe der Quelle, sonst CVSS 3 bzw.
-  eine Näherung für CVSS 4 (eher zu hoch). Als Schadsoftware gemeldete Pakete (`MAL-…`) gelten als CRITICAL.
-  Einträge ganz ohne Bewertung („UNKNOWN“) zählen nicht als relevant, werden aber eigens ausgewiesen.
+  eine Näherung für CVSS 4 (eher zu hoch), sonst die Bewertung derselben CVE aus Bitnami/Alpine (`*`). Als
+  Schadsoftware gemeldete Pakete (`MAL-…`) gelten als CRITICAL. Einträge, für die es nirgends eine Bewertung
+  gibt („UNKNOWN“), zählen nicht als relevant (außer KEV), werden aber eigens ausgewiesen.
+- Lücken nur unter Windows werden nur erkannt, wenn der Titel es eindeutig sagt; sonst Ausnahmeliste.
 - Nicht erfasst: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung, Bundles ohne Kopfkommentar,
   Programme direkt auf dem Host, UDP-Dienste nur bei offenem Socket, Proxys außer nginx/Apache
   (Traefik, Caddy, HAProxy: Backends dann einzeln scannen).
@@ -472,6 +541,27 @@ erreichbar). Abgleich mit Trivy (Image-Scan derselben Images, gleiche Datenstän
   `TEMP-…`-Kennungen ohne CVE und einzelne tzdata-Meldungen. Mehr Funde vor allem bei eingebetteten
   JavaScript-Bibliotheken, bei Laufzeiten aus offiziellen Images und bei offenen Ubuntu-CVEs ohne Fix.
 
+Abgleich mit Grype 0.121 und Trivy 0.76 (11/2026, 8 laufende Container: nginx als Proxy vor Node, Python
+und PHP-FPM, PHP 8.3 mit Code im Volume, Node auf distroless, Solr, MariaDB; Funde je Container auf
+CVE und Paket abgeglichen, Abweichungen einzeln geprüft):
+
+| Befund | Skript | Grype | Trivy |
+|---|---|---|---|
+| nginx von nginx.org, MariaDB von mariadb.org (Herstellerquellen), Java-Laufzeit | ✓ | – | – |
+| Laufzeiten aus offiziellen Images (Node, PHP, Python) | ✓ | ✓ | – |
+| Composer/npm im Volume | ✓ | nur über Syft mit Image-Katalogen | ✓ |
+| eingebettetes jQuery | ✓ | – | – |
+| Go-Standardbibliothek in `gosu` | ✓ (Schweregrad über die CVE) | teilweise | ✓ |
+| Alpine curl 8.12.1: Lücken erst ab 8.13.0 | richtig nicht gemeldet | Fehlalarm | Fehlalarm |
+| Alpine openssl/libxml2 mit zurückportiertem Fix | ✓ (seit [Versionsbereiche](#bewertung-der-funde)) | ✓ | ✓ |
+| Kernel-Header `linux-libc-dev` | nicht geprüft | nicht geprüft | über 90 % der Funde |
+| aktiv ausgenutzt (KEV) | ✓ | ✓ | – |
+
+Vor diesem Abgleich übersah das Skript die zurückportierten Alpine-Fixes, stufte Go-Lücken ohne
+Schweregrad ein (nie relevant), meldete Python-Lücken nur unter Windows als relevant und zählte die
+Kernel-Header mit; das ist behoben (siehe [Bewertung der Funde](#bewertung-der-funde)). Grype eignet sich
+als unabhängige Zweitmeinung: andere Datenquellen (NVD, GitHub, Hersteller) als OSV.
+
 ### Tests
 
 ```bash
@@ -488,9 +578,10 @@ CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # m
 | `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c` und dem Benutzer des Hauptprozesses (nie root für fremde Programme/Optionen), veröffentlichte Ports, Backends |
 | `test_nutzung.py` | Zuordnung Komponente → Dienst, Erreichbarkeit, Priorität P1–P4 |
 | `test_osv.py` | Abgleich je Ökosystem, Quellpakete, Fremdquellen über Bitnami, Datenformat, inkrementelle Aktualisierung, ungültige Kennungen (kein Pfad) |
+| `test_bewertung.py` | widersprüchliche Versionsbereiche der Distribution, Kernel-Pakete, Schweregrad über die CVE, KEV (Daten erzeugen, laden, markieren), Ausnahmeliste (Format, Rechte, Ablauf), nur Windows, Relevanz |
 | `test_eol.py` | EOL-Daten erzeugen, Supportende und Vorwarnung |
-| `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden |
-| `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), `--db-aktualisieren` als root abgelehnt, Berichte nur für den Aufrufer lesbar, docker nicht erreichbar, unerwartete Fehler → 2 |
+| `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden, KEV macht P4 relevant, Ausnahme, Kernel-Pakete |
+| `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), `--db-aktualisieren` als root abgelehnt, Berichte nur für den Aufrufer lesbar, docker nicht erreichbar, fehlerhafte Ausnahmeliste und unerwartete Fehler → 2 |
 | `test_docker.py` | nginx (`-c`) als Proxy vor Node: Proxy-Erkennung, EOL-Warnungen, Berichte, `docker diff` unverändert |
 
 Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11 und 3.13
