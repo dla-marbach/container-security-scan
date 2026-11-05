@@ -2,7 +2,7 @@
 
 Die Dateien in diesem Verzeichnis sind **gekürzte Auszüge aus der [OSV-Datenbank](https://osv.dev)**
 (Exporte unter `https://osv-vulnerabilities.storage.googleapis.com/<Ökosystem>/all.zip`). Sie werden
-täglich von der GitHub Action [`.github/workflows/osv-daten.yml`](https://github.com/felixlohmeier/container-security-scan/blob/main/.github/workflows/osv-daten.yml) im Branch `main` neu erzeugt.
+täglich von der GitHub Action [`.github/workflows/daten.yml`](https://github.com/felixlohmeier/container-security-scan/blob/main/.github/workflows/daten.yml) im Branch `main` neu erzeugt.
 
 **Bearbeitung:** Je Eintrag sind nur die Felder enthalten, die `container-security-scan.py` für den
 Abgleich braucht (Kennung, Aliase, betroffene Pakete und Versionsbereiche, Schweregrad, Kurztitel,
