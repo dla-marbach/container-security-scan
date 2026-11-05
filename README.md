@@ -107,7 +107,21 @@ exit $rc
 - **Ubuntu-basierte Images** (z. B. mariadb, solr, elasticsearch – maßgeblich ist die Distribution im
   Image, nicht der Name) brauchen `UBUNTU=ja`; sonst endet ihr Scan mit Rückgabewert 2 („Daten fehlen
   für: Ubuntu“). Der Export liegt dann zusätzlich unter `/var/lib/container-security-scan/osv-db/`.
-- **Fehlalarme** gehören mit Begründung und Ablaufdatum in die [Ausnahmeliste](#ausnahmen).
+
+**Ausnahmeliste** (optional, kann auch später angelegt werden): Fehlalarme und bewusst akzeptierte Risiken
+mit Begründung und Ablaufdatum. Der Wrapper verwendet sie automatisch, sobald die Datei existiert. Sie muss
+root gehören und darf nur für root beschreibbar sein, sonst bricht der Scan ab (Rückgabewert 2):
+
+```bash
+install -d -m 755 /etc/container-security-scan
+cat > /etc/container-security-scan/ausnahmen.txt <<'EOF'
+# Kennung         Paket oder *  gültig bis  Begründung
+CVE-2024-8926     php           2027-06-30  betrifft nur PHP-CGI unter Windows (geprüft 2026-11-05)
+EOF
+chmod 644 /etc/container-security-scan/ausnahmen.txt
+```
+
+Format und Wirkung: [Ausnahmen](#ausnahmen). Neue Einträge kommen später aus den Berichten (Schritt 4).
 
 ### 2. Bei Bedarf von Hand prüfen
 
@@ -252,8 +266,7 @@ vorsichtshalber alle Komponenten des Containers als öffentlich genutzt gewertet
 
 Für Fehlalarme und bewusst akzeptierte Risiken, die die automatische Bewertung nicht erkennt, z. B.
 CVE-2024-8926: Der Titel nennt nur „PHP CGI Parameter Injection“, die Lücke betrifft aber nur PHP-CGI unter
-Windows. Die Liste liegt auf dem Server, root-eigen und nur für root beschreibbar (sonst Rückgabewert 2),
-nicht im Repository:
+Windows. Die Liste liegt auf dem Server, nicht im Repository (einrichten: [Schritt 1](#1-einrichten)):
 
 ```
 # /etc/container-security-scan/ausnahmen.txt
