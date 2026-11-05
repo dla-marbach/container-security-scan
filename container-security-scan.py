@@ -12,7 +12,7 @@ Aufruf:
   ./container-security-scan.py --db-aktualisieren
      im Git-Checkout: Daten aus dem Branch "daten" nach daten/ holen bzw. per "git pull" aktualisieren
      (täglich per GitHub Action gepflegt). Nie den Code: den nur nach Prüfung von Hand aktualisieren.
-     Nicht als root – siehe README "Code und Daten trennen";
+     Nicht als root – siehe README "Installation und Betrieb";
      mit --oekosysteme X,Y: zusätzlich diese Ökosysteme direkt von OSV nach osv-db laden (z.B. Ubuntu)
   ./container-security-scan.py <container> [ausgabeverzeichnis] [--nur-behebbare] [--alle] [--ausnahmen DATEI]
   ./container-security-scan.py --oeffentliche [ausgabeverzeichnis] [...]
@@ -2175,7 +2175,7 @@ def osv_update(dbdir, ecosystems, full=False):
         save()
 
 
-DATEN_BRANCH = "daten"         # Branch mit den Daten (ohne Code), siehe README "Code und Daten trennen"
+DATEN_BRANCH = "daten"         # Branch mit den Daten (ohne Code), siehe README "Installation und Betrieb"
 DATEN_OEKOSYSTEME = ["Debian", "Alpine", "npm", "PyPI", "Packagist", "Maven", "Go", "Bitnami"]
 DATEN_TEILE = {"Debian": 8, "npm": 8, "PyPI": 2}     # Dateien je Ökosystem (jede deutlich < 50 MB)
 
@@ -2591,7 +2591,7 @@ def main():
             # er root über symbolische Links (z.B. stand.json.tmp -> /etc/...) beliebige Dateien überschreiben lassen
             raise ScanError("--db-aktualisieren als root abgelehnt: Daten als eigener Benutzer ohne Rechte laden "
                             "(z.B. runuser -u csscan -- ... --db DIR --db-aktualisieren) und beim Scan mit --db "
-                            "verwenden (README: \"Code und Daten trennen\").")
+                            "verwenden (README: \"Installation und Betrieb\").")
         # Daten liegen im Branch "daten" (ohne Code), Code im Branch "main". Hier wird nur der Daten-Branch geholt
         # bzw. aktualisiert, nie der Code: den aktualisiert man von Hand nach Prüfung (git pull im Code-Checkout).
         daten_git = not a.db and os.path.isdir(os.path.join(data_dir, ".git"))

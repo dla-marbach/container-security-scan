@@ -1,18 +1,16 @@
 # container-security-scan
 
 Schwachstellen-Scan für **laufende Docker-Container** – mit Fokus auf das, was tatsächlich läuft und
-von außen erreichbar ist. Ein einzelnes Python-Skript, nur Standardbibliothek, ab Python 3.6
-(SLES 15), rein lesend. Die Schwachstellendaten (gekürzter Auszug aus [OSV](https://osv.dev)) liegen
-im Branch [`daten`](https://github.com/felixlohmeier/container-security-scan/tree/daten) dieses Repositorys, getrennt vom Code im Branch `main`, und werden
-täglich per GitHub Action aktualisiert – auf dem Server genügt `git pull` im Daten-Clone (siehe
-[Code und Daten trennen](#code-und-daten-trennen)). Paketlisten verlassen den Server nie.
+von außen erreichbar ist. Ein einzelnes Python-Skript, nur Standardbibliothek, ab Python 3.6 (SLES 15),
+rein lesend. Die Schwachstellendaten (gekürzter Auszug aus [OSV](https://osv.dev), dazu Supportende und
+aktiv ausgenutzte Lücken) liegen im Branch [`daten`](https://github.com/felixlohmeier/container-security-scan/tree/daten) und werden täglich per GitHub
+Action aktualisiert; Paketlisten verlassen den Server nie.
+
+Nach der [Einrichtung](#installation-und-betrieb) (einmalig, wenige Minuten):
 
 ```bash
-git clone https://github.com/felixlohmeier/container-security-scan.git
-cd container-security-scan
-./container-security-scan.py --db-aktualisieren          # holt den Branch daten nach daten/ (nicht als root)
-./container-security-scan.py --oeffentliche berichte/ --nur-behebbare
-echo $?        # 0 = ok, 1 = relevante Schwachstellen, 2 = Fehler/unvollständig
+sudo /usr/local/sbin/container-security-scan-lauf
+# 0 = ok, 1 = relevante Schwachstellen, 2 = Fehler/unvollständig – Berichte unter /var/log/container-security-scan/
 ```
 
 ## Warum?
@@ -28,47 +26,215 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 - Von Tausenden Funden zählen die, die ein **öffentlich erreichbarer Dienst** tatsächlich lädt – auch
   hinter einem Reverse Proxy (nginx → php-fpm oder Node im Nachbarcontainer).
 
-## Voraussetzungen
+## Installation und Betrieb
 
-- Linux-Host mit Docker; Aufruf als root (empfohlen) oder Mitglied der Gruppe `docker` – beides gleichwertig:
-  Wer docker steuern darf, ist faktisch root. Für den Code gilt daher in beiden Fällen
-  [Code und Daten trennen](#code-und-daten-trennen).
-- Python ≥ 3.6 (SLES 15: `python3`) und `git`
-- optional `rpm` auf dem Host (nur für RPM-Container ohne eigenes `rpm`)
+Das Skript läuft als root (oder mit docker-Rechten, was gleichwertig ist: Wer docker steuern darf, ist
+faktisch root). Deshalb sind **Code und Daten getrennt** – bitte genau so einrichten:
 
-## Nutzung
+- **Code** (Branch `main`) liegt root-eigen unter `/opt/container-security-scan`, auf einem geprüften Stand
+  festgehalten. Er wird nie automatisch aktualisiert, nur von Hand nach Prüfung ([Schritt 5](#5-code-aktualisieren)).
+- **Daten** (Branch `daten`: nur JSON, kein Code) holt der Benutzer `csscan` ohne Rechte per `git pull`.
+- Das Wrapper-Skript `container-security-scan-lauf` verbindet beides: Daten als `csscan` aktualisieren,
+  dann als root scannen. Es dient für den Aufruf von Hand, per cron und per Rundeck.
 
-```bash
-# alle öffentlich erreichbaren Container (veröffentlichte Ports, Host-Netzwerk) und deren Backends hinter Proxys
-./container-security-scan.py --oeffentliche [ausgabeverzeichnis]
-
-# einen einzelnen Container
-./container-security-scan.py <container> [ausgabeverzeichnis]
-
-# Daten aktualisieren: Branch daten nach daten/ holen bzw. dort git pull – nie den Code; nicht als root
-./container-security-scan.py --db-aktualisieren
-
-# als root: festgehaltener Code, Daten aus einem eigenen Clone des Branches daten (siehe „Code und Daten trennen“)
-/opt/container-security-scan/container-security-scan.py --db /var/lib/container-security-scan/daten --oeffentliche [ausgabeverzeichnis]
-
-# zusätzliche Ökosysteme direkt von OSV laden (nach osv-db/), z. B. für Ubuntu-basierte Images
-# wie mariadb, solr oder elasticsearch (ca. 800 MB)
-./container-security-scan.py --db-aktualisieren --oekosysteme Ubuntu
-
-# alle Daten direkt von OSV und endoflife.date statt über GitHub (siehe „Daten“): laden als csscan, scannen als root
-runuser -u csscan -- ./container-security-scan.py --db /var/lib/container-security-scan/osv-db --db-aktualisieren
-./container-security-scan.py --db /var/lib/container-security-scan/osv-db --oeffentliche [ausgabeverzeichnis]
+```
+/opt/container-security-scan/                  Code (Branch main): root, festgehalten
+/var/lib/container-security-scan/daten/        Daten (Branch daten): csscan, git pull bei jedem Lauf
+/usr/local/sbin/container-security-scan-lauf   Wrapper: root
+/etc/container-security-scan/ausnahmen.txt     optional: Ausnahmeliste, root
+/var/log/container-security-scan/              Berichte und Logs
 ```
 
-| Option | Bedeutung |
-|---|---|
-| `--oeffentliche` | alle öffentlich erreichbaren Container; Backends hinter einem öffentlichen Proxy (auch in anderen Containern) werden mitgeprüft und zählen als öffentlich |
-| `--nur-behebbare` | für den Rückgabewert nur Funde zählen, für die es einen Fix gibt – **empfohlen** für die Alarmierung, sonst melden Container mit offenen, noch unbehobenen CVEs dauerhaft `1` |
-| `--alle` | alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV) |
-| `--ausnahmen DATEI` | Ausnahmeliste: passende Funde zählen nicht als relevant, jede Ausnahme mit Begründung und Ablaufdatum (siehe [Ausnahmen](#ausnahmen)) |
-| `--db-aktualisieren` | als root abgelehnt (Rückgabewert 2): nie Daten aus dem Netz als root schreiben. Im Git-Checkout den Branch `daten` nach `daten/` holen bzw. dort `git pull` – **nie den Code**; mit `--oekosysteme A,B` zusätzlich diese Ökosysteme direkt von OSV nach `osv-db/` (inkrementell, `--voll` lädt alles neu). Ohne Git-Checkout oder mit `--db`: alle Ökosysteme, die EOL- und die KEV-Daten direkt |
-| `--db DIR` | nur diese Datenverzeichnisse verwenden; mehrfach möglich, je Ökosystem gilt das erste, das es enthält. Mit `--db-aktualisieren` genau eines (Ziel). Standard: `daten/` (Clone des Branches `daten`) und `osv-db/` neben dem Skript |
-| `--user` | Benutzer für `docker exec` (Standard `0`) |
+### 1. Einrichten
+
+Voraussetzungen: Linux mit Docker, Python ≥ 3.6 (SLES 15: `python3`), `git`; optional `rpm` (nur für
+RPM-Container ohne eigenes `rpm`). Als root:
+
+```bash
+# Code
+git clone --single-branch --branch main https://github.com/felixlohmeier/container-security-scan.git \
+    /opt/container-security-scan
+chmod -R go-w /opt/container-security-scan
+
+# Daten, als eigener Benutzer ohne Rechte
+useradd -r -U -m -d /var/lib/container-security-scan -s /sbin/nologin csscan
+runuser -u csscan -- git clone --single-branch --branch daten \
+    https://github.com/felixlohmeier/container-security-scan.git /var/lib/container-security-scan/daten
+# nur mit Proxy: runuser -u csscan -- git config --global http.proxy http://proxy:3128
+```
+
+Dann `/usr/local/sbin/container-security-scan-lauf` anlegen (root-eigen, Modus 755, bewusst außerhalb der
+Git-Checkouts):
+
+```bash
+#!/bin/bash
+# Daten als csscan aktualisieren, dann als root mit dem festgehaltenen Code scannen.
+# Aufruf von Hand, per cron (--mail) oder per Rundeck (sudo, ohne Argumente).
+# Ausgabe auf die Konsole und ins Log; letzte Zeile "ERGEBNIS: …"; Rückgabewert 0/1/2 wie das Skript.
+set -u
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+CODE=/opt/container-security-scan/container-security-scan.py
+D=/var/lib/container-security-scan
+OUT=/var/log/container-security-scan
+UBUNTU=nein      # ja: zusätzlich Ubuntu-Daten (ca. 800 MB) für Ubuntu-basierte Images (mariadb, solr …)
+AUSNAHMEN=/etc/container-security-scan/ausnahmen.txt   # wird verwendet, wenn vorhanden
+MAIL=nein; [ "${1:-}" = --mail ] && MAIL=ja
+
+cd / && umask 077                       # Berichte enthalten u. a. Prozess-Kommandozeilen
+exec 9>/run/container-security-scan.lock
+flock -n 9 || { echo "ERGEBNIS: UNVOLLSTAENDIG (Scan läuft bereits) – $(hostname)"; exit 2; }
+mkdir -p "$OUT/berichte"
+LOG=$OUT/$(date +%F_%H%M%S).txt
+ARGS=(--db "$D/daten")
+[ "$UBUNTU" = ja ] && ARGS+=(--db "$D/osv-db")
+[ -f "$AUSNAHMEN" ] && ARGS+=(--ausnahmen "$AUSNAHMEN")
+{
+  runuser -u csscan -- git -C "$D/daten" pull --ff-only --quiet \
+      || { echo "FEHLER: Daten nicht aktualisiert (git pull als csscan)"; exit 2; }
+  if [ "$UBUNTU" = ja ]; then
+      runuser -u csscan -- "$CODE" --db "$D/osv-db" --db-aktualisieren --oekosysteme Ubuntu \
+          || { echo "FEHLER: Ubuntu-Daten nicht aktualisiert"; exit 2; }
+  fi
+  "$CODE" "${ARGS[@]}" --oeffentliche "$OUT/berichte" --nur-behebbare
+} 2>&1 | tee "$LOG"
+rc=${PIPESTATUS[0]}
+case $rc in 0) e=OK ;; 1) e=FUNDE ;; *) e=UNVOLLSTAENDIG; rc=2 ;; esac
+echo "ERGEBNIS: $e (Rückgabewert $rc) – $(hostname)" | tee -a "$LOG"
+[ "$MAIL" = ja ] && [ $rc -ne 0 ] && mail -s "container-security-scan $(hostname): $e" root < "$LOG"
+exit $rc
+```
+
+- **Ubuntu-basierte Images** (z. B. mariadb, solr, elasticsearch – maßgeblich ist die Distribution im
+  Image, nicht der Name) brauchen `UBUNTU=ja`; sonst endet ihr Scan mit Rückgabewert 2 („Daten fehlen
+  für: Ubuntu“). Der Export liegt dann zusätzlich unter `/var/lib/container-security-scan/osv-db/`.
+- **Fehlalarme** gehören mit Begründung und Ablaufdatum in die [Ausnahmeliste](#ausnahmen).
+
+### 2. Bei Bedarf von Hand prüfen
+
+```bash
+sudo /usr/local/sbin/container-security-scan-lauf
+```
+
+Geprüft werden alle öffentlich erreichbaren Container (veröffentlichte Ports, Host-Netzwerk) und die
+Backends hinter ihren Reverse Proxys, auch in anderen Containern. Einen einzelnen Container – z. B. einen
+internen ohne veröffentlichten Port – mit denselben Daten (vorher einmal den Wrapper laufen lassen, damit
+die Daten aktuell sind):
+
+```bash
+sudo /opt/container-security-scan/container-security-scan.py --db /var/lib/container-security-scan/daten \
+    <container> /var/log/container-security-scan/berichte
+```
+
+### 3. Täglich: cron oder Rundeck
+
+Neue Schwachstellen erscheinen in den OSV-Daten typischerweise 1–2 Tage nach Veröffentlichung; die GitHub
+Action übernimmt sie täglich um 03:17 UTC in den Branch `daten`, GitHub startet sie oft bis zu einer Stunde
+später. Den Scan mit Abstand ansetzen, z. B. 07:23 Ortszeit; welcher Datenstand verwendet wurde, steht im
+Bericht unter „Datenbank“.
+
+**cron** – `/etc/cron.d/container-security-scan` (Mail an root nur bei Rückgabewert 1 oder 2):
+
+```cron
+MAILTO=""
+23 7 * * * root /usr/local/sbin/container-security-scan-lauf --mail >/dev/null 2>&1
+```
+
+**Rundeck** – statt cron. Rundeck darf per sudo nur genau den Wrapper starten, ohne Argumente: keine
+allgemeinen root-Rechte, kein `docker`, kein `python3`. Wer Rundeck übernimmt, kann so Scans auslösen,
+aber nicht root auf den Servern werden.
+
+```bash
+cat > /etc/sudoers.d/rundeck-container-scan <<'EOF'
+rundeck ALL=(root) NOPASSWD: /usr/local/sbin/container-security-scan-lauf ""
+EOF
+chmod 440 /etc/sudoers.d/rundeck-container-scan && visudo -c
+```
+
+- `""` am Ende verbietet zusätzliche Argumente. `rundeck` an den eigenen Benutzer anpassen; bei
+  `requiretty` zusätzlich `Defaults:rundeck !requiretty`.
+- Job mit dem Schritt „Command“: `sudo -n /usr/local/sbin/container-security-scan-lauf` – kein Schritt
+  „Script“, der eine Datei auf den Server kopiert (dafür bräuchte Rundeck allgemeine root-Rechte).
+- Zeitplan wie oben; Zeitlimit großzügig (ein Container kann bis zu 30 Minuten dauern); Server, die sich
+  Ressourcen teilen (VMs auf demselben Host), nacheinander oder in kleinen Gruppen abarbeiten.
+- Benachrichtigung bei Fehlschlag. Rückgabewert 1 und 2 sind in Rundeck beide rot; die letzte Zeile
+  `ERGEBNIS: FUNDE` bzw. `ERGEBNIS: UNVOLLSTAENDIG` unterscheidet sie. Berichte und Logs bleiben auf dem
+  jeweiligen Server, die Konsolenausgabe steht zusätzlich im Rundeck-Log.
+- Optional den SSH-Schlüssel auf diesen Befehl festlegen (`~rundeck/.ssh/authorized_keys` auf dem Server,
+  eigener Schlüssel nur für diesen Job):
+
+  ```
+  command="sudo -n /usr/local/sbin/container-security-scan-lauf",from="<IP des Rundeck-Servers>",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA… rundeck-container-scan
+  ```
+
+### 4. Auf das Ergebnis reagieren
+
+- **0** – nichts zu tun.
+- **1** – Funde im Bericht prüfen (seit dem letzten Lauf neue sind markiert) und Images aktualisieren.
+  Fehlalarme mit Begründung und Ablaufdatum in die [Ausnahmeliste](#ausnahmen), nicht die Alarmierung
+  abschalten.
+- **2** – Ursache beheben (Daten nicht aktualisiert oder veraltet, Ubuntu-Daten fehlen, Container nicht
+  lesbar …), sonst ist die Überwachung blind. Details: [Rückgabewert](#rückgabewert).
+- Warnungen zum Supportende ändern den Rückgabewert nicht. Der Host selbst ist nicht Teil des Scans
+  (SLES: `zypper list-patches --category security`).
+
+### 5. Code aktualisieren
+
+Nur nach Prüfung, als root. `git fetch` führt nichts aus; da `main` nur Code enthält, ist jede Änderung zu
+prüfen – auch jede neue Datei neben dem Skript läuft danach als root (z. B. lädt Python eine `json.py`
+neben dem Skript beim `import json` zuerst):
+
+```bash
+cd /opt/container-security-scan
+git fetch origin main
+git diff --stat HEAD origin/main     # was hat sich geändert?
+git diff HEAD origin/main            # ansehen
+git checkout --detach origin/main    # bzw. den geprüften Commit
+```
+
+Nie: `git pull` in `/opt` per cron, den Code aus dem Daten-Clone starten, `--db-aktualisieren` als root
+(wird abgelehnt) – und kein Checkout, den ein anderer Benutzer ändern kann, als root oder mit
+docker-Rechten ausführen.
+
+### Hintergrund: Warum diese Trennung?
+
+Käme der Code automatisch aus GitHub, hätte jeder, der das Repository übernimmt, mit dem nächsten Lauf root
+auf allen Servern – auch ohne das Skript selbst zu ändern. Mit der Trennung kann eine Übernahme nur die
+Daten fälschen, Funde also unterdrücken oder erfinden; Code als root läuft dadurch nicht. Wer auch GitHub
+als Datenquelle ausschließen will, lädt die Daten direkt von OSV
+([Sonderfall](#sonderfall-daten-direkt-von-osv-statt-über-github)).
+
+#### Branches auf GitHub schützen (Rulesets)
+
+In den Einstellungen des Repositorys unter *Settings → Rules → Rulesets* (bzw. *Settings → Actions*):
+
+| Ruleset bzw. Einstellung | Regeln | Wirkung |
+|---|---|---|
+| Branch `main` (Default branch) | *Restrict deletions*, *Block force pushes*, *Require a pull request before merging*, optional *Require status checks to pass* (Unit-Tests) und *Require signed commits*; keine Ausnahme (*Bypass list*) für GitHub Actions | Code ändert sich nur über einen Pull Request; das Token des Workflows kann `main` nicht beschreiben. |
+| Branch `daten` | *Restrict deletions*, *Block force pushes* | Die Action committet weiter direkt; die Historie der Daten lässt sich nicht umschreiben. |
+| *Actions → General → Workflow permissions* | *Allow GitHub Actions to create and approve pull requests* aus (Standard) | Der Workflow kann sich nicht über einen eigenen Pull Request nach `main` schreiben. |
+
+Rulesets schützen gegen Versehen und gegen ein missbrauchtes Token des Workflows, **nicht** gegen eine
+Übernahme des Kontos: Wer Admin-Rechte hat, kann sie abschalten. Deshalb bleibt der Code auf dem Server
+festgehalten und wird nur nach Prüfung aktualisiert (optional über signierte Tags, siehe unten).
+
+#### Signierte Tags (optional)
+
+Geprüfte Stände werden mit einem Schlüssel signiert, der nicht bei
+GitHub liegt (z. B. auf einem Hardware-Token). Der Server übernimmt nur so signierte Tags; wer das
+Repository übernimmt, kann keine gültigen erzeugen. Die Liste der erlaubten Schlüssel wird auf dem
+Server gepflegt, nicht aus dem Repository geholt:
+
+```bash
+# /etc/container-security-scan/allowed_signers: <name> ssh-ed25519 AAAA…
+git fetch origin --tags
+git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=/etc/container-security-scan/allowed_signers \
+    verify-tag v1.2 && git checkout --detach v1.2
+```
+
+Ein von der GitHub Action signierter Daten-Commit hilft dagegen nicht: Der Schlüssel läge als Secret bei
+GitHub, und wer das Repository übernimmt, kann den Workflow ändern.
+
+## Ergebnis verstehen
 
 ### Rückgabewert
 
@@ -141,238 +307,28 @@ CVE-2026-107814   mariadb       2027-03-31  betrifft nur die RPM-Pakete von Mari
 - Ausgenommene Funde stehen im Bericht unter „Nicht gezählt“ und in der Tabelle mit Begründung.
 - Eine fehlerhafte Zeile bricht den Scan ab (Rückgabewert 2) statt still etwas auszublenden.
 
-## Code und Daten trennen
+## Aufruf und Optionen
 
-Das Skript läuft als root. Käme sein Code automatisch aus GitHub, hätte jeder, der das Repository
-übernimmt, mit dem nächsten Lauf root auf allen Servern – auch ohne das Skript selbst zu ändern, z. B.
-über eine zusätzliche `json.py` neben dem Skript, die Python beim `import json` zuerst lädt. Deshalb:
-
-- **Zwei Branches:** `main` enthält nur Code, [`daten`](https://github.com/felixlohmeier/container-security-scan/tree/daten) nur Daten (JSON, keine
-  Programme). Die GitHub Action läuft mit dem Code aus `main` und schreibt nur nach `daten`.
-- **Code** liegt root-eigen unter `/opt/container-security-scan` (Branch `main`), auf einem geprüften Stand
-  festgehalten, und wird nur von Hand nach Prüfung aktualisiert.
-- **Daten** holt ein Benutzer ohne Rechte (`csscan`) täglich in einen Clone nur des Branches `daten`. Darin
-  liegt kein Code, der versehentlich als root gestartet werden könnte. Der Scan als root liest daraus nur
-  JSON-Dateien (`--db`).
-- `--db-aktualisieren` holt nur den Branch `daten`, nie den Code, und lehnt jeden Aufruf als root ab
-  (Rückgabewert 2): Daten aus dem Netz soll root nicht in ein Verzeichnis schreiben, das einem anderen
-  Benutzer gehört (symbolische Links).
-- Gleiches gilt für Mitglieder der Gruppe `docker`: Ein Checkout, den jemand anders (oder `git pull`)
-  aktualisiert, darf nicht mit root- oder docker-Rechten laufen – sonst hat, wer ihn ändern kann, root.
-
-```
-/opt/container-security-scan/              Code (Branch main): root, festgehalten
-/var/lib/container-security-scan/daten/    Daten (nur Branch daten): csscan, täglich git pull
-/var/lib/container-security-scan/osv-db/   optional, z. B. Ubuntu-Daten direkt von OSV: csscan
-```
-
-Einrichtung (als root):
+Für den Betrieb genügt der Wrapper ([Installation und Betrieb](#installation-und-betrieb)). Direkter Aufruf
+für Spezialfälle, immer mit dem festgehaltenen Code und `--db`:
 
 ```bash
-# Code
-git clone --single-branch --branch main https://github.com/felixlohmeier/container-security-scan.git \
-    /opt/container-security-scan
-chmod -R go-w /opt/container-security-scan
-
-# Daten
-useradd -r -U -m -d /var/lib/container-security-scan -s /sbin/nologin csscan
-runuser -u csscan -- git clone --single-branch --branch daten \
-    https://github.com/felixlohmeier/container-security-scan.git /var/lib/container-security-scan/daten
+C=/opt/container-security-scan/container-security-scan.py
+DB=/var/lib/container-security-scan/daten
+sudo $C --db $DB --oeffentliche <ausgabeverzeichnis>          # wie der Wrapper, ohne Datenaktualisierung
+sudo $C --db $DB <container> <ausgabeverzeichnis>             # einzelner Container
+sudo $C --db $DB --alle <container> <ausgabeverzeichnis>      # alle Befunde in die Tabelle
 ```
 
-Braucht der Server einen Proxy, diesen für `csscan` in git eintragen
-(`runuser -u csscan -- git config --global http.proxy http://proxy:3128`).
-
-Damit hat eine Übernahme des Repositorys nur noch eine Folge: Die Daten können gefälscht sein, Funde
-also unterdrückt oder erfunden werden. Code als root läuft dadurch nicht. Wer auch GitHub als Datenquelle
-ausschließen will, lädt die Daten direkt von OSV ([siehe unten](#direkt-von-osv-statt-über-github)).
-
-### Branches schützen (Rulesets)
-
-In den Einstellungen des Repositorys unter *Settings → Rules → Rulesets* (bzw. *Settings → Actions*):
-
-| Ruleset bzw. Einstellung | Regeln | Wirkung |
-|---|---|---|
-| Branch `main` (Default branch) | *Restrict deletions*, *Block force pushes*, *Require a pull request before merging*, optional *Require status checks to pass* (Unit-Tests) und *Require signed commits*; keine Ausnahme (*Bypass list*) für GitHub Actions | Code ändert sich nur über einen Pull Request; das Token des Workflows kann `main` nicht beschreiben. |
-| Branch `daten` | *Restrict deletions*, *Block force pushes* | Die Action committet weiter direkt; die Historie der Daten lässt sich nicht umschreiben. |
-| *Actions → General → Workflow permissions* | *Allow GitHub Actions to create and approve pull requests* aus (Standard) | Der Workflow kann sich nicht über einen eigenen Pull Request nach `main` schreiben. |
-
-Rulesets schützen gegen Versehen und gegen ein missbrauchtes Token des Workflows, **nicht** gegen eine
-Übernahme des Kontos: Wer Admin-Rechte hat, kann sie abschalten. Deshalb bleibt der Code auf dem Server
-festgehalten und wird nur nach Prüfung aktualisiert (optional über signierte Tags, siehe unten).
-
-### Code aktualisieren
-
-Nur nach Prüfung, als root. `git fetch` führt nichts aus; da `main` nur Code enthält, ist jede Änderung zu
-prüfen – jede neue `.py`-Datei neben dem Skript würde mitgeladen:
-
-```bash
-cd /opt/container-security-scan
-git fetch origin main
-git diff --stat HEAD origin/main     # was hat sich geändert?
-git diff HEAD origin/main            # ansehen
-git checkout --detach origin/main    # bzw. den geprüften Commit
-```
-
-Optional mit **signierten Tags**: Geprüfte Stände werden mit einem Schlüssel signiert, der nicht bei
-GitHub liegt (z. B. auf einem Hardware-Token). Der Server übernimmt nur so signierte Tags; wer das
-Repository übernimmt, kann keine gültigen erzeugen. Die Liste der erlaubten Schlüssel wird auf dem
-Server gepflegt, nicht aus dem Repository geholt:
-
-```bash
-# /etc/container-security-scan/allowed_signers: <name> ssh-ed25519 AAAA…
-git fetch origin --tags
-git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=/etc/container-security-scan/allowed_signers \
-    verify-tag v1.2 && git checkout --detach v1.2
-```
-
-Ein von der GitHub Action signierter Daten-Commit hilft dagegen nicht: Der Schlüssel läge als Secret bei
-GitHub, und wer das Repository übernimmt, kann den Workflow ändern.
-
-## Täglicher Betrieb
-
-Neue Schwachstellen erscheinen in den OSV-Daten typischerweise 1–2 Tage nach Veröffentlichung; die
-GitHub Action übernimmt sie täglich um 03:17 UTC in den Branch `daten`. Ein täglicher Lauf erkennt sie für
-die bereits laufenden Versionen, ohne dass dafür etwas angepasst werden muss.
-
-Den Scan **nicht zu früh** nach der Action ansetzen: Geplante GitHub-Läufe starten oft mit Verzögerung
-(bis etwa eine Stunde, selten mehr). Läuft der Scan vorher, prüft er mit dem Stand des Vortags. Bei
-mitteleuropäischer Zeit wäre z. B. 05:23 im Sommer schon 03:23 UTC. 07:23 Ortszeit (05:23 bzw. 06:23 UTC)
-lässt genug Abstand; die Daten sind beim Scan dann nur wenige Stunden alt. Welcher Stand verwendet wurde,
-steht im Bericht unter „Datenbank“.
-
-`/etc/cron.d/container-security-scan` (Mail nur bei Rückgabewert ≠ 0):
-
-```cron
-MAILTO=""
-23 7 * * * root /usr/local/sbin/container-security-scan-taeglich
-```
-
-`/usr/local/sbin/container-security-scan-taeglich` (root-eigen, Modus 755; bewusst nicht im Git-Checkout):
-
-```bash
-#!/bin/bash
-# Daten als csscan aktualisieren, dann als root mit festgehaltenem Code scannen (README: Code und Daten trennen)
-PATH=/usr/sbin:/usr/bin:/sbin:/bin
-D=/var/lib/container-security-scan
-OUT=/var/log/container-security-scan
-UBUNTU=nein                    # ja: Ubuntu-Daten (ca. 800 MB) nach $D/osv-db laden und verwenden
-AUSNAHMEN=/etc/container-security-scan/ausnahmen.txt   # optional, siehe „Ausnahmen“
-cd / && umask 077              # Berichte enthalten u. a. Prozess-Kommandozeilen
-mkdir -p "$OUT/berichte"
-LOG=$OUT/$(date +%F).txt
-DB=(--db "$D/daten")
-[ "$UBUNTU" = ja ] && DB+=(--db "$D/osv-db")
-[ -f "$AUSNAHMEN" ] && DB+=(--ausnahmen "$AUSNAHMEN")
-(
-  if ! runuser -u csscan -- git -C "$D/daten" pull --ff-only --quiet; then
-      echo "FEHLER: Daten nicht aktualisiert (git pull als csscan)"; exit 2
-  fi
-  if [ "$UBUNTU" = ja ] && ! runuser -u csscan -- /opt/container-security-scan/container-security-scan.py \
-          --db "$D/osv-db" --db-aktualisieren --oekosysteme Ubuntu; then
-      echo "FEHLER: Ubuntu-Daten nicht aktualisiert"; exit 2
-  fi
-  /opt/container-security-scan/container-security-scan.py "${DB[@]}" --oeffentliche "$OUT/berichte" --nur-behebbare
-) > "$LOG" 2>&1
-rc=$?
-[ $rc -ne 0 ] && mail -s "container-security-scan $(hostname): Rückgabewert $rc" root < "$LOG"
-exit $rc
-```
-
-Schlägt die Datenaktualisierung fehl, ist der Rückgabewert 2 (nicht der von git). Bleibt sie mehrere
-Tage aus, meldet auch der Scan veraltete Daten (Rückgabewert 2).
-
-- **1** → Funde prüfen und Images aktualisieren. Der Bericht markiert Funde, die seit dem letzten Lauf **neu** sind.
-- **2** → Ursache beheben (Daten, Ökosystem ergänzen, Container), sonst ist die Überwachung blind.
-- Warnungen zum Supportende sind keine OSV-Schwachstellen und ändern den Rückgabewert nicht.
-- Fehlalarme nicht durch Abschalten der Alarmierung lösen, sondern mit Begründung und Ablaufdatum in die
-  [Ausnahmeliste](#ausnahmen) eintragen.
-- Der Host selbst (SLES) ist nicht Teil des Scans: dafür `zypper list-patches --category security`.
-
-### Mit Rundeck
-
-Rundeck übernimmt Zeitplan, Übersicht und Benachrichtigung; Code und Daten bleiben auf jedem Server,
-getrennt wie oben. Rundeck darf per sudo nur genau dieses eine Skript starten – keine allgemeinen
-root-Rechte, kein `docker`, kein `python3` mit beliebigen Argumenten. Wer Rundeck übernimmt, kann so
-Scans auslösen, aber nicht root auf den Servern werden.
-
-`/usr/local/sbin/container-security-scan-rundeck` (root-eigen, Modus 755; statt cron und
-`container-security-scan-taeglich`):
-
-```bash
-#!/bin/bash
-# Aufruf durch Rundeck: sudo -n /usr/local/sbin/container-security-scan-rundeck
-# Ausgabe ins Rundeck-Log, letzte Zeile "ERGEBNIS: ...", Rückgabewert wie beim Skript (0/1/2).
-PATH=/usr/sbin:/usr/bin:/sbin:/bin
-D=/var/lib/container-security-scan
-OUT=/var/log/container-security-scan
-UBUNTU=nein                    # ja: Ubuntu-Daten (ca. 800 MB) nach $D/osv-db laden und verwenden
-AUSNAHMEN=/etc/container-security-scan/ausnahmen.txt   # optional, siehe „Ausnahmen“
-cd / && umask 077              # Berichte enthalten u. a. Prozess-Kommandozeilen
-exec 9>/run/container-security-scan.lock
-if ! flock -n 9; then
-    echo "ERGEBNIS: UNVOLLSTAENDIG (Rückgabewert 2, Scan läuft bereits) – $(hostname)"
-    exit 2
-fi
-mkdir -p "$OUT/berichte"
-LOG=$OUT/$(date +%F_%H%M%S).txt
-DB=(--db "$D/daten")
-[ "$UBUNTU" = ja ] && DB+=(--db "$D/osv-db")
-[ -f "$AUSNAHMEN" ] && DB+=(--ausnahmen "$AUSNAHMEN")
-{
-  if ! runuser -u csscan -- git -C "$D/daten" pull --ff-only --quiet; then
-      echo "FEHLER: Daten nicht aktualisiert (git pull als csscan)"; exit 2
-  fi
-  if [ "$UBUNTU" = ja ] && ! runuser -u csscan -- /opt/container-security-scan/container-security-scan.py \
-          --db "$D/osv-db" --db-aktualisieren --oekosysteme Ubuntu; then
-      echo "FEHLER: Ubuntu-Daten nicht aktualisiert"; exit 2
-  fi
-  /opt/container-security-scan/container-security-scan.py "${DB[@]}" --oeffentliche "$OUT/berichte" --nur-behebbare
-} 2>&1 | tee "$LOG"
-rc=${PIPESTATUS[0]}
-case $rc in
-    0) ergebnis=OK ;;
-    1) ergebnis=FUNDE ;;
-    *) ergebnis=UNVOLLSTAENDIG; rc=2 ;;
-esac
-echo "ERGEBNIS: $ergebnis (Rückgabewert $rc) – $(hostname)" | tee -a "$LOG"
-exit $rc
-```
-
-sudo-Regel (als root):
-
-```bash
-cat > /etc/sudoers.d/rundeck-container-scan <<'EOF'
-rundeck ALL=(root) NOPASSWD: /usr/local/sbin/container-security-scan-rundeck ""
-EOF
-chmod 440 /etc/sudoers.d/rundeck-container-scan
-visudo -c
-```
-
-`""` am Ende verbietet zusätzliche Argumente. Das Skript liegt bewusst außerhalb der Git-Checkouts, damit
-git-Operationen es nicht berühren; wie alles, was sudo als root startet, darf es nur root ändern können. Den Benutzernamen an Ihren Rundeck-Benutzer anpassen;
-ist `requiretty` gesetzt, zusätzlich `Defaults:rundeck !requiretty`. Optional lässt sich auch der
-SSH-Schlüssel auf diesen Befehl festlegen (`~rundeck/.ssh/authorized_keys` auf dem Server; dann eigener
-Schlüssel nur für diesen Job):
-
-```
-command="sudo -n /usr/local/sbin/container-security-scan-rundeck",from="<IP des Rundeck-Servers>",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA… rundeck-container-scan
-```
-
-Rundeck-Job:
-
-- Schritt „Command“: `sudo -n /usr/local/sbin/container-security-scan-rundeck` – kein Schritt „Script“,
-  der eine Datei auf den Server kopiert und ausführt (dafür bräuchte der Rundeck-Benutzer allgemeine
-  root-Rechte).
-- Zeitplan täglich mit Abstand zur Action (siehe oben), z. B. 07:23.
-- Zeitlimit großzügig (mehrere Stunden): ein Container kann bis zu 30 Minuten dauern.
-- Teilen sich Server Ressourcen (VMs auf demselben Host, gemeinsamer Speicher), die Server nacheinander
-  oder in kleinen Gruppen abarbeiten statt alle parallel.
-- Benachrichtigung bei Fehlschlag. Rundeck kennt nur Erfolg oder Fehlschlag: Rückgabewert 1 und 2 sind
-  beide rot, die Zeile `ERGEBNIS: FUNDE` bzw. `ERGEBNIS: UNVOLLSTAENDIG` am Ende des Logs unterscheidet sie.
-
-Die Berichte und `bekannt_*.json` (Markierung „neu“) bleiben auf dem jeweiligen Server unter
-`/var/log/container-security-scan/`; die Konsolenausgabe steht zusätzlich im Rundeck-Log.
+| Option | Bedeutung |
+|---|---|
+| `--oeffentliche` | alle öffentlich erreichbaren Container; Backends hinter einem öffentlichen Proxy (auch in anderen Containern) werden mitgeprüft und zählen als öffentlich |
+| `--nur-behebbare` | für den Rückgabewert nur Funde zählen, für die es einen Fix gibt – **empfohlen** für die Alarmierung, sonst melden Container mit offenen, noch unbehobenen CVEs dauerhaft `1` |
+| `--alle` | alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV) |
+| `--ausnahmen DATEI` | Ausnahmeliste: passende Funde zählen nicht als relevant, jede Ausnahme mit Begründung und Ablaufdatum (siehe [Ausnahmen](#ausnahmen)) |
+| `--db-aktualisieren` | als root abgelehnt (Rückgabewert 2): nie Daten aus dem Netz als root schreiben. Im Git-Checkout den Branch `daten` nach `daten/` holen bzw. dort `git pull` – **nie den Code**; mit `--oekosysteme A,B` zusätzlich diese Ökosysteme direkt von OSV nach `osv-db/` (inkrementell, `--voll` lädt alles neu). Ohne Git-Checkout oder mit `--db`: alle Ökosysteme, die EOL- und die KEV-Daten direkt |
+| `--db DIR` | nur diese Datenverzeichnisse verwenden; mehrfach möglich, je Ökosystem gilt das erste, das es enthält. Mit `--db-aktualisieren` genau eines (Ziel). Standard: `daten/` (Clone des Branches `daten`) und `osv-db/` neben dem Skript |
+| `--user` | Benutzer für `docker exec` (Standard `0`) |
 
 ## Ausgabe
 
@@ -423,25 +379,23 @@ Quellen und Lizenzen: [`QUELLEN.md` im Branch `daten`](https://github.com/felixl
 nach `osv-db/`. Für Ökosysteme, die es im Branch `daten` schon gibt, ist das wirkungslos: Je Ökosystem
 gilt das erste Verzeichnis, das es enthält, und `daten/` (bzw. das erste `--db`) kommt vor `osv-db/`.
 
-Für Ubuntu-basierte Varianten von MariaDB, Solr und Elasticsearch ist einmalig
-`./container-security-scan.py --db-aktualisieren --oekosysteme Ubuntu` erforderlich. Der große Export
-liegt nur lokal in `osv-db/`, nicht im Repository; bei späteren Aktualisierungen denselben Befehl
-erneut ausführen. Bei getrennten Daten (Betrieb als root) lädt `csscan` sie in ein eigenes Verzeichnis,
-das beim Scan als zweites `--db` angegeben wird (`UBUNTU=ja` in den Skripten unter „Täglicher Betrieb“). Maßgeblich ist die Distribution des jeweiligen Images, nicht der Imagename.
-Fehlen die Ubuntu-Daten, bleibt das Ergebnis ausdrücklich unvollständig (Rückgabewert 2).
+Für Ubuntu-basierte Images (z. B. MariaDB, Solr, Elasticsearch) braucht es zusätzlich den Ubuntu-Export
+(ca. 800 MB). Er liegt nicht im Branch `daten`; der Wrapper lädt ihn mit `UBUNTU=ja` als `csscan` nach
+`osv-db/` und gibt ihn beim Scan als zweites `--db` an. Maßgeblich ist die Distribution des jeweiligen
+Images, nicht der Imagename. Fehlen die Ubuntu-Daten, bleibt das Ergebnis ausdrücklich unvollständig
+(Rückgabewert 2).
 
-### Direkt von OSV statt über GitHub
+### Sonderfall: Daten direkt von OSV statt über GitHub
 
-Ohne Git-Checkout oder mit `--db DIR` lädt `--db-aktualisieren` alle Ökosysteme direkt von OSV
-(`storage.googleapis.com`), die EOL-Daten von endoflife.date und den KEV-Katalog der CISA in dieses Verzeichnis. `--db DIR` dann
-auch beim Scan angeben, sonst werden die Repository-Daten verwendet. Bei getrennten Daten ersetzt das den
-Clone von `csscan`; GitHub ist dann gar nicht mehr beteiligt:
+Nur nötig, wenn der Server `github.com` nicht erreichen darf oder GitHub auch als Datenquelle
+ausgeschlossen sein soll. Dann lädt `csscan` alle Ökosysteme direkt von OSV (`storage.googleapis.com`),
+die EOL-Daten von endoflife.date und den KEV-Katalog der CISA. Im Wrapper dafür die Zeilen mit `git pull`
+und `ARGS=` ersetzen:
 
 ```bash
-runuser -u csscan -- /opt/container-security-scan/container-security-scan.py \
-    --db /var/lib/container-security-scan/osv-db --db-aktualisieren               # täglich, als csscan
-/opt/container-security-scan/container-security-scan.py \
-    --db /var/lib/container-security-scan/osv-db --oeffentliche … --nur-behebbare  # Scan als root
+  runuser -u csscan -- "$CODE" --db "$D/osv-db" --db-aktualisieren \
+      || { echo "FEHLER: Daten nicht aktualisiert (direkt von OSV)"; exit 2; }
+ARGS=(--db "$D/osv-db")
 ```
 
 - **Erster Lauf:** die Gesamtexporte, zusammen ca. 390 MB (Stand 11/2026: npm 220 MB, Debian 81 MB,
@@ -577,7 +531,16 @@ CVE und Paket abgeglichen, Abweichungen einzeln geprüft):
 
 Grype eignet sich als unabhängige Zweitmeinung: andere Datenquellen (NVD, GitHub, Hersteller) als OSV.
 
-### Tests
+## Entwicklung und Tests
+
+Zum Ausprobieren und Entwickeln, **nur auf einem eigenen Testrechner** – auf Servern gilt
+[Installation und Betrieb](#installation-und-betrieb):
+
+```bash
+git clone https://github.com/felixlohmeier/container-security-scan.git && cd container-security-scan
+./container-security-scan.py --db-aktualisieren        # Branch daten nach daten/ holen (nicht als root)
+sudo ./container-security-scan.py --oeffentliche berichte/ --nur-behebbare
+```
 
 ```bash
 python3 -m unittest discover -s tests                                   # Unit-Tests, ohne Docker (ca. 1 s)
