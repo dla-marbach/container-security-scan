@@ -195,45 +195,6 @@ Nie: `git pull` in `/opt` per cron, den Code aus dem Daten-Clone starten, `--db-
 (wird abgelehnt) – und kein Checkout, den ein anderer Benutzer ändern kann, als root oder mit
 docker-Rechten ausführen.
 
-### Hintergrund: Warum diese Trennung?
-
-Käme der Code automatisch aus GitHub, hätte jeder, der das Repository übernimmt, mit dem nächsten Lauf root
-auf allen Servern – auch ohne das Skript selbst zu ändern. Mit der Trennung kann eine Übernahme nur die
-Daten fälschen, Funde also unterdrücken oder erfinden; Code als root läuft dadurch nicht. Wer auch GitHub
-als Datenquelle ausschließen will, lädt die Daten direkt von OSV
-([Sonderfall](#sonderfall-daten-direkt-von-osv-statt-über-github)).
-
-#### Branches auf GitHub schützen (Rulesets)
-
-In den Einstellungen des Repositorys unter *Settings → Rules → Rulesets* (bzw. *Settings → Actions*):
-
-| Ruleset bzw. Einstellung | Regeln | Wirkung |
-|---|---|---|
-| Branch `main` (Default branch) | *Restrict deletions*, *Block force pushes*, *Require a pull request before merging*, optional *Require status checks to pass* (Unit-Tests) und *Require signed commits*; keine Ausnahme (*Bypass list*) für GitHub Actions | Code ändert sich nur über einen Pull Request; das Token des Workflows kann `main` nicht beschreiben. |
-| Branch `daten` | *Restrict deletions*, *Block force pushes* | Die Action committet weiter direkt; die Historie der Daten lässt sich nicht umschreiben. |
-| *Actions → General → Workflow permissions* | *Allow GitHub Actions to create and approve pull requests* aus (Standard) | Der Workflow kann sich nicht über einen eigenen Pull Request nach `main` schreiben. |
-
-Rulesets schützen gegen Versehen und gegen ein missbrauchtes Token des Workflows, **nicht** gegen eine
-Übernahme des Kontos: Wer Admin-Rechte hat, kann sie abschalten. Deshalb bleibt der Code auf dem Server
-festgehalten und wird nur nach Prüfung aktualisiert (optional über signierte Tags, siehe unten).
-
-#### Signierte Tags (optional)
-
-Geprüfte Stände werden mit einem Schlüssel signiert, der nicht bei
-GitHub liegt (z. B. auf einem Hardware-Token). Der Server übernimmt nur so signierte Tags; wer das
-Repository übernimmt, kann keine gültigen erzeugen. Die Liste der erlaubten Schlüssel wird auf dem
-Server gepflegt, nicht aus dem Repository geholt:
-
-```bash
-# /etc/container-security-scan/allowed_signers: <name> ssh-ed25519 AAAA…
-git fetch origin --tags
-git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=/etc/container-security-scan/allowed_signers \
-    verify-tag v1.2 && git checkout --detach v1.2
-```
-
-Ein von der GitHub Action signierter Daten-Commit hilft dagegen nicht: Der Schlüssel läge als Secret bei
-GitHub, und wer das Repository übernimmt, kann den Workflow ändern.
-
 ## Ergebnis verstehen
 
 ### Rückgabewert
@@ -565,6 +526,21 @@ CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # m
 
 Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11 und 3.13
 sowie den Docker-Test aus.
+
+### Repository auf GitHub (Rulesets)
+
+Damit das Token des Workflows nur die Daten ändern kann, in den Einstellungen des Repositorys unter
+*Settings → Rules → Rulesets* (bzw. *Settings → Actions*) einrichten:
+
+| Ruleset bzw. Einstellung | Regeln | Wirkung |
+|---|---|---|
+| Branch `main` (Default branch) | *Restrict deletions*, *Block force pushes*, *Require a pull request before merging*, optional *Require status checks to pass* (Unit-Tests) und *Require signed commits*; keine Ausnahme (*Bypass list*) für GitHub Actions | Code ändert sich nur über einen Pull Request; das Token des Workflows kann `main` nicht beschreiben. |
+| Branch `daten` | *Restrict deletions*, *Block force pushes* | Die Action committet weiter direkt; die Historie der Daten lässt sich nicht umschreiben. |
+| *Actions → General → Workflow permissions* | *Allow GitHub Actions to create and approve pull requests* aus (Standard) | Der Workflow kann sich nicht über einen eigenen Pull Request nach `main` schreiben. |
+
+Rulesets schützen gegen Versehen und gegen ein missbrauchtes Token des Workflows, **nicht** gegen eine
+Übernahme des Kontos: Wer Admin-Rechte hat, kann sie abschalten. Deshalb bleibt der Code auf dem Server
+festgehalten und wird nur nach Prüfung aktualisiert.
 
 ## Verwandte Werkzeuge
 
