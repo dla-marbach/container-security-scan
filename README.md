@@ -76,7 +76,6 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 CODE=/opt/container-security-scan/container-security-scan.py
 D=/var/lib/container-security-scan
 OUT=/var/log/container-security-scan
-UBUNTU=nein      # ja: zusätzlich Ubuntu-Daten (ca. 800 MB) für Ubuntu-basierte Images (mariadb, solr …)
 AUSNAHMEN=/etc/container-security-scan/ausnahmen.txt   # wird verwendet, wenn vorhanden
 MAIL=nein; [ "${1:-}" = --mail ] && MAIL=ja
 
@@ -86,15 +85,10 @@ flock -n 9 || { echo "ERGEBNIS: UNVOLLSTAENDIG (Scan läuft bereits) – $(hostn
 mkdir -p "$OUT/berichte"
 LOG=$OUT/$(date +%F_%H%M%S).txt
 ARGS=(--db "$D/daten")
-[ "$UBUNTU" = ja ] && ARGS+=(--db "$D/osv-db")
 [ -f "$AUSNAHMEN" ] && ARGS+=(--ausnahmen "$AUSNAHMEN")
 {
   runuser -u csscan -- git -C "$D/daten" pull --ff-only --quiet \
       || { echo "FEHLER: Daten nicht aktualisiert (git pull als csscan)"; exit 2; }
-  if [ "$UBUNTU" = ja ]; then
-      runuser -u csscan -- "$CODE" --db "$D/osv-db" --db-aktualisieren --oekosysteme Ubuntu \
-          || { echo "FEHLER: Ubuntu-Daten nicht aktualisiert"; exit 2; }
-  fi
   "$CODE" "${ARGS[@]}" --oeffentliche "$OUT/berichte" --nur-behebbare
 } 2>&1 | tee "$LOG"
 rc=${PIPESTATUS[0]}
@@ -103,10 +97,6 @@ echo "ERGEBNIS: $e (Rückgabewert $rc) – $(hostname)" | tee -a "$LOG"
 [ "$MAIL" = ja ] && [ $rc -ne 0 ] && mail -s "container-security-scan $(hostname): $e" root < "$LOG"
 exit $rc
 ```
-
-- **Ubuntu-basierte Images** (z. B. mariadb, solr, elasticsearch – maßgeblich ist die Distribution im
-  Image, nicht der Name) brauchen `UBUNTU=ja`; sonst endet ihr Scan mit Rückgabewert 2 („Daten fehlen
-  für: Ubuntu“). Der Export liegt dann zusätzlich unter `/var/lib/container-security-scan/osv-db/`.
 
 **Ausnahmeliste** (optional, kann auch später angelegt werden): Fehlalarme und bewusst akzeptierte Risiken
 mit Begründung und Ablaufdatum. Der Wrapper verwendet sie automatisch, sobald die Datei existiert. Sie muss
@@ -186,8 +176,8 @@ chmod 440 /etc/sudoers.d/rundeck-container-scan && visudo -c
 - **1** – Funde im Bericht prüfen (seit dem letzten Lauf neue sind markiert) und Images aktualisieren.
   Fehlalarme mit Begründung und Ablaufdatum in die [Ausnahmeliste](#ausnahmen), nicht die Alarmierung
   abschalten.
-- **2** – Ursache beheben (Daten nicht aktualisiert oder veraltet, Ubuntu-Daten fehlen, Container nicht
-  lesbar …), sonst ist die Überwachung blind. Details: [Rückgabewert](#rückgabewert).
+- **2** – Ursache beheben (Daten nicht aktualisiert oder veraltet, Container nicht lesbar …), sonst ist
+  die Überwachung blind. Details: [Rückgabewert](#rückgabewert).
 - Warnungen zum Supportende ändern den Rückgabewert nicht. Der Host selbst ist nicht Teil des Scans
   (SLES: `zypper list-patches --category security`).
 
@@ -320,13 +310,13 @@ Beispiele: [`beispiele/`](beispiele/) – ein Lauf `--oeffentliche --nur-behebba
 ([Konsolenausgabe](beispiele/ausgabe_oeffentliche.txt)): nginx als öffentlicher Reverse Proxy vor Node,
 Python und PHP-FPM in Nachbarcontainern, PHP 8.3.30 mit Apache (PHP2Shell), Node 22.22.0 nur über den Proxy
 erreichbar (Node2Shell), ein PHP-Container mit eingebettetem jQuery 1.10.2 und Java-Bibliotheken, Solr
-(Ubuntu-basiert, ohne Ubuntu-Daten → Rückgabewert 2).
+(Ubuntu-basiert, mit aktiv ausgenutzter Lücke in libbrotli1; Bericht vom 5.11. mit den Ubuntu-Daten).
 
 ## Was erfasst wird
 
 | Bereich | Quelle im Container | Abgleich |
 |---|---|---|
-| OS-Pakete | dpkg (`status`, `status.d`), apk, rpm – inkl. Quellpaket | Debian, Alpine (optional Ubuntu, SUSE, openSUSE) |
+| OS-Pakete | dpkg (`status`, `status.d`), apk, rpm – inkl. Quellpaket | Debian, Ubuntu, Alpine (optional SUSE, openSUSE) |
 | npm | jede `package.json` mit Name und Version | npm |
 | Composer | `vendor/composer/installed.json` | Packagist |
 | PyPI | `*.dist-info/METADATA`, `*.egg-info` (alle site-packages, auch venvs) | PyPI |
@@ -341,23 +331,26 @@ Dateien, die zu einem OS-Paket gehören (z. B. `gosu` aus dem Ubuntu-Paket), wer
 
 ## Daten
 
-Der Branch [`daten`](https://github.com/felixlohmeier/container-security-scan/tree/daten) enthält einen gekürzten Auszug aus den OSV-Exporten für Debian, Alpine, npm, PyPI, Packagist,
-Maven, Go und Bitnami (ca. 170 MB, in Git komprimiert ca. 15 MB). Gekürzt heißt: nur die für den Abgleich
-nötigen Felder; die Ergebnisse sind mit den vollständigen Exporten identisch (geprüft). Die GitHub Action
-[`.github/workflows/daten.yml`](.github/workflows/daten.yml) erzeugt die Daten täglich neu; die
-Ausgabe ist deterministisch, Commits enthalten nur echte Änderungen. Dazu kommen `eol-daten.json`
+Der Branch [`daten`](https://github.com/felixlohmeier/container-security-scan/tree/daten) enthält einen gekürzten Auszug aus den OSV-Exporten für Debian, Ubuntu, Alpine, npm, PyPI,
+Packagist, Maven, Go und Bitnami (ca. 360 MB, in Git komprimiert ca. 25 MB). Gekürzt heißt: nur die für den
+Abgleich nötigen Felder und Einträge; die Ergebnisse sind mit den vollständigen Exporten identisch
+(geprüft). Die GitHub Action [`.github/workflows/daten.yml`](.github/workflows/daten.yml) erzeugt die
+Daten täglich neu; die Ausgabe ist deterministisch, Commits enthalten nur echte Änderungen. Dazu kommen `eol-daten.json`
 ([Supportende](#supportende-eol)) und `kev.json` ([aktiv ausgenutzte Lücken](#aktiv-ausgenutzte-lücken-kev)).
 Quellen und Lizenzen: [`QUELLEN.md` im Branch `daten`](https://github.com/felixlohmeier/container-security-scan/blob/daten/QUELLEN.md).
 
-Ökosysteme, die nicht im Repository liegen, lädt `--db-aktualisieren --oekosysteme …` direkt von OSV
-nach `osv-db/`. Für Ökosysteme, die es im Branch `daten` schon gibt, ist das wirkungslos: Je Ökosystem
-gilt das erste Verzeichnis, das es enthält, und `daten/` (bzw. das erste `--db`) kommt vor `osv-db/`.
+Ubuntu ist am stärksten gekürzt: Der Export ist entpackt rund 8 GB groß (als ZIP ca. 800 MB), der
+Auszug ca. 190 MB. Weggelassen wird nur, was der Abgleich nie liest: die Listen der Binärpakete (abgeglichen
+wird über das Quellpaket), Einträge für Ubuntu Pro, FIPS und Realtime (nicht in Container-Images), Kernel-
+Quellpakete (siehe [Bewertung](#bewertung-der-funde)) und die USN-Sammelmeldungen (je CVE gibt es genauere
+Einträge). Geprüft (11/2026): Solr und MariaDB (Ubuntu 22.04/24.04) mit identischen Berichten, Abgleich
+ca. 5 statt 30 s; dazu je ca. 4000 Paketversionen für Ubuntu 14.04, 16.04 und 18.04 mit über 550 000
+identischen Funden.
 
-Für Ubuntu-basierte Images (z. B. MariaDB, Solr, Elasticsearch) braucht es zusätzlich den Ubuntu-Export
-(ca. 800 MB). Er liegt nicht im Branch `daten`; der Wrapper lädt ihn mit `UBUNTU=ja` als `csscan` nach
-`osv-db/` und gibt ihn beim Scan als zweites `--db` an. Maßgeblich ist die Distribution des jeweiligen
-Images, nicht der Imagename. Fehlen die Ubuntu-Daten, bleibt das Ergebnis ausdrücklich unvollständig
-(Rückgabewert 2).
+Ökosysteme, die nicht im Repository liegen (SUSE, openSUSE), lädt `--db-aktualisieren --oekosysteme …`
+direkt von OSV nach `osv-db/`. Für Ökosysteme, die es im Branch `daten` schon gibt, ist das wirkungslos:
+Je Ökosystem gilt das erste Verzeichnis, das es enthält, und `daten/` (bzw. das erste `--db`) kommt vor
+`osv-db/`.
 
 ### Sonderfall: Daten direkt von OSV statt über GitHub
 
@@ -372,21 +365,23 @@ und `ARGS=` ersetzen:
 ARGS=(--db "$D/osv-db")
 ```
 
-- **Erster Lauf:** die Gesamtexporte, zusammen ca. 390 MB (Stand 11/2026: npm 220 MB, Debian 81 MB,
-  PyPI 38 MB, die übrigen je ca. 10 MB; endoflife.date 3 MB, KEV-Katalog 2 MB).
+- **Erster Lauf:** die Gesamtexporte, zusammen ca. 1,2 GB (Stand 11/2026: Ubuntu 800 MB, npm 220 MB,
+  Debian 81 MB, PyPI 38 MB, die übrigen je ca. 10 MB; endoflife.date 3 MB, KEV-Katalog 2 MB).
 - **Danach inkrementell:** Das Skript liest die Änderungsliste `modified_id.csv` bis zum letzten
   bekannten Stand und lädt nur die geänderten Einträge einzeln. Den Gesamtexport eines Ökosystems lädt
   es neu, wenn seit dem letzten Lauf mehr als 2000 Einträge geändert wurden oder sich mehr als 10 000
-  Einzeldateien angesammelt haben. Debian ändert oft Tausende Einträge an einem Tag; im Mittel sind
-  daher ca. 30–40 MB pro Tag zu erwarten, gelegentlich mehr (npm neu: 220 MB).
-- **Auf der Platte** liegen die ungekürzten Exporte (`<Ökosystem>.zip`, ca. 390 MB) und geänderte
+  Einzeldateien angesammelt haben. Debian und Ubuntu ändern oft Tausende Einträge an einem Tag; dann
+  wird der Gesamtexport neu geladen, bei Ubuntu jeweils ca. 800 MB (Stand 11/2026 ein- bis zweimal pro
+  Woche), sonst ca. 30–40 MB pro Tag.
+- **Auf der Platte** liegen die ungekürzten Exporte (`<Ökosystem>.zip`, ca. 1,2 GB) und geänderte
   Einträge (`<Ökosystem>.neu/`), nicht der gekürzte Auszug aus dem Repository. Die Ergebnisse sind
-  gleich; das Einlesen dauert etwas länger (Debian: ca. 3,5 s statt 1,9 s je Container).
+  gleich; das Einlesen dauert länger (Debian: ca. 3,5 s statt 1,9 s, Ubuntu: ca. 30 s statt 5 s je
+  Container).
 
 | | über GitHub (Standard) | direkt (`--db DIR`) |
 |---|---|---|
-| Übertragung | erstmals ca. 15–25 MB, täglich nur die Änderungen | erstmals ca. 390 MB, täglich ca. 30–40 MB |
-| Speicher | ca. 170 MB plus Git | ca. 390 MB |
+| Übertragung | erstmals ca. 25–35 MB, täglich nur die Änderungen | erstmals ca. 1,2 GB, täglich ca. 30–40 MB, mit Ubuntu oft ca. 800 MB |
+| Speicher | ca. 360 MB plus Git | ca. 1,2 GB |
 | Freigabe im Proxy/Firewall | `github.com` | `osv-vulnerabilities.storage.googleapis.com`, `endoflife.date`, `www.cisa.gov` |
 | Datenstand beim Scan | letzte Action (03:17 UTC) | Zeitpunkt der Aktualisierung |
 | Nachvollziehbarkeit | Git-Historie der Daten | nur `stand.json` |
@@ -429,8 +424,9 @@ auch für sie. Fehlende oder mindestens 7 Tage alte KEV-Daten sind eine Warnung,
 Die Bewertung nach Priorität und Schweregrad bleibt vollständig. Ohne Git-Checkout oder mit `--db DIR`
 lädt `--db-aktualisieren` den Katalog direkt nach `DIR/kev.json`.
 
-Ein Beispiel aus dem Test: freetype CVE-2025-27363 (MEDIUM laut Debian, Paket nicht geladen, also P4) in
-einem Solr-Image. Ohne KEV nie gemeldet; laut CISA wird die Lücke aktiv ausgenutzt.
+Ein Beispiel aus dem [Solr-Bericht](beispiele/scan_app-solr_20261105_085231.md): libbrotli1
+CVE-2026-111497 (HIGH laut Ubuntu, Paket nicht geladen, also P4). Ohne KEV nie gemeldet; laut CISA wird
+die Lücke aktiv ausgenutzt.
 
 ## Rein lesend und ohne Datenabfluss
 
@@ -530,7 +526,7 @@ CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # m
 | `test_prozesse.py` | Prozesse, Ports und Dateien aus `/proc` (je Prozess-Benutzer bzw. über den Host, nie alle Host-Prozesse), Volumes, fester Suchpfad im Container, Benutzer der Versionsabfragen |
 | `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c` und dem Benutzer des Hauptprozesses (nie root für fremde Programme/Optionen), veröffentlichte Ports, Backends |
 | `test_nutzung.py` | Zuordnung Komponente → Dienst, Erreichbarkeit, Priorität P1–P4 |
-| `test_osv.py` | Abgleich je Ökosystem, Quellpakete, Fremdquellen über Bitnami, Datenformat, inkrementelle Aktualisierung, ungültige Kennungen (kein Pfad) |
+| `test_osv.py` | Abgleich je Ökosystem, Quellpakete, Fremdquellen über Bitnami, Datenformat, Kürzung der Ubuntu-Daten (gleiche Funde wie vollständig), inkrementelle Aktualisierung, ungültige Kennungen (kein Pfad) |
 | `test_bewertung.py` | widersprüchliche Versionsbereiche der Distribution, Kernel-Pakete, Schweregrad über die CVE, KEV (Daten erzeugen, laden, markieren), Ausnahmeliste (Format, Rechte, Ablauf), nur Windows, Relevanz |
 | `test_eol.py` | EOL-Daten erzeugen, Supportende und Vorwarnung |
 | `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden, KEV macht P4 relevant, Ausnahme, Kernel-Pakete |

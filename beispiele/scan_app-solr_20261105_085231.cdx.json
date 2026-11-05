@@ -1,10 +1,10 @@
 {
  "bomFormat": "CycloneDX",
  "specVersion": "1.5",
- "serialNumber": "urn:uuid:4da17608-f58b-4c3e-9bff-43438ac0488d",
+ "serialNumber": "urn:uuid:221e60a4-4cf3-4d84-bf6e-ff1e7760bc48",
  "version": 1,
  "metadata": {
-  "timestamp": "2026-11-04T16:52:23Z",
+  "timestamp": "2026-11-05T08:52:32Z",
   "tools": {
    "components": [
     {
@@ -25,7 +25,7 @@
     },
     {
      "name": "container-security-scan:container-id",
-     "value": "d87604a3e4d30563767a6175bf293fc7f782f7a1f5077db6b79b1eb320871e35"
+     "value": "bcaa2a7781e6700aacc0cf1e5cde80251c7e55d73cdb22365ee26dabd3f7f85c"
     },
     {
      "name": "container-security-scan:repo-digest",
@@ -15226,7 +15226,7 @@
    "bom-ref": "c729",
    "type": "platform",
    "name": "linux-kernel",
-   "version": "6.18.44-fc-v233",
+   "version": "6.18.44-fc-v236",
    "properties": [
     {
      "name": "container-security-scan:typ",
@@ -15340,9 +15340,10 @@
    "name": "java",
    "version": "17.0.17",
    "endpoints": [
-    "tcp://0.0.0.0:8983"
+    "tcp://0.0.0.0:8983",
+    "tcp://0.0.0.0:7983"
    ],
-   "description": "Port 8983/tcp (alle) veröffentlicht als 0.0.0.0:8983; Port 7983/tcp (localhost) nicht veröffentlicht; Arbeitsverzeichnis: /opt/solr-9.10.0/server",
+   "description": "Port 8983/tcp (alle) veröffentlicht als 0.0.0.0:8983; Port 7983/tcp (localhost) veröffentlicht als 0.0.0.0:7983; Arbeitsverzeichnis: /opt/solr-9.10.0/server",
    "properties": [
     {
      "name": "container-security-scan:aktiv",

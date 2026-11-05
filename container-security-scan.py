@@ -13,7 +13,7 @@ Aufruf:
      im Git-Checkout: Daten aus dem Branch "daten" nach daten/ holen bzw. per "git pull" aktualisieren
      (täglich per GitHub Action gepflegt). Nie den Code: den nur nach Prüfung von Hand aktualisieren.
      Nicht als root – siehe README "Installation und Betrieb";
-     mit --oekosysteme X,Y: zusätzlich diese Ökosysteme direkt von OSV nach osv-db laden (z.B. Ubuntu)
+     mit --oekosysteme X,Y: zusätzlich diese Ökosysteme direkt von OSV nach osv-db laden (z.B. SUSE)
   ./container-security-scan.py <container> [ausgabeverzeichnis] [--nur-behebbare] [--alle] [--ausnahmen DATEI]
   ./container-security-scan.py --oeffentliche [ausgabeverzeichnis] [...]
      alle Container mit veröffentlichten Ports (bzw. im Host-Netzwerk) und deren Backends hinter einem
@@ -75,8 +75,8 @@ INKREMENT_MAX = 2000           # mehr geänderte Einträge -> Gesamtexport laden
 DB_MAX_ALTER_TAGE = 3          # ältere Datenbank -> Prüfung unvollständig (Rückgabewert 2)
 OSV_BASE = "https://osv-vulnerabilities.storage.googleapis.com/"
 OSV_URL = OSV_BASE + "%s/all.zip"
-# Standard: rund 390 MB. Bei Bedarf ergänzen: Ubuntu (ca. 800 MB, z.B. MariaDB-Images), SUSE, openSUSE.
-OSV_ECOSYSTEMS = ["Debian", "Alpine", "npm", "PyPI", "Packagist", "Maven", "Go", "Bitnami"]
+# Direkt von OSV (ohne Branch daten), Gesamtexporte rund 1,2 GB, davon Ubuntu ca. 800 MB. Bei Bedarf ergänzen: SUSE, openSUSE.
+OSV_ECOSYSTEMS = ["Debian", "Ubuntu", "Alpine", "npm", "PyPI", "Packagist", "Maven", "Go", "Bitnami"]
 # Laufzeiten und Server, die nicht aus einem OS-Paket stammen (offizielle Images bauen sie aus dem Quellcode),
 # werden über den Bitnami-Datensatz von OSV geprüft (z.B. PHP2Shell, Node2Shell).
 BITNAMI = {"php": "php", "php-fpm": "php", "node": "node", "python": "python", "java": "jre", "nginx": "nginx",
@@ -2176,12 +2176,17 @@ def osv_update(dbdir, ecosystems, full=False):
 
 
 DATEN_BRANCH = "daten"         # Branch mit den Daten (ohne Code), siehe README "Installation und Betrieb"
-DATEN_OEKOSYSTEME = ["Debian", "Alpine", "npm", "PyPI", "Packagist", "Maven", "Go", "Bitnami"]
-DATEN_TEILE = {"Debian": 8, "npm": 8, "PyPI": 2}     # Dateien je Ökosystem (jede deutlich < 50 MB)
+DATEN_OEKOSYSTEME = ["Debian", "Ubuntu", "Alpine", "npm", "PyPI", "Packagist", "Maven", "Go", "Bitnami"]
+DATEN_TEILE = {"Debian": 8, "Ubuntu": 8, "npm": 8, "PyPI": 2}     # Dateien je Ökosystem (jede deutlich < 50 MB)
 
 
-def osv_compact(rec):
-    """Nur die Felder eines OSV-Eintrags, die der Abgleich braucht."""
+def osv_compact(rec, eco=None):
+    """Nur die Felder eines OSV-Eintrags, die der Abgleich braucht; None, wenn er nie abgeglichen wird.
+    Ubuntu (entpackt rund 8 GB): ohne USN-Sammelmeldungen (osv_scan überspringt sie), ohne Ubuntu Pro, FIPS,
+    Realtime u.ä. (Abgleich nur gegen "Ubuntu:<VERSION_ID>…") und ohne Kernel-Quellpakete (KERNEL_QUELLE, werden
+    im Container nicht geprüft) – die Ergebnisse bleiben dieselben wie mit dem vollständigen Export."""
+    if eco == "Ubuntu" and rec["id"].startswith("USN-"):
+        return None
     out = {k: rec[k] for k in ("id", "aliases", "upstream", "published", "withdrawn") if rec.get(k)}
     summary = rec.get("summary") or (rec.get("details") or "").split("\n")[0]
     if summary:
@@ -2193,12 +2198,17 @@ def osv_compact(rec):
     out["affected"] = []
     for a in rec.get("affected") or []:
         x = {"package": {k: v for k, v in (a.get("package") or {}).items() if k in ("name", "ecosystem")}}
+        if eco == "Ubuntu" and (not re.match(r"Ubuntu:\d", x["package"].get("ecosystem", ""))
+                                or KERNEL_QUELLE.match(x["package"].get("name", ""))):
+            continue
         ranges = [r for r in a.get("ranges") or [] if r.get("type") in ("ECOSYSTEM", "SEMVER")]
         if ranges:
             x["ranges"] = ranges
         elif a.get("versions"):
             x["versions"] = a["versions"]
-        es = {k: v for k, v in (a.get("ecosystem_specific") or {}).items() if k in ("urgency", "binaries")}
+        # nur die Debian-Dringlichkeit; "binaries" (Ubuntu: rund 80 % der Daten) trägt zum Abgleich nichts bei:
+        # Debian/Ubuntu werden über das Quellpaket abgeglichen, Ubuntu führt dort zudem Objekte statt Namen
+        es = {k: v for k, v in (a.get("ecosystem_specific") or {}).items() if k == "urgency"}
         if es:
             x["ecosystem_specific"] = es
         if (a.get("database_specific") or {}).get("severity"):
@@ -2206,6 +2216,8 @@ def osv_compact(rec):
         if a.get("severity"):
             x["severity"] = a["severity"]
         out["affected"].append(x)
+    if eco == "Ubuntu" and not out["affected"]:
+        return None
     return out
 
 
@@ -2223,8 +2235,10 @@ def daten_erzeugen(target, ecosystems=DATEN_OEKOSYSTEME):
             parts = [[] for _ in range(n)]
             with zipfile.ZipFile(os.path.join(tmp, eco + ".zip")) as z:
                 for info in z.infolist():
-                    rec = json.loads(z.read(info).decode("utf-8"))
-                    line = json.dumps(osv_compact(rec), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                    rec = osv_compact(json.loads(z.read(info).decode("utf-8")), eco)
+                    if rec is None:
+                        continue
+                    line = json.dumps(rec, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
                     parts[zlib.crc32(rec["id"].encode()) % n].append((rec["id"], line))
             d = os.path.join(target, eco)
             os.makedirs(d, exist_ok=True)
@@ -2565,7 +2579,7 @@ def main():
                          "von OSV (Internet nötig; nach dem ersten Mal nur Änderungen)")
     ap.add_argument("--voll", action="store_true", help="mit --db-aktualisieren: Gesamtexporte neu laden")
     ap.add_argument("--oekosysteme", help="mit --db-aktualisieren: zusätzlich diese Ökosysteme direkt von OSV laden "
-                                           "(z.B. Ubuntu); ohne daten/ Standard: " + ",".join(OSV_ECOSYSTEMS))
+                                           "(z.B. SUSE); ohne daten/ Standard: " + ",".join(OSV_ECOSYSTEMS))
     ap.add_argument("--nur-behebbare", action="store_true",
                     help="für den Rückgabewert nur Funde zählen, für die es einen Fix gibt")
     ap.add_argument("--alle", action="store_true", help="alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH)")
