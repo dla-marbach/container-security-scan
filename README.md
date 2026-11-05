@@ -333,9 +333,9 @@ Dateien, die zu einem OS-Paket gehören (z. B. `gosu` aus dem Ubuntu-Paket), wer
 
 Der Branch [`daten`](https://github.com/felixlohmeier/container-security-scan/tree/daten) enthält einen gekürzten Auszug aus den OSV-Exporten für Debian, Ubuntu, Alpine, npm, PyPI,
 Packagist, Maven, Go und Bitnami (ca. 360 MB, in Git komprimiert ca. 25 MB). Gekürzt heißt: nur die für den
-Abgleich nötigen Felder und Einträge; die Ergebnisse sind mit den vollständigen Exporten identisch (geprüft). Die GitHub Action
-[`.github/workflows/daten.yml`](.github/workflows/daten.yml) erzeugt die Daten täglich neu; die
-Ausgabe ist deterministisch, Commits enthalten nur echte Änderungen. Dazu kommen `eol-daten.json`
+Abgleich nötigen Felder und Einträge; die Ergebnisse sind mit den vollständigen Exporten identisch
+(geprüft). Die GitHub Action [`.github/workflows/daten.yml`](.github/workflows/daten.yml) erzeugt die
+Daten täglich neu; die Ausgabe ist deterministisch, Commits enthalten nur echte Änderungen. Dazu kommen `eol-daten.json`
 ([Supportende](#supportende-eol)) und `kev.json` ([aktiv ausgenutzte Lücken](#aktiv-ausgenutzte-lücken-kev)).
 Quellen und Lizenzen: [`QUELLEN.md` im Branch `daten`](https://github.com/felixlohmeier/container-security-scan/blob/daten/QUELLEN.md).
 
@@ -343,7 +343,9 @@ Ubuntu ist am stärksten gekürzt: Der Export ist entpackt rund 8 GB groß (als 
 Auszug ca. 190 MB. Weggelassen wird nur, was der Abgleich nie liest: die Listen der Binärpakete (abgeglichen
 wird über das Quellpaket), Einträge für Ubuntu Pro, FIPS und Realtime (nicht in Container-Images), Kernel-
 Quellpakete (siehe [Bewertung](#bewertung-der-funde)) und die USN-Sammelmeldungen (je CVE gibt es genauere
-Einträge). Geprüft mit Solr und MariaDB (Ubuntu 22.04/24.04): Berichte identisch, Abgleich ca. 5 statt 30 s.
+Einträge). Geprüft (11/2026): Solr und MariaDB (Ubuntu 22.04/24.04) mit identischen Berichten, Abgleich
+ca. 5 statt 30 s; dazu je ca. 4000 Paketversionen für Ubuntu 14.04, 16.04 und 18.04 mit über 550 000
+identischen Funden.
 
 Ökosysteme, die nicht im Repository liegen (SUSE, openSUSE), lädt `--db-aktualisieren --oekosysteme …`
 direkt von OSV nach `osv-db/`. Für Ökosysteme, die es im Branch `daten` schon gibt, ist das wirkungslos:
@@ -422,8 +424,9 @@ auch für sie. Fehlende oder mindestens 7 Tage alte KEV-Daten sind eine Warnung,
 Die Bewertung nach Priorität und Schweregrad bleibt vollständig. Ohne Git-Checkout oder mit `--db DIR`
 lädt `--db-aktualisieren` den Katalog direkt nach `DIR/kev.json`.
 
-Ein Beispiel aus dem Test: freetype CVE-2025-27363 (MEDIUM laut Debian, Paket nicht geladen, also P4) in
-einem Solr-Image. Ohne KEV nie gemeldet; laut CISA wird die Lücke aktiv ausgenutzt.
+Ein Beispiel aus dem [Solr-Bericht](beispiele/scan_app-solr_20261105_085231.md): libbrotli1
+CVE-2026-111497 (HIGH laut Ubuntu, Paket nicht geladen, also P4). Ohne KEV nie gemeldet; laut CISA wird
+die Lücke aktiv ausgenutzt.
 
 ## Rein lesend und ohne Datenabfluss
 
