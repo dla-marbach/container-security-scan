@@ -2159,6 +2159,7 @@ def osv_update(dbdir, ecosystems, full=False):
                     with urllib.request.urlopen(url, timeout=60) as r:
                         data = r.read()
                 except urllib.error.HTTPError as e:
+                    e.close()        # enthält die offene Antwort
                     if e.code != 404:
                         raise
                     data = json.dumps({"id": vid, "withdrawn": "entfernt"}).encode()   # verdeckt den alten Eintrag

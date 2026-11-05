@@ -3,6 +3,8 @@ name: Daten aktualisieren
 # Code (Branch main) und Daten (Branch daten) sind getrennt: Dieser Workflow läuft mit dem Code aus main und
 # schreibt nur in den Branch daten. Den Code-Checkout ohne Zugangsdaten auschecken; ein Ruleset auf main
 # verhindert zusätzlich, dass das Token des Workflows dort etwas ändert (README: "Code und Daten trennen").
+# Actions sind auf einen Commit festgelegt (Kommentar: Version): Ein nachträglich verschobenes Tag kann so keinen
+# fremden Code mit Schreibrechten auf den Branch daten ausführen. Runner fest auf Ubuntu 26.04 (Python 3.14).
 
 on:
   schedule:
@@ -18,16 +20,16 @@ concurrency:
 
 jobs:
   aktualisieren:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 45      # Ubuntu: ca. 800 MB laden, 8 GB entpackt kürzen
     steps:
       - name: Code (main) auschecken, ohne Schreibrechte
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
       - name: Daten (Branch daten) auschecken
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: daten
           path: daten
