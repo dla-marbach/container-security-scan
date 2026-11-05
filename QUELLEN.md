@@ -19,6 +19,7 @@ Namensnennung und – wo verlangt – unter derselben Lizenz.
 | `Alpine/` | Alpine Linux secdb, von OSV konvertiert (`ALPINE-…`) | [CC-BY-SA 4.0](https://secdb.alpinelinux.org/license.txt) – die gekürzten Daten in `Alpine/` stehen daher ebenfalls unter [CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de) |
 | `Bitnami/` | [Bitnami Vulnerability Database](https://github.com/bitnami/vulndb) (`BIT-…`) | [Apache 2.0](https://github.com/bitnami/vulndb/blob/main/LICENSE.md), Text: [`LIZENZEN/Apache-2.0.txt`](LIZENZEN/Apache-2.0.txt) |
 | `Debian/` | [Debian Security Tracker](https://security-tracker.debian.org), von OSV konvertiert (`DEBIAN-CVE-…`, `DSA-…`, `DLA-…`, `DTSA-…`) | **Todo: Lizenz klären** |
+| `Ubuntu/` | [Ubuntu Security Notices](https://github.com/canonical/ubuntu-security-notices) (`UBUNTU-CVE-…`); zusätzlich gekürzt: ohne USN-Sammelmeldungen, Ubuntu Pro/FIPS/Realtime, Kernel-Quellpakete und Listen der Binärpakete | [CC-BY-SA 4.0](https://github.com/canonical/ubuntu-security-notices/blob/main/LICENSE) – die gekürzten Daten in `Ubuntu/` stehen daher ebenfalls unter [CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de) |
 | `Go/` | [Go Vulnerability Database](https://pkg.go.dev/vuln) (`GO-…`) | [CC-BY 4.0](https://github.com/golang/vulndb#license) |
 | `Maven/`, `npm/`, `Packagist/`, `PyPI/` | [GitHub Advisory Database](https://github.com/github/advisory-database) (`GHSA-…`) | [CC-BY 4.0](https://github.com/github/advisory-database/blob/main/LICENSE.md) |
 | `PyPI/` | [PyPA Advisory Database](https://github.com/pypa/advisory-database) (`PYSEC-…`) | [CC-BY 4.0](https://github.com/pypa/advisory-database/blob/main/LICENSE) – geprüft |
@@ -31,12 +32,6 @@ Geprüft am 4. November 2026 anhand der Lizenzdateien der Quell-Repositories und
 [OSV-Datenquellen](https://github.com/google/osv.dev/blob/master/docs/data.md), die für PyPA, OpenSSF
 und Drupal dieselben Lizenzen nennt. Für die Apache-2.0-Daten gilt als Änderungshinweis (§ 4 b): die
 Einträge sind gekürzt, siehe **Bearbeitung** oben.
-
-Der Ubuntu-Export von OSV, der bei Bedarf lokal geladen werden kann, stammt aus
-[Ubuntu Security Notices](https://github.com/canonical/ubuntu-security-notices) und steht laut
-[OSV-Datenquellen](https://github.com/google/osv.dev/blob/master/docs/data.md) unter
-[CC-BY-SA 4.0](https://github.com/canonical/ubuntu-security-notices/blob/main/LICENSE). Er liegt nur
-lokal in `osv-db/` und wird nicht weitergegeben.
 
 Alle Angaben ohne Gewähr; maßgeblich sind die Lizenzangaben der jeweiligen Quelle.
 Die Daten werden ohne Gewähr für Vollständigkeit oder Richtigkeit weitergegeben.
