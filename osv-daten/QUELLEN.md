@@ -24,6 +24,7 @@ Namensnennung und – wo verlangt – unter derselben Lizenz.
 | `PyPI/` | [PyPA Advisory Database](https://github.com/pypa/advisory-database) (`PYSEC-…`) | [CC-BY 4.0](https://github.com/pypa/advisory-database/blob/main/LICENSE) – geprüft |
 | `npm/`, `PyPI/` u.a. | [OpenSSF Malicious Packages](https://github.com/ossf/malicious-packages) (`MAL-…`) | [Apache 2.0](https://github.com/ossf/malicious-packages/blob/main/LICENSE) – geprüft (keine NOTICE-Datei), Text: [`LIZENZEN/Apache-2.0.txt`](LIZENZEN/Apache-2.0.txt) |
 | `Packagist/` | [Drupal Advisory Database](https://github.com/DrupalSecurityTeam/drupal-advisory-database) (`DRUPAL-…`) | [MIT](https://github.com/DrupalSecurityTeam/drupal-advisory-database/blob/main/LICENSE), © 2025 Ackama – geprüft, Text: [`LIZENZEN/MIT-Drupal-Advisory-Database.txt`](LIZENZEN/MIT-Drupal-Advisory-Database.txt) |
+| `kev.json` | [CISA Known Exploited Vulnerabilities Catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) (je CVE das Datum der Aufnahme) | [CC0 1.0](https://github.com/cisagov/kev-data/blob/main/LICENSE) – geprüft (Lizenzdatei von `cisagov/kev-data`); keine Nutzung von CISA-Logo oder DHS-Siegel, keine Billigung durch CISA/DHS |
 
 Geprüft am 4. November 2026 anhand der Lizenzdateien der Quell-Repositories und der Liste der
 [OSV-Datenquellen](https://github.com/google/osv.dev/blob/master/docs/data.md), die für PyPA, OpenSSF

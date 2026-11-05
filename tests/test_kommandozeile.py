@@ -37,7 +37,19 @@ class Kommandozeile(unittest.TestCase):
         rc, out = self.aufruf("--help")
         self.assertEqual(rc, 0)
         self.assertIn("--oeffentliche", out)
+        self.assertIn("--ausnahmen", out)
         self.assertNotIn("--eol-daten-erzeugen", out)      # nur für die GitHub Action
+        self.assertNotIn("--kev-daten-erzeugen", out)
+
+    def test_fehlerhafte_ausnahmeliste_ergibt_2(self):
+        os.mkdir(os.path.join(self.tmp, "db"))
+        liste = os.path.join(self.tmp, "ausnahmen.txt")
+        with open(liste, "w") as f:
+            f.write("CVE-2024-8926 php 2027-06-30\n")
+        rc, out = self.aufruf("--db", os.path.join(self.tmp, "db"), "--ausnahmen", liste, "web")
+        self.assertEqual(rc, 2)
+        self.assertIn("Ausnahmeliste", out)
+        self.assertIn("Zeile 1", out)
 
     def test_ohne_container(self):
         rc, out = self.aufruf()

@@ -13,7 +13,7 @@ Aufruf:
      im Git-Checkout: Skript und osv-daten per "git pull" aktualisieren (täglich per GitHub Action gepflegt;
      nicht als root – dann Daten getrennt halten und mit --db angeben, siehe README "Code und Daten trennen");
      mit --oekosysteme X,Y: zusätzlich diese Ökosysteme direkt von OSV nach osv-db laden (z.B. Ubuntu)
-  ./container-security-scan.py <container> [ausgabeverzeichnis] [--nur-behebbare] [--alle]
+  ./container-security-scan.py <container> [ausgabeverzeichnis] [--nur-behebbare] [--alle] [--ausnahmen DATEI]
   ./container-security-scan.py --oeffentliche [ausgabeverzeichnis] [...]
      alle Container mit veröffentlichten Ports (bzw. im Host-Netzwerk) und deren Backends hinter einem
      Reverse Proxy; Dienste hinter einem öffentlichen Proxy gelten als öffentlich (P1)
@@ -22,7 +22,8 @@ Aufruf:
 Ergebnis: scan_<name>_<zeit>.md        Bericht: Ergebnis, Dienste, Befunde nach Priorität, Anhang
           scan_<name>_<zeit>.cdx.json  SBOM (CycloneDX 1.5) als Beleg; auch mit Trivy/Grype/Dependency-Track nutzbar
           scan_<name>_<zeit>.sha256    Prüfsummen
-Rückgabewert: 0 = keine relevanten Schwachstellen, 1 = relevante Schwachstellen gefunden (siehe RELEVANT),
+Rückgabewert: 0 = keine relevanten Schwachstellen, 1 = relevante Schwachstellen gefunden (siehe RELEVANT;
+                  dazu immer aktiv ausgenutzte laut CISA-KEV-Katalog),
               2 = Fehler oder Prüfung unvollständig (z.B. Datenbank fehlt) – nie als "sauber" werten!
 
 Priorität (P1 = zuerst beheben):
@@ -67,7 +68,7 @@ import zlib
 from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
-# Relevant (-> Rückgabewert 1): (Priorität, Schweregrad)
+# Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
 INKREMENT_MAX = 2000           # mehr geänderte Einträge -> Gesamtexport laden (schneller)
 DB_MAX_ALTER_TAGE = 3          # ältere Datenbank -> Prüfung unvollständig (Rückgabewert 2)
@@ -94,6 +95,26 @@ EOL_ZUSATZ = {"symfony": ["pkg:composer/symfony/symfony", "pkg:composer/symfony/
               "tomcat": ["pkg:maven/org.apache.tomcat/tomcat-catalina", "pkg:maven/org.apache.tomcat.embed/tomcat-embed-core"]}
 EOL_VORWARNUNG_TAGE = 90       # Supportende innerhalb dieser Frist: Hinweis vorab
 EOL_MAX_ALTER_TAGE = 30
+# Katalog aktiv ausgenutzter Schwachstellen (CISA Known Exploited Vulnerabilities, CC0)
+KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+KEV_MAX_ALTER_TAGE = 7
+CVE_ID = re.compile(r"CVE-\d{4}-\d{4,}")
+# Schweregrad für Einträge ohne eigene Bewertung (z.B. Go): dieselbe CVE in diesen Quellen nachschlagen
+# (Bitnami: Bewertung der Quelle, Alpine: CVSS aus der NVD). Distributions-Dringlichkeit zählt hier nicht.
+SCHWEREGRAD_QUELLEN = ("Bitnami", "Alpine")
+# Kernel-Pakete im Container (Header, Images): Container nutzen den Kernel des Hosts, deren CVEs betreffen
+# den Container nicht. Debian/Ubuntu führen alle Kernel-CVEs am Quellpaket "linux".
+KERNEL_QUELLE = re.compile(r"linux(-signed.*|-lts|-virt|-headers|-hwe.*|-(aws|azure|gcp|oracle|kvm|lowlatency).*)?$")
+KERNEL_PAKET = re.compile(r"(linux-(libc-dev|headers|image|modules|kbuild|source)|kernel-(default|devel|source|syms|"
+                          r"headers|preempt|rt|azure|64kb|macros))(\b|-|$)")
+# Titel, nach denen eine Schwachstelle nur unter Windows auftritt (Container laufen unter Linux). Groß
+# geschriebenes "Windows", damit z.B. "HTTP/2 initial windows size" nicht erfasst wird.
+NUR_WINDOWS = re.compile(r"\b(?:[Oo]n|[Uu]nder|[Ff]or|[Ii]n|[Aa]ffecting) (?:Microsoft )?Windows\b|\b[Oo]n windows\b"
+                         r"|\bWindows[- ](?:[Oo]nly|specific|platforms?|systems?|hosts?|servers?|installations?|"
+                         r"installers?|builds?|users?|absolute paths?|paths?|shares?)\b|\(Windows[,)]"
+                         r"|\bUNC paths?\b|\bNTLM\b")
+NICHT_NUR_WINDOWS = re.compile(r"\b(?:Linux|Unix|UNIX|POSIX|macOS|Mac OS|all platforms|other platforms|non-Windows)\b"
+                               r"|\bWindows (?:and|or)\b|\b(?:and|or) Windows\b")
 
 
 class ScanError(Exception):
@@ -264,6 +285,100 @@ def eol_warnungen(comps, paths):
         else:
             warnings.append("Supportende bald: %s %s (%s %s, am %s; %s)" % (name, version, product, cycle, end, where))
     return warnings
+
+
+def kev_daten_erzeugen(path):
+    """Katalog aktiv ausgenutzter Schwachstellen (CISA KEV) laden und gekürzt speichern: CVE -> Aufnahmedatum."""
+    with urllib.request.urlopen(KEV_URL, timeout=120) as response:
+        data = json.load(response)
+    vulns = data.get("vulnerabilities")
+    if not isinstance(vulns, list) or not vulns or data.get("count") != len(vulns):
+        raise ScanError("Ungültige oder unvollständige Antwort des KEV-Katalogs")
+    cves = {}
+    for v in vulns:
+        cve, added = v.get("cveID"), v.get("dateAdded")
+        if not isinstance(cve, str) or not CVE_ID.fullmatch(cve) or not isinstance(added, str) \
+                or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", added):
+            raise ScanError("Ungültiger Eintrag im KEV-Katalog: %r" % (cve,))
+        cves[cve] = added
+    payload = {"geprueft": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "katalog": str(data.get("catalogVersion", "")),
+               "cves": cves}
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=1, sort_keys=True)
+        f.write("\n")
+    os.replace(path + ".tmp", path)
+
+
+def kev_laden(paths):
+    """KEV-Daten lesen und prüfen; bei mehreren Dateien die jüngste. Liefert (Prüfzeitpunkt, {CVE: Datum})."""
+    best, err = None, "keine Datei"
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            checked = datetime.datetime.strptime(data["geprueft"], "%Y-%m-%dT%H:%M:%SZ")
+            cves = data["cves"]
+            if not isinstance(cves, dict) or not cves or not all(
+                    isinstance(k, str) and CVE_ID.fullmatch(k) and isinstance(v, str) for k, v in cves.items()):
+                raise ValueError("ungültige Einträge")
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            if not isinstance(e, FileNotFoundError) or err == "keine Datei":
+                err = str(e)
+            continue
+        if best is None or checked > best[0]:
+            best = (checked, cves)
+    if best is None:
+        raise ValueError(err)
+    return best
+
+
+def kev_markieren(findings, paths):
+    """Funde aus dem KEV-Katalog markieren (f["kev"] = Aufnahmedatum). Liefert Warnungen."""
+    try:
+        checked, cves = kev_laden(paths)
+    except ValueError as e:
+        return ["KEV-Daten fehlen oder sind ungültig (%s); aktiv ausgenutzte Lücken nicht gesondert gewertet" % e]
+    for f in findings:
+        if f["id"] in cves:
+            f["kev"] = cves[f["id"]]
+    if (utcnow() - checked).days >= KEV_MAX_ALTER_TAGE:
+        return ["KEV-Daten veraltet (Stand %s); git pull bzw. --db-aktualisieren ausführen" % checked.strftime("%Y-%m-%d")]
+    return []
+
+
+def ausnahmen_laden(path):
+    """Ausnahmeliste lesen. Je Zeile: <Kennung> <Paket oder *> <gültig bis JJJJ-MM-TT> <Begründung>.
+    Fehler -> ScanError (Rückgabewert 2): eine fehlerhafte Liste soll nichts stillschweigend ausblenden."""
+    try:
+        st = os.stat(path)
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except (OSError, UnicodeDecodeError) as e:
+        raise ScanError("Ausnahmeliste %s nicht lesbar: %s" % (path, e))
+    # wie sudoers: wer die Liste ändern kann, kann Funde ausblenden
+    if st.st_uid not in (0, os.geteuid()) or st.st_mode & 0o022:
+        raise ScanError("Ausnahmeliste %s darf nur ihr Eigentümer (root bzw. der aufrufende Benutzer) ändern können"
+                        % path)
+    result = []
+    for n, line in enumerate(lines, 1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(None, 3)
+        if len(parts) < 4 or not OSV_ID.fullmatch(parts[0]) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", parts[2]):
+            raise ScanError("Ausnahmeliste %s, Zeile %d: erwartet \"<Kennung> <Paket oder *> <JJJJ-MM-TT> "
+                            "<Begründung>\"" % (path, n))
+        try:
+            bis = datetime.datetime.strptime(parts[2], "%Y-%m-%d").date()
+        except ValueError:
+            raise ScanError("Ausnahmeliste %s, Zeile %d: ungültiges Datum %s" % (path, n, parts[2]))
+        result.append({"id": parts[0], "paket": parts[1], "bis": bis, "grund": parts[3], "zeile": n})
+    return result
+
+
+def nur_windows(title):
+    """Betrifft die Schwachstelle laut Titel nur Windows?"""
+    return bool(NUR_WINDOWS.search(title or "")) and not NICHT_NUR_WINDOWS.search(title or "")
 
 
 def norm(path):
@@ -1738,15 +1853,22 @@ def _event_key(cmp):
     return cmp_to_key(compare)
 
 
-def affected_by(version, affected, cmp):
-    """Ist die Version laut OSV-Eintrag betroffen? Liefert (betroffen, Fix-Version)."""
+def affected_by(version, affected, cmp, distribution=False):
+    """Ist die Version laut OSV-Eintrag betroffen? Liefert (betroffen, Fix-Version).
+    distribution: Daten einer Distribution (Fixes werden in deren Versionszweig zurückportiert)."""
     hit, fixes = version in (affected.get("versions") or []), []
     for rng in affected.get("ranges") or []:
         if rng.get("type") not in ("ECOSYSTEM", "SEMVER"):
             continue
         c = cmp if rng["type"] == "ECOSYSTEM" else cmp_semver
         state = False
-        for ev in sorted(rng.get("events", []), key=_event_key(c)):
+        events = sorted(rng.get("events", []), key=_event_key(c))
+        if distribution and rng["type"] == "ECOSYSTEM" and events and next(iter(events[0])) != "introduced":
+            # Widersprüchlicher Bereich: Fix vor der ersten betroffenen Version (z.B. Alpine "introduced 3.4.0,
+            # fixed 3.3.7-r1", die Angabe "introduced" stammt aus einem anderen Versionszweig). Die Distribution
+            # hat den Fix in ihren Zweig zurückportiert, dieser war also betroffen -> ab Version 0 werten.
+            events.insert(0, {"introduced": "0"})
+        for ev in events:
             kind, val = next(iter(ev.items()))
             if kind == "introduced" and (val == "0" or c(version, val) >= 0):
                 state = True
@@ -1769,6 +1891,8 @@ def osv_target(c, osinfo):
     t, name, version = c["typ"], c["name"], c["version"]
     osid, osver = osinfo["id"], osinfo["version"]
     if t == "os-paket":
+        if kernel_paket(c):
+            return None      # Container nutzen den Kernel des Hosts
         if osid in ("debian", "ubuntu"):       # Debian/Ubuntu führen CVEs je Quellpaket und Quellversion
             src, ver = c.get("src") or name, c.get("srcver") or version
             if osid == "ubuntu":
@@ -1811,6 +1935,11 @@ def osv_target(c, osinfo):
 
 def from_os_package(c):
     return any(h.startswith("aus OS-Paket") for h in c["hinweise"])
+
+
+def kernel_paket(c):
+    """Kernel-Paket (Header, Image, Module) im Container?"""
+    return c["typ"] == "os-paket" and bool(KERNEL_QUELLE.match(c.get("src") or "") or KERNEL_PAKET.match(c["name"]))
 
 
 def pypi_name(n):
@@ -1887,7 +2016,7 @@ def osv_scan(comps, osinfo, dbdirs):
                         if fname in OS_FILES:
                             known_src.add(n)
                             newest_os[0] = max(newest_os[0], rec.get("published", ""))
-                        hit, fix = affected_by(version, aff, cmp)
+                        hit, fix = affected_by(version, aff, cmp, fname in OS_FILES)
                         if not hit:
                             continue
                         sev = osv_severity(rec, aff)
@@ -1897,8 +2026,12 @@ def osv_scan(comps, osinfo, dbdirs):
                                 old["fix"] = old["fix"] or fix
                                 old["sev"] = sev if old["sev"] == "UNKNOWN" else old["sev"]
                             else:
-                                findings[(id(c), vid)] = {"comp": c, "id": vid, "sev": sev, "fix": fix,
-                                                          "title": (rec.get("summary") or rec.get("details") or "").split("\n")[0]}
+                                title = (rec.get("summary") or rec.get("details") or "").split("\n")[0]
+                                findings[(id(c), vid)] = f = {"comp": c, "id": vid, "sev": sev, "fix": fix, "title": title}
+                                # Distributionsdaten führen nur, was die Distribution betrifft; andere Quellen
+                                # (GitHub, Bitnami) auch Lücken, die nur unter Windows auftreten
+                                if fname not in OS_FILES and nur_windows(title):
+                                    f["ausgenommen"] = "betrifft laut Titel nur Windows"
 
     for fname in [f for f in list(by_file) if f in OS_FILES]:
         scan_file(fname, by_file[fname])
@@ -1919,10 +2052,49 @@ def osv_scan(comps, osinfo, dbdirs):
                     (c, ("Bitnami", lambda e: e == "Bitnami", {BITNAMI[c["name"]]}, c["version"], cmp_semver)))
     for fname in [f for f in list(by_file) if f not in OS_FILES]:
         scan_file(fname, by_file[fname])
+    # Funde ohne Schweregrad (z.B. Go-Daten): Bewertung derselben CVE aus einer anderen Quelle übernehmen
+    if any(f["sev"] == "UNKNOWN" and f["id"].startswith("CVE-") for f in findings.values()):
+        index = schweregrad_index(dbdirs)
+        for f in findings.values():
+            if f["sev"] == "UNKNOWN" and f["id"] in index:
+                f["sev"], f["sev_quelle"] = index[f["id"]]
     os_newest = None
     if newest_os[0]:
         os_newest = datetime.datetime.strptime(newest_os[0][:19], "%Y-%m-%dT%H:%M:%S")
     return list(findings.values()), (min(dates) if dates else None), missing, os_newest
+
+
+_SCHWEREGRAD_CACHE = {}
+
+
+def schweregrad_index(dbdirs):
+    """CVE -> (Schweregrad, Kennung der Quelle) aus SCHWEREGRAD_QUELLEN; bei mehreren Angaben die höchste.
+    Einmal je Lauf aufgebaut (ca. 1 s), nur wenn ein Fund ohne Schweregrad vorliegt."""
+    key = tuple(dbdirs)
+    if key in _SCHWEREGRAD_CACHE:
+        return _SCHWEREGRAD_CACHE[key]
+    index = {}
+    for fname in SCHWEREGRAD_QUELLEN:
+        dbdir = db_source(dbdirs, fname)
+        if not dbdir:
+            continue
+        for raw in osv_records(dbdir, fname):
+            if b"CVE-" not in raw:
+                continue
+            rec = json.loads(raw.decode("utf-8"))
+            if rec.get("withdrawn"):
+                continue
+            sevs = [osv_severity(rec, aff) for aff in rec.get("affected") or [{}]]
+            sevs = [s for s in sevs if s != "UNKNOWN"]
+            if not sevs:
+                continue
+            sev = min(sevs, key=SEV.index)
+            for cve in {x for x in [rec["id"]] + (rec.get("aliases") or []) + (rec.get("upstream") or [])
+                        if x.startswith("CVE-")}:
+                if cve not in index or SEV.index(sev) < SEV.index(index[cve][0]):
+                    index[cve] = (sev, rec["id"])
+    _SCHWEREGRAD_CACHE[key] = index
+    return index
 
 
 def db_state(dbdir):
@@ -2113,7 +2285,32 @@ def md(s):
     return str(s).replace("|", "/").replace("\n", " ")
 
 
-def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db_info, alle, nur_behebbare, known):
+def ausnahmen_anwenden(rows, ausnahmen, warnings):
+    """Einträge der Ausnahmeliste auf Funde anwenden (r["ausgenommen"]); abgelaufene nur melden."""
+    today = utcnow().date()
+    for a in ausnahmen:
+        hits = [r for r in rows if r["id"] == a["id"] and a["paket"] in ("*", r["pkg"])]
+        if not hits:
+            continue
+        if a["bis"] < today:
+            warnings.append("Ausnahme für %s (%s) abgelaufen am %s – Fund zählt wieder; prüfen und Liste "
+                            "anpassen (Zeile %d)" % (a["id"], a["paket"], a["bis"].isoformat(), a["zeile"]))
+            continue
+        for r in hits:
+            r["ausgenommen"] = "Ausnahme bis %s: %s" % (a["bis"].isoformat(), a["grund"])
+
+
+def ist_relevant(r, nur_behebbare):
+    return not r.get("ausgenommen") and ((r["prio"], r["sev"]) in RELEVANT or bool(r.get("kev"))) \
+        and bool(r["fix"] or not nur_behebbare)
+
+
+def schwere_text(r):
+    return r["sev"] + ("*" if r.get("sev_quelle") else "") + (" KEV" if r.get("kev") else "")
+
+
+def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db_info, alle, nur_behebbare, known,
+                 ausnahmen=()):
     published = {s["label"] for s in services if s["exposed"]}
     rows = []
     for f in findings:
@@ -2121,7 +2318,11 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
         rows.append(dict(f, prio=priority(x, published), pkg=x["name"], ver=x["version"],
                          users=", ".join(x["aktiv"] or x["aktiv_ohne_port"]) or "–"))
     rows.sort(key=lambda r: (r["prio"], SEV.index(r["sev"]), r["fix"] == "", r["pkg"], r["id"]))
-    relevant = [r for r in rows if (r["prio"], r["sev"]) in RELEVANT and (r["fix"] or not nur_behebbare)]
+    how.setdefault("warnungen", [])
+    ausnahmen_anwenden(rows, ausnahmen, how["warnungen"])
+    relevant = [r for r in rows if ist_relevant(r, nur_behebbare)]
+    # ausgenommen, wäre sonst relevant: im Ergebnis gesondert ausweisen
+    ausgenommen = [r for r in rows if r.get("ausgenommen") and ist_relevant(dict(r, ausgenommen=""), nur_behebbare)]
     for r in relevant:     # neu gegenüber dem letzten Lauf (ohne vorherigen Lauf: alle neu)
         r["neu"] = known is None or (r["pkg"], r["ver"], r["id"]) not in known
     relevant.sort(key=lambda r: not r["neu"])
@@ -2130,26 +2331,35 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
     w = out.append
     i = c.info
     w("# Container-Scan: %s\n" % c.name)
-    w("- Image: %s (%s)  \n- OS: %s  \n- Zeitpunkt: %s  \n- Datenbank: %s  \n- Erfassung: OS-Pakete %s; Dateien %s; Prozesse %s%s\n" % (
+    kernel = sum(1 for x in comps if kernel_paket(x))
+    w("- Image: %s (%s)  \n- OS: %s  \n- Zeitpunkt: %s  \n- Datenbank: %s  \n- Erfassung: OS-Pakete %s; Dateien %s; Prozesse %s%s%s\n" % (
         i["Config"]["Image"], i["Image"][:19], osinfo["pretty"], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
         db_info["text"], how["pkgdb"], how["files"], how["procs"],
-        "; %d Sprach-Komponenten aus OS-Paketen (über das OS-Paket geprüft)" % how["os_owned"] if how["os_owned"] else ""))
+        "; %d Sprach-Komponenten aus OS-Paketen (über das OS-Paket geprüft)" % how["os_owned"] if how["os_owned"] else "",
+        "; %d Kernel-Pakete nicht geprüft (Container nutzen den Kernel des Hosts)" % kernel if kernel else ""))
 
     w("## Ergebnis\n")
     if db_info["problems"]:
         w("**PRÜFUNG UNVOLLSTÄNDIG (Rückgabewert 2):** " + "; ".join(db_info["problems"]) + "\n")
     for warn in how.get("warnungen", []):
         w("**Warnung:** %s  " % warn)
-    w("**%d relevante Schwachstellen** (Kriterium: %s%s)\n" % (len(relevant), ", ".join(
-        "P%d %s" % k for k in sorted(RELEVANT, key=lambda k: (k[0], SEV.index(k[1])))),
-        "; nur mit verfügbarem Fix" if nur_behebbare else ""))
+    w("**%d relevante Schwachstellen** (Kriterium: %s; aktiv ausgenutzte (KEV) unabhängig von Priorität und "
+      "Schweregrad%s)\n" % (len(relevant), ", ".join(
+          "P%d %s" % k for k in sorted(RELEVANT, key=lambda k: (k[0], SEV.index(k[1])))),
+          "; nur mit verfügbarem Fix" if nur_behebbare else ""))
     if known is not None:
         w("Davon **%d neu** seit dem letzten Lauf.\n" % sum(r["neu"] for r in relevant))
     for r in relevant[:30]:
-        w(("- NEU: " if r["neu"] and known is not None else "- ") + "**%(id)s** (%(sev)s) in %(pkg)s %(ver)s – " % r + (("behoben in " + fix_text(r["ver"], r["fix"])) if r["fix"] else "noch kein Fix") +
-          " – genutzt von %(users)s" % r)
+        w(("- NEU: " if r["neu"] and known is not None else "- ") + "**%s** (%s) in %s %s – " % (
+            r["id"], schwere_text(r), r["pkg"], r["ver"]) +
+          (("behoben in " + fix_text(r["ver"], r["fix"])) if r["fix"] else "noch kein Fix") +
+          " – genutzt von %(users)s" % r + (" – **aktiv ausgenutzt** (KEV seit %s)" % r["kev"] if r.get("kev") else ""))
     if len(relevant) > 30:
         w("- … weitere %d in der Tabelle unten" % (len(relevant) - 30))
+    if ausgenommen:
+        w("\nNicht gezählt (wären sonst relevant):")
+        for r in ausgenommen[:30]:
+            w("- %s (%s) in %s %s – %s" % (r["id"], schwere_text(r), r["pkg"], r["ver"], r["ausgenommen"]))
     unknown = sum(1 for r in rows if r["prio"] == 1 and r["sev"] == "UNKNOWN")
     if unknown:
         w("\nHinweis: %d Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit ansehen." % unknown)
@@ -2169,12 +2379,19 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
                     (3, "P3 Prozess ohne Port"), (4, "P4 nicht genutzt / dev")):
         w("| %s | " % name + " | ".join(str(cnt[(p, s)]) for s in SEV) + " |")
 
-    shown = [r for r in rows if alle or r["prio"] <= 2 or r["sev"] in ("CRITICAL", "HIGH")]
-    w("\n## Befunde (%d von %d%s)\n" % (len(shown), len(rows), "" if alle else "; P3/P4 nur CRITICAL/HIGH, alle mit --alle"))
+    shown = [r for r in rows if alle or r["prio"] <= 2 or r["sev"] in ("CRITICAL", "HIGH") or r.get("kev")]
+    w("\n## Befunde (%d von %d%s)\n" % (len(shown), len(rows), "" if alle else "; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle"))
     w("| P | Schwere | ID | Paket | Installiert | Behoben in | Genutzt von | Titel |\n|---|---|---|---|---|---|---|---|")
     for r in shown:
-        w("| %s | %s | %s | %s | %s | %s | %s | %s |" % (r["prio"], r["sev"], r["id"], r["pkg"], r["ver"], fix_text(r["ver"], r["fix"]) or "kein Fix",
-                                                        md(r["users"]), md(r["title"])[:90]))
+        w("| %s | %s | %s | %s | %s | %s | %s | %s |" % (
+            r["prio"], schwere_text(r), r["id"], r["pkg"], r["ver"], fix_text(r["ver"], r["fix"]) or "kein Fix",
+            md(r["users"]), ("[nicht gezählt: %s] " % md(r["ausgenommen"]) if r.get("ausgenommen") else "") + md(r["title"])[:90]))
+    if any(r.get("sev_quelle") for r in shown):
+        w("\n\\* Schweregrad aus einer anderen Quelle zur selben CVE (%s), da der zutreffende Eintrag keinen nennt."
+          % ", ".join(sorted({r["sev_quelle"] for r in shown if r.get("sev_quelle")})[:5]
+                      + (["…"] if len({r["sev_quelle"] for r in shown if r.get("sev_quelle")}) > 5 else [])))
+    if any(r.get("kev") for r in shown):
+        w("\nKEV: im Katalog aktiv ausgenutzter Schwachstellen der CISA (Known Exploited Vulnerabilities).")
 
     unchecked = [x for x in comps if (x["typ"] in ("runtime", "server", "host", "php-ext")
                  and not from_os_package(x) and x["name"] not in BITNAMI)
@@ -2264,6 +2481,7 @@ def scan_container(name, a, via_proxy=None):
     findings, db_date, missing, os_newest = osv_scan(comps, osinfo, a.dbdirs)
     # nach osv_scan: erst dort werden Laufzeiten aus Fremdquellen (nginx.org, NodeSource …) erkannt
     warnings.extend(eol_warnungen(comps, [os.path.join(d, "eol-daten.json") for d in a.dbdirs]))
+    warnings.extend(kev_markieren(findings, [os.path.join(d, "kev.json") for d in a.dbdirs]))
     if missing:
         problems.append("Daten fehlen für: " + ", ".join(missing) + " (--db-aktualisieren --oekosysteme " + ",".join(missing) + ")")
     if not pkgs:
@@ -2286,7 +2504,7 @@ def scan_container(name, a, via_proxy=None):
     os.makedirs(a.ausgabe, exist_ok=True)
     base = os.path.join(a.ausgabe, "scan_%s_%s" % (c.name, datetime.datetime.now().strftime("%Y%m%d_%H%M%S")))
     rows, relevant = write_report(base + ".md", c, osinfo, comps, services, procs, web, how, findings, db_info,
-                                  a.alle, a.nur_behebbare, known)
+                                  a.alle, a.nur_behebbare, known, getattr(a, "ausnahmen_liste", None) or [])
     if not problems:
         with open(known_file, "w", encoding="utf-8") as f:
             json.dump(sorted([r["pkg"], r["ver"], r["id"]] for r in relevant), f)
@@ -2298,11 +2516,12 @@ def scan_container(name, a, via_proxy=None):
     code = 2 if problems else 1 if relevant else 0
     public = [s["label"] for s in services if s["exposed"]]
     unknown = sum(1 for r in rows if r["prio"] == 1 and r["sev"] == "UNKNOWN")
+    kev = sum(1 for r in relevant if r.get("kev"))
     for warn in how["warnungen"]:
         print("%s: WARNUNG: %s" % (c.name, warn))
-    print("%s: %s – %d Befunde, davon %d relevant (%d neu)%s; öffentlich: %s – Bericht: %s.md" % (
+    print("%s: %s – %d Befunde, davon %d relevant (%d neu%s)%s; öffentlich: %s – Bericht: %s.md" % (
         c.name, {0: "OK", 1: "RELEVANTE SCHWACHSTELLEN", 2: "UNVOLLSTÄNDIG: " + "; ".join(problems)}[code],
-        len(rows), len(relevant), sum(r["neu"] for r in relevant),
+        len(rows), len(relevant), sum(r["neu"] for r in relevant), ", %d aktiv ausgenutzt" % kev if kev else "",
         ", P1 ohne Schweregrad: %d" % unknown if unknown else "",
         ", ".join(public) or "nichts", base))
     sys.stdout.flush()
@@ -2335,6 +2554,10 @@ def main():
                          "(Standard: osv-daten und osv-db neben diesem Skript)")
     ap.add_argument("--daten-erzeugen", metavar="VERZEICHNIS", help=argparse.SUPPRESS)   # für die GitHub Action
     ap.add_argument("--eol-daten-erzeugen", metavar="DATEI", help=argparse.SUPPRESS)
+    ap.add_argument("--kev-daten-erzeugen", metavar="DATEI", help=argparse.SUPPRESS)
+    ap.add_argument("--ausnahmen", metavar="DATEI",
+                    help="Ausnahmeliste: je Zeile \"<Kennung> <Paket oder *> <gültig bis JJJJ-MM-TT> <Begründung>\"; "
+                         "passende Funde zählen nicht als relevant (README: Ausnahmen)")
     ap.add_argument("--db-aktualisieren", action="store_true",
                     help="OSV-Datenbank aktualisieren (Internet nötig; nach dem ersten Mal nur Änderungen)")
     ap.add_argument("--voll", action="store_true", help="mit --db-aktualisieren: Gesamtexporte neu laden")
@@ -2352,6 +2575,9 @@ def main():
         return 0
     if a.eol_daten_erzeugen:
         eol_daten_erzeugen(a.eol_daten_erzeugen)
+        return 0
+    if a.kev_daten_erzeugen:
+        kev_daten_erzeugen(a.kev_daten_erzeugen)
         return 0
     a.dbdirs = a.db or [d for d in (data_dir, local_db) if os.path.isdir(d)]
     if a.db_aktualisieren:
@@ -2376,12 +2602,14 @@ def main():
             log("Skript und osv-daten per git pull aktualisiert")
         if a.oekosysteme or not repo_data:
             osv_update(a.db[0] if a.db else local_db, [e for e in (a.oekosysteme or ",".join(OSV_ECOSYSTEMS)).split(",") if e], a.voll)
-        if not repo_data:                 # ohne Git-Checkout: EOL-Daten direkt von endoflife.date
-            try:
-                eol_daten_erzeugen(os.path.join(a.db[0] if a.db else local_db, "eol-daten.json"))
-                log("EOL-Daten von endoflife.date aktualisiert")
-            except (OSError, ValueError, KeyError, TypeError, ScanError) as e:
-                log("WARNUNG: EOL-Daten nicht aktualisiert: %s" % e)
+        if not repo_data:                 # ohne Git-Checkout: EOL- und KEV-Daten direkt von der Quelle
+            for label, func, fname in (("EOL-Daten von endoflife.date", eol_daten_erzeugen, "eol-daten.json"),
+                                       ("KEV-Daten der CISA", kev_daten_erzeugen, "kev.json")):
+                try:
+                    func(os.path.join(a.db[0] if a.db else local_db, fname))
+                    log(label + " aktualisiert")
+                except (OSError, ValueError, KeyError, TypeError, ScanError) as e:
+                    log("WARNUNG: %s nicht aktualisiert: %s" % (label, e))
         a.dbdirs = a.db or [d for d in (data_dir, local_db) if os.path.isdir(d)]
         if not a.container and not a.oeffentliche:
             return 0
@@ -2392,6 +2620,7 @@ def main():
     os.umask(0o077)
     if not a.dbdirs or not all(os.path.isdir(d) for d in a.dbdirs):
         raise ScanError("keine OSV-Daten gefunden (%s) – zuerst: %s --db-aktualisieren" % (", ".join(a.db or [data_dir]), sys.argv[0]))
+    a.ausnahmen_liste = ausnahmen_laden(a.ausnahmen) if a.ausnahmen else []
     if not a.oeffentliche:
         return scan_container(a.container, a)[0]
     try:
