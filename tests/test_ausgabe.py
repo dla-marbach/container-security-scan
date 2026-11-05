@@ -1,5 +1,6 @@
 """Bericht (Markdown), SBOM (CycloneDX) und Gesamtlauf scan_container mit Rückgabewerten – ohne Docker."""
 import argparse
+import io
 import json
 import os
 import shutil
@@ -176,11 +177,13 @@ class Gesamtlauf(unittest.TestCase):
                    mock.patch.object(scanner, "collect_web", return_value=w),
                    mock.patch.object(scanner, "run", side_effect=fake_run),
                    mock.patch.object(scanner, "utcnow", return_value=scanner.datetime.datetime(2026, 11, 4, 12)),
-                   mock.patch.object(scanner, "log"), mock.patch("sys.stdout")]
+                   mock.patch.object(scanner, "log"), mock.patch("sys.stdout", new_callable=io.StringIO)]
         for p in patches:
             p.start()
         try:
-            return scanner.scan_container("app", self.a)
+            ergebnis = scanner.scan_container("app", self.a)
+            self.konsole = scanner.sys.stdout.getvalue()
+            return ergebnis
         finally:
             for p in reversed(patches):
                 p.stop()
@@ -196,6 +199,14 @@ class Gesamtlauf(unittest.TestCase):
             self.assertEqual(f.read().split()[0], scanner.datei_sha256(base + ".md"))
         self.assertEqual(scanner.json_datei(os.path.join(self.a.ausgabe, "bekannt_app.json")),
                          [["libssl3", "3.0.15-1~deb12u1", "CVE-2026-9"]])
+
+    def test_relevante_funde_auf_der_konsole(self):
+        # für Rundeck/Mail: nicht nur die Zusammenfassung, sondern jeder relevante Fund
+        self.lauf()
+        self.assertIn("app:   CVE-2026-9 (HIGH) in libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u2 – "
+                      "genutzt von nginx:80\n", self.konsole)
+        self.lauf()     # zweiter Lauf: nichts mehr neu
+        self.assertNotIn("NEU:", self.konsole)
 
     def test_behoben_ergibt_0(self):
         self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2")

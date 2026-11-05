@@ -2326,6 +2326,14 @@ def schwere_text(r):
     return r["sev"] + ("*" if r.get("sev_quelle") else "") + (" KEV" if r.get("kev") else "")
 
 
+def fund_text(r, fett=""):
+    """Eine Zeile je relevantem Fund – im Bericht (fett = "**") und auf der Konsole."""
+    return "%s%s%s (%s) in %s %s – " % (fett, r["id"], fett, schwere_text(r), r["pkg"], r["ver"]) + \
+        (("behoben in " + fix_text(r["ver"], r["fix"])) if r["fix"] else "noch kein Fix") + \
+        " – genutzt von %(users)s" % r + \
+        (" – %saktiv ausgenutzt%s (KEV seit %s)" % (fett, fett, r["kev"]) if r.get("kev") else "")
+
+
 def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db_info, alle, nur_behebbare, known,
                  ausnahmen=()):
     published = {s["label"] for s in services if s["exposed"]}
@@ -2367,10 +2375,7 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
     if known is not None:
         w("Davon **%d neu** seit dem letzten Lauf.\n" % sum(r["neu"] for r in relevant))
     for r in relevant[:30]:
-        w(("- NEU: " if r["neu"] and known is not None else "- ") + "**%s** (%s) in %s %s – " % (
-            r["id"], schwere_text(r), r["pkg"], r["ver"]) +
-          (("behoben in " + fix_text(r["ver"], r["fix"])) if r["fix"] else "noch kein Fix") +
-          " – genutzt von %(users)s" % r + (" – **aktiv ausgenutzt** (KEV seit %s)" % r["kev"] if r.get("kev") else ""))
+        w(("- NEU: " if r["neu"] and known is not None else "- ") + fund_text(r, "**"))
     if len(relevant) > 30:
         w("- … weitere %d in der Tabelle unten" % (len(relevant) - 30))
     if ausgenommen:
@@ -2541,6 +2546,9 @@ def scan_container(name, a, via_proxy=None):
         len(rows), len(relevant), sum(r["neu"] for r in relevant), ", %d aktiv ausgenutzt" % kev if kev else "",
         ", P1 ohne Schweregrad: %d" % unknown if unknown else "",
         ", ".join(public) or "nichts", base))
+    # relevante Funde auch auf der Konsole (Rundeck-Log, Mail), neue zuerst – Details im Bericht
+    for r in relevant:
+        print("%s:   %s%s" % (c.name, "NEU: " if r["neu"] and known is not None else "", fund_text(r)))
     sys.stdout.flush()
     return code, [(ct, port, "%s in %s" % (label, c.name)) for s in services for ct, port, label in s["backends"]], base
 
