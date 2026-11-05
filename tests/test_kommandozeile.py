@@ -90,14 +90,14 @@ class Kommandozeile(unittest.TestCase):
 
     def git_checkout(self, euid, daten="clone"):
         """Kopie des Skripts in einem (scheinbaren) Git-Checkout, --db-aktualisieren mit vorgetäuschter UID.
-        daten: "clone" = osv-daten ist ein Clone des Branches daten, "fehlt" = noch nicht geholt,
-        "alt" = osv-daten ohne Git (altes Layout). Der git-Ersatz im PATH protokolliert seine Aufrufe."""
+        daten: "clone" = daten/ ist ein Clone des Branches daten, "fehlt" = noch nicht geholt,
+        "ohne-git" = daten/ ohne Git. Der git-Ersatz im PATH protokolliert seine Aufrufe."""
         repo = os.path.join(self.tmp, "repo")
         os.makedirs(os.path.join(repo, ".git"))
         if daten == "clone":
-            os.makedirs(os.path.join(repo, "osv-daten", ".git"))
-        elif daten == "alt":
-            os.makedirs(os.path.join(repo, "osv-daten"))
+            os.makedirs(os.path.join(repo, "daten", ".git"))
+        elif daten == "ohne-git":
+            os.makedirs(os.path.join(repo, "daten"))
         shutil.copy(SKRIPT, os.path.join(repo, "container-security-scan.py"))
         protokoll = os.path.join(self.tmp, "git-aufrufe")
         path = os.path.join(self.bin, "git")
@@ -127,17 +127,17 @@ class Kommandozeile(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         self.assertIn("per git pull aktualisiert", out)
         # nur die Daten, nie der Code-Checkout
-        self.assertEqual(aufrufe, ["-C %s pull --ff-only --quiet" % os.path.join(repo, "osv-daten")])
+        self.assertEqual(aufrufe, ["-C %s pull --ff-only --quiet" % os.path.join(repo, "daten")])
 
     def test_daten_branch_wird_geholt(self):
         rc, out, aufrufe, repo = self.git_checkout(1000, daten="fehlt")
         self.assertEqual(rc, 0, out)
         self.assertEqual(aufrufe, ["-C %s remote get-url origin" % repo,
                                    "clone --quiet --single-branch --branch daten https://example.invalid/css.git %s"
-                                   % os.path.join(repo, "osv-daten")])
+                                   % os.path.join(repo, "daten")])
 
-    def test_altes_layout_bricht_ab(self):
-        rc, out, aufrufe, _ = self.git_checkout(1000, daten="alt")
+    def test_daten_ohne_git_bricht_ab(self):
+        rc, out, aufrufe, _ = self.git_checkout(1000, daten="ohne-git")
         self.assertEqual(rc, 2)
         self.assertIn("kein Git-Checkout des Branches daten", out)
         self.assertEqual(aufrufe, [])

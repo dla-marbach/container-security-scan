@@ -29,11 +29,11 @@ jobs:
     needs: unittest
     steps:
       - uses: actions/checkout@v4
-      - name: Daten (Branch daten) nach osv-daten/ auschecken
+      - name: Daten (Branch daten) nach daten/ auschecken
         uses: actions/checkout@v4
         with:
           ref: daten
-          path: osv-daten
+          path: daten
           persist-credentials: false
       - run: docker pull -q nginx:1.27-alpine && docker pull -q node:20-alpine
       - run: python3 -m unittest discover -s tests -p "test_docker.py" -v

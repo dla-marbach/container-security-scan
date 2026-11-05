@@ -10,7 +10,7 @@ Kein Datenabfluss: Abgleich mit einer LOKALEN Kopie der OSV-Daten (https://osv.d
 
 Aufruf:
   ./container-security-scan.py --db-aktualisieren
-     im Git-Checkout: Daten aus dem Branch "daten" nach osv-daten holen bzw. per "git pull" aktualisieren
+     im Git-Checkout: Daten aus dem Branch "daten" nach daten/ holen bzw. per "git pull" aktualisieren
      (täglich per GitHub Action gepflegt). Nie den Code: den nur nach Prüfung von Hand aktualisieren.
      Nicht als root – siehe README "Code und Daten trennen";
      mit --oekosysteme X,Y: zusätzlich diese Ökosysteme direkt von OSV nach osv-db laden (z.B. Ubuntu)
@@ -18,7 +18,7 @@ Aufruf:
   ./container-security-scan.py --oeffentliche [ausgabeverzeichnis] [...]
      alle Container mit veröffentlichten Ports (bzw. im Host-Netzwerk) und deren Backends hinter einem
      Reverse Proxy; Dienste hinter einem öffentlichen Proxy gelten als öffentlich (P1)
-  Daten: osv-daten/ und osv-db/ neben diesem Skript (oder --db DIR, auch mehrfach)
+  Daten: daten/ (Branch daten) und osv-db/ neben diesem Skript (oder --db DIR, auch mehrfach)
 
 Ergebnis: scan_<name>_<zeit>.md        Bericht: Ergebnis, Dienste, Befunde nach Priorität, Anhang
           scan_<name>_<zeit>.cdx.json  SBOM (CycloneDX 1.5) als Beleg; auch mit Trivy/Grype/Dependency-Track nutzbar
@@ -2105,7 +2105,7 @@ def db_state(dbdir):
         raw = json_datei(os.path.join(dbdir, "stand.json"))
     except (OSError, ValueError):
         return {}
-    return {k: (v if isinstance(v, dict) else {"stand": v, "geprueft": v}) for k, v in raw.items() if not k.startswith("_")}
+    return {k: v for k, v in raw.items() if not k.startswith("_") and isinstance(v, dict)}
 
 
 def osv_update(dbdir, ecosystems, full=False):
@@ -2545,7 +2545,7 @@ def public_containers():
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    data_dir, local_db = os.path.join(here, "osv-daten"), os.path.join(here, "osv-db")
+    data_dir, local_db = os.path.join(here, "daten"), os.path.join(here, "osv-db")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("container", nargs="?", help="Name oder ID des laufenden Containers")
     ap.add_argument("ausgabe", nargs="?", default=".", help="Ausgabeverzeichnis (Standard: aktuelles Verzeichnis)")
@@ -2553,7 +2553,7 @@ def main():
                     help="alle Container mit veröffentlichten Ports scannen, dazu deren Backends hinter einem Proxy")
     ap.add_argument("--db", action="append", metavar="DIR",
                     help="Verzeichnis mit OSV-Daten, mehrfach möglich: je Ökosystem gilt das erste, das es enthält "
-                         "(Standard: osv-daten und osv-db neben diesem Skript)")
+                         "(Standard: daten und osv-db neben diesem Skript)")
     ap.add_argument("--daten-erzeugen", metavar="VERZEICHNIS", help=argparse.SUPPRESS)   # für die GitHub Action
     ap.add_argument("--eol-daten-erzeugen", metavar="DATEI", help=argparse.SUPPRESS)
     ap.add_argument("--kev-daten-erzeugen", metavar="DATEI", help=argparse.SUPPRESS)
@@ -2561,11 +2561,11 @@ def main():
                     help="Ausnahmeliste: je Zeile \"<Kennung> <Paket oder *> <gültig bis JJJJ-MM-TT> <Begründung>\"; "
                          "passende Funde zählen nicht als relevant (README: Ausnahmen)")
     ap.add_argument("--db-aktualisieren", action="store_true",
-                    help="Daten aktualisieren: im Git-Checkout den Branch daten nach osv-daten (nie den Code), sonst direkt "
+                    help="Daten aktualisieren: im Git-Checkout den Branch daten nach daten/ (nie den Code), sonst direkt "
                          "von OSV (Internet nötig; nach dem ersten Mal nur Änderungen)")
     ap.add_argument("--voll", action="store_true", help="mit --db-aktualisieren: Gesamtexporte neu laden")
     ap.add_argument("--oekosysteme", help="mit --db-aktualisieren: zusätzlich diese Ökosysteme direkt von OSV laden "
-                                           "(z.B. Ubuntu); ohne osv-daten Standard: " + ",".join(OSV_ECOSYSTEMS))
+                                           "(z.B. Ubuntu); ohne daten/ Standard: " + ",".join(OSV_ECOSYSTEMS))
     ap.add_argument("--nur-behebbare", action="store_true",
                     help="für den Rückgabewert nur Funde zählen, für die es einen Fix gibt")
     ap.add_argument("--alle", action="store_true", help="alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH)")
@@ -2598,24 +2598,23 @@ def main():
         code_git = not a.db and not os.path.exists(data_dir) and os.path.isdir(os.path.join(here, ".git"))
         repo_data = daten_git or code_git
         if not a.db and not daten_git and os.path.isdir(data_dir) and os.path.isdir(os.path.join(here, ".git")):
-            raise ScanError("osv-daten ist kein Git-Checkout des Branches %s (Verzeichnis aus dem alten Layout?): "
-                            "entfernen und --db-aktualisieren erneut aufrufen (README: \"Code und Daten trennen\")"
-                            % DATEN_BRANCH)
+            raise ScanError("%s ist kein Git-Checkout des Branches %s: entfernen und --db-aktualisieren erneut "
+                            "aufrufen oder das Verzeichnis mit --db angeben" % (data_dir, DATEN_BRANCH))
         if daten_git:
             rc, out = run(["git", "-C", data_dir, "pull", "--ff-only", "--quiet"], stderr=True, timeout=600)
             if rc != 0:
-                raise ScanError("git pull in osv-daten fehlgeschlagen: " + out.strip()[-300:])
-            log("Daten (Branch %s) in osv-daten per git pull aktualisiert" % DATEN_BRANCH)
+                raise ScanError("git pull in daten/ fehlgeschlagen: " + out.strip()[-300:])
+            log("Daten (Branch %s) in daten/ per git pull aktualisiert" % DATEN_BRANCH)
         elif code_git:
             rc, url = run(["git", "-C", here, "remote", "get-url", "origin"], timeout=60)
             if rc != 0 or not url.strip():
                 raise ScanError("Git-Remote origin nicht ermittelbar; Daten von Hand holen: git clone --single-branch "
-                                "--branch %s <url> osv-daten" % DATEN_BRANCH)
+                                "--branch %s <url> daten" % DATEN_BRANCH)
             rc, out = run(["git", "clone", "--quiet", "--single-branch", "--branch", DATEN_BRANCH, url.strip(), data_dir],
                           stderr=True, timeout=1800)
             if rc != 0:
                 raise ScanError("git clone des Branches %s fehlgeschlagen: %s" % (DATEN_BRANCH, out.strip()[-300:]))
-            log("Daten (Branch %s) nach osv-daten geholt" % DATEN_BRANCH)
+            log("Daten (Branch %s) nach daten/ geholt" % DATEN_BRANCH)
         if a.oekosysteme or not repo_data:
             osv_update(a.db[0] if a.db else local_db, [e for e in (a.oekosysteme or ",".join(OSV_ECOSYSTEMS)).split(",") if e], a.voll)
         if not repo_data:                 # ohne Git: EOL- und KEV-Daten direkt von der Quelle

@@ -1,4 +1,4 @@
-name: OSV-Daten aktualisieren
+name: Daten aktualisieren
 
 # Code (Branch main) und Daten (Branch daten) sind getrennt: Dieser Workflow läuft mit dem Code aus main und
 # schreibt nur in den Branch daten. Den Code-Checkout ohne Zugangsdaten auschecken; ein Ruleset auf main
@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: osv-daten
+  group: daten
   cancel-in-progress: false
 
 jobs:
