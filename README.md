@@ -3,13 +3,14 @@
 Schwachstellen-Scan für **laufende Docker-Container** – mit Fokus auf das, was tatsächlich läuft und
 von außen erreichbar ist. Ein einzelnes Python-Skript, nur Standardbibliothek, ab Python 3.6
 (SLES 15), rein lesend. Die Schwachstellendaten (gekürzter Auszug aus [OSV](https://osv.dev)) liegen
-in diesem Repository und werden täglich per GitHub Action aktualisiert – auf dem Server genügt `git pull`
-(für den Betrieb als root getrennt vom Code, siehe [Code und Daten trennen](#code-und-daten-trennen)),
-Paketlisten verlassen den Server nie.
+im Branch [`daten`](https://github.com/felixlohmeier/container-security-scan/tree/daten) dieses Repositorys, getrennt vom Code im Branch `main`, und werden
+täglich per GitHub Action aktualisiert – auf dem Server genügt `git pull` im Daten-Clone (siehe
+[Code und Daten trennen](#code-und-daten-trennen)). Paketlisten verlassen den Server nie.
 
 ```bash
 git clone https://github.com/felixlohmeier/container-security-scan.git
 cd container-security-scan
+./container-security-scan.py --db-aktualisieren          # holt den Branch daten nach osv-daten/ (nicht als root)
 ./container-security-scan.py --oeffentliche berichte/ --nur-behebbare
 echo $?        # 0 = ok, 1 = relevante Schwachstellen, 2 = Fehler/unvollständig
 ```
@@ -44,12 +45,11 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 # einen einzelnen Container
 ./container-security-scan.py <container> [ausgabeverzeichnis]
 
-# Skript und Daten aktualisieren (= git pull) – nicht als root; einen so aktualisierten Checkout danach
-# nicht als root oder mit docker-Rechten ausführen, siehe „Code und Daten trennen“
+# Daten aktualisieren: Branch daten nach osv-daten/ holen bzw. dort git pull – nie den Code; nicht als root
 ./container-security-scan.py --db-aktualisieren
 
-# als root: festgehaltener Code, Daten aus einem eigenen Clone (siehe „Code und Daten trennen“)
-/opt/container-security-scan/container-security-scan.py --db /var/lib/container-security-scan/daten/osv-daten --oeffentliche [ausgabeverzeichnis]
+# als root: festgehaltener Code, Daten aus einem eigenen Clone des Branches daten (siehe „Code und Daten trennen“)
+/opt/container-security-scan/container-security-scan.py --db /var/lib/container-security-scan/daten --oeffentliche [ausgabeverzeichnis]
 
 # zusätzliche Ökosysteme direkt von OSV laden (nach osv-db/), z. B. für Ubuntu-basierte Images
 # wie mariadb, solr oder elasticsearch (ca. 800 MB)
@@ -66,8 +66,8 @@ runuser -u csscan -- ./container-security-scan.py --db /var/lib/container-securi
 | `--nur-behebbare` | für den Rückgabewert nur Funde zählen, für die es einen Fix gibt – **empfohlen** für die Alarmierung, sonst melden Container mit offenen, noch unbehobenen CVEs dauerhaft `1` |
 | `--alle` | alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV) |
 | `--ausnahmen DATEI` | Ausnahmeliste: passende Funde zählen nicht als relevant, jede Ausnahme mit Begründung und Ablaufdatum (siehe [Ausnahmen](#ausnahmen)) |
-| `--db-aktualisieren` | als root abgelehnt (Rückgabewert 2): nie Code oder Daten aus dem Netz als root holen bzw. schreiben. Im Git-Checkout `git pull`; mit `--oekosysteme A,B` zusätzlich diese Ökosysteme direkt von OSV nach `osv-db/` (inkrementell, `--voll` lädt alles neu). Ohne Git-Checkout oder mit `--db`: alle Ökosysteme, die EOL- und die KEV-Daten direkt |
-| `--db DIR` | nur diese Datenverzeichnisse verwenden; mehrfach möglich, je Ökosystem gilt das erste, das es enthält. Mit `--db-aktualisieren` genau eines (Ziel). Standard: `osv-daten/` und `osv-db/` neben dem Skript |
+| `--db-aktualisieren` | als root abgelehnt (Rückgabewert 2): nie Daten aus dem Netz als root schreiben. Im Git-Checkout den Branch `daten` nach `osv-daten/` holen bzw. dort `git pull` – **nie den Code**; mit `--oekosysteme A,B` zusätzlich diese Ökosysteme direkt von OSV nach `osv-db/` (inkrementell, `--voll` lädt alles neu). Ohne Git-Checkout oder mit `--db`: alle Ökosysteme, die EOL- und die KEV-Daten direkt |
+| `--db DIR` | nur diese Datenverzeichnisse verwenden; mehrfach möglich, je Ökosystem gilt das erste, das es enthält. Mit `--db-aktualisieren` genau eines (Ziel). Standard: `osv-daten/` (Clone des Branches `daten`) und `osv-db/` neben dem Skript |
 | `--user` | Benutzer für `docker exec` (Standard `0`) |
 
 ### Rückgabewert
@@ -147,19 +147,22 @@ Das Skript läuft als root. Käme sein Code automatisch aus GitHub, hätte jeder
 übernimmt, mit dem nächsten Lauf root auf allen Servern – auch ohne das Skript selbst zu ändern, z. B.
 über eine zusätzliche `json.py` neben dem Skript, die Python beim `import json` zuerst lädt. Deshalb:
 
-- **Code** liegt root-eigen unter `/opt/container-security-scan`, auf einem geprüften Stand festgehalten,
-  und wird nur von Hand nach Prüfung aktualisiert.
-- **Daten** holt ein Benutzer ohne Rechte (`csscan`) täglich in einen eigenen Clone. Der Scan als root
-  liest daraus nur JSON-Dateien (`--db`) und führt dort nichts aus.
-- `--db-aktualisieren` lehnt jeden Aufruf als root ab (Rückgabewert 2): `git pull` würde Code holen, der
-  danach als root läuft, und Daten aus dem Netz soll root nicht in ein Verzeichnis schreiben, das einem
-  anderen Benutzer gehört (symbolische Links).
+- **Zwei Branches:** `main` enthält nur Code, [`daten`](https://github.com/felixlohmeier/container-security-scan/tree/daten) nur Daten (JSON, keine
+  Programme). Die GitHub Action läuft mit dem Code aus `main` und schreibt nur nach `daten`.
+- **Code** liegt root-eigen unter `/opt/container-security-scan` (Branch `main`), auf einem geprüften Stand
+  festgehalten, und wird nur von Hand nach Prüfung aktualisiert.
+- **Daten** holt ein Benutzer ohne Rechte (`csscan`) täglich in einen Clone nur des Branches `daten`. Darin
+  liegt kein Code, der versehentlich als root gestartet werden könnte. Der Scan als root liest daraus nur
+  JSON-Dateien (`--db`).
+- `--db-aktualisieren` holt nur den Branch `daten`, nie den Code, und lehnt jeden Aufruf als root ab
+  (Rückgabewert 2): Daten aus dem Netz soll root nicht in ein Verzeichnis schreiben, das einem anderen
+  Benutzer gehört (symbolische Links).
 - Gleiches gilt für Mitglieder der Gruppe `docker`: Ein Checkout, den jemand anders (oder `git pull`)
   aktualisiert, darf nicht mit root- oder docker-Rechten laufen – sonst hat, wer ihn ändern kann, root.
 
 ```
-/opt/container-security-scan/              Code: root, festgehalten
-/var/lib/container-security-scan/daten/    Clone desselben Repositorys: csscan, täglich git pull
+/opt/container-security-scan/              Code (Branch main): root, festgehalten
+/var/lib/container-security-scan/daten/    Daten (nur Branch daten): csscan, täglich git pull
 /var/lib/container-security-scan/osv-db/   optional, z. B. Ubuntu-Daten direkt von OSV: csscan
 ```
 
@@ -167,13 +170,14 @@ Einrichtung (als root):
 
 ```bash
 # Code
-git clone https://github.com/felixlohmeier/container-security-scan.git /opt/container-security-scan
+git clone --single-branch --branch main https://github.com/felixlohmeier/container-security-scan.git \
+    /opt/container-security-scan
 chmod -R go-w /opt/container-security-scan
 
 # Daten
 useradd -r -U -m -d /var/lib/container-security-scan -s /sbin/nologin csscan
-runuser -u csscan -- git clone https://github.com/felixlohmeier/container-security-scan.git \
-    /var/lib/container-security-scan/daten
+runuser -u csscan -- git clone --single-branch --branch daten \
+    https://github.com/felixlohmeier/container-security-scan.git /var/lib/container-security-scan/daten
 ```
 
 Braucht der Server einen Proxy, diesen für `csscan` in git eintragen
@@ -183,17 +187,48 @@ Damit hat eine Übernahme des Repositorys nur noch eine Folge: Die Daten können
 also unterdrückt oder erfunden werden. Code als root läuft dadurch nicht. Wer auch GitHub als Datenquelle
 ausschließen will, lädt die Daten direkt von OSV ([siehe unten](#direkt-von-osv-statt-über-github)).
 
+### Branches schützen (Rulesets)
+
+In den Einstellungen des Repositorys unter *Settings → Rules → Rulesets* (bzw. *Settings → Actions*):
+
+| Ruleset bzw. Einstellung | Regeln | Wirkung |
+|---|---|---|
+| Branch `main` (Default branch) | *Restrict deletions*, *Block force pushes*, *Require a pull request before merging*, optional *Require status checks to pass* (Unit-Tests) und *Require signed commits*; keine Ausnahme (*Bypass list*) für GitHub Actions | Code ändert sich nur über einen Pull Request; das Token des Workflows kann `main` nicht beschreiben. |
+| Branch `daten` | *Restrict deletions*, *Block force pushes* | Die Action committet weiter direkt; die Historie der Daten lässt sich nicht umschreiben. |
+| *Actions → General → Workflow permissions* | *Allow GitHub Actions to create and approve pull requests* aus (Standard) | Der Workflow kann sich nicht über einen eigenen Pull Request nach `main` schreiben. |
+
+Rulesets schützen gegen Versehen und gegen ein missbrauchtes Token des Workflows, **nicht** gegen eine
+Übernahme des Kontos: Wer Admin-Rechte hat, kann sie abschalten. Deshalb bleibt der Code auf dem Server
+festgehalten und wird nur nach Prüfung aktualisiert (optional über signierte Tags, siehe unten).
+
+### Umstellung bestehender Server (bis 11/2026: Daten im Verzeichnis `osv-daten/` des Branches `main`)
+
+Der alte Daten-Clone (`main`, Daten unter `…/daten/osv-daten`) verliert mit dem nächsten `git pull` sein
+`osv-daten/`; der Scan endet dann mit „keine OSV-Daten gefunden“ (Rückgabewert 2). Umstellen, als root:
+
+```bash
+mv /var/lib/container-security-scan/daten /var/lib/container-security-scan/daten.alt
+runuser -u csscan -- git clone --single-branch --branch daten \
+    https://github.com/felixlohmeier/container-security-scan.git /var/lib/container-security-scan/daten
+# in container-security-scan-taeglich bzw. -rundeck: DB=(--db "$D/daten")   (statt "$D/daten/osv-daten")
+rm -rf /var/lib/container-security-scan/daten.alt
+```
+
+Der Code unter `/opt` kann auf dem alten Stand bleiben, bis er geprüft aktualisiert wird: Das Format der
+Daten ist unverändert, nur ihr Ort. Wer ohne Trennung arbeitet (`./container-security-scan.py
+--db-aktualisieren` im Checkout), entfernt das alte `osv-daten/` und ruft `--db-aktualisieren` erneut auf.
+
 ### Code aktualisieren
 
-Nur nach Prüfung, als root. `git fetch` führt nichts aus; geprüft werden alle Änderungen außer den Daten,
-denn jede neue `.py`-Datei neben dem Skript würde mitgeladen:
+Nur nach Prüfung, als root. `git fetch` führt nichts aus; da `main` nur Code enthält, ist jede Änderung zu
+prüfen – jede neue `.py`-Datei neben dem Skript würde mitgeladen:
 
 ```bash
 cd /opt/container-security-scan
-git fetch origin
-git diff --stat HEAD origin/main -- . ':!osv-daten'     # was hat sich außer den Daten geändert?
-git diff HEAD origin/main -- . ':!osv-daten'            # ansehen
-git checkout --detach origin/main                       # bzw. den geprüften Commit
+git fetch origin main
+git diff --stat HEAD origin/main     # was hat sich geändert?
+git diff HEAD origin/main            # ansehen
+git checkout --detach origin/main    # bzw. den geprüften Commit
 ```
 
 Optional mit **signierten Tags**: Geprüfte Stände werden mit einem Schlüssel signiert, der nicht bei
@@ -214,7 +249,7 @@ GitHub, und wer das Repository übernimmt, kann den Workflow ändern.
 ## Täglicher Betrieb
 
 Neue Schwachstellen erscheinen in den OSV-Daten typischerweise 1–2 Tage nach Veröffentlichung; die
-GitHub Action übernimmt sie täglich um 03:17 UTC in `osv-daten/`. Ein täglicher Lauf erkennt sie für
+GitHub Action übernimmt sie täglich um 03:17 UTC in den Branch `daten`. Ein täglicher Lauf erkennt sie für
 die bereits laufenden Versionen, ohne dass dafür etwas angepasst werden muss.
 
 Den Scan **nicht zu früh** nach der Action ansetzen: Geplante GitHub-Läufe starten oft mit Verzögerung
@@ -243,7 +278,7 @@ AUSNAHMEN=/etc/container-security-scan/ausnahmen.txt   # optional, siehe „Ausn
 cd / && umask 077              # Berichte enthalten u. a. Prozess-Kommandozeilen
 mkdir -p "$OUT/berichte"
 LOG=$OUT/$(date +%F).txt
-DB=(--db "$D/daten/osv-daten")
+DB=(--db "$D/daten")
 [ "$UBUNTU" = ja ] && DB+=(--db "$D/osv-db")
 [ -f "$AUSNAHMEN" ] && DB+=(--ausnahmen "$AUSNAHMEN")
 (
@@ -298,7 +333,7 @@ if ! flock -n 9; then
 fi
 mkdir -p "$OUT/berichte"
 LOG=$OUT/$(date +%F_%H%M%S).txt
-DB=(--db "$D/daten/osv-daten")
+DB=(--db "$D/daten")
 [ "$UBUNTU" = ja ] && DB+=(--db "$D/osv-db")
 [ -f "$AUSNAHMEN" ] && DB+=(--ausnahmen "$AUSNAHMEN")
 {
@@ -393,17 +428,17 @@ Dateien, die zu einem OS-Paket gehören (z. B. `gosu` aus dem Ubuntu-Paket), wer
 
 ## Daten
 
-`osv-daten/` enthält einen gekürzten Auszug aus den OSV-Exporten für Debian, Alpine, npm, PyPI, Packagist,
+Der Branch [`daten`](https://github.com/felixlohmeier/container-security-scan/tree/daten) enthält einen gekürzten Auszug aus den OSV-Exporten für Debian, Alpine, npm, PyPI, Packagist,
 Maven, Go und Bitnami (ca. 170 MB, in Git komprimiert ca. 15 MB). Gekürzt heißt: nur die für den Abgleich
 nötigen Felder; die Ergebnisse sind mit den vollständigen Exporten identisch (geprüft). Die GitHub Action
 [`.github/workflows/osv-daten.yml`](.github/workflows/osv-daten.yml) erzeugt die Daten täglich neu; die
 Ausgabe ist deterministisch, Commits enthalten nur echte Änderungen. Dazu kommen `eol-daten.json`
 ([Supportende](#supportende-eol)) und `kev.json` ([aktiv ausgenutzte Lücken](#aktiv-ausgenutzte-lücken-kev)).
-Quellen und Lizenzen: [`osv-daten/QUELLEN.md`](osv-daten/QUELLEN.md).
+Quellen und Lizenzen: [`QUELLEN.md` im Branch `daten`](https://github.com/felixlohmeier/container-security-scan/blob/daten/QUELLEN.md).
 
 Ökosysteme, die nicht im Repository liegen, lädt `--db-aktualisieren --oekosysteme …` direkt von OSV
-nach `osv-db/`. Für Ökosysteme, die es in `osv-daten/` schon gibt, ist das wirkungslos: Je Ökosystem
-gilt das erste Verzeichnis, das es enthält, und `osv-daten/` kommt vor `osv-db/`.
+nach `osv-db/`. Für Ökosysteme, die es im Branch `daten` schon gibt, ist das wirkungslos: Je Ökosystem
+gilt das erste Verzeichnis, das es enthält, und `osv-daten/` (bzw. das erste `--db`) kommt vor `osv-db/`.
 
 Für Ubuntu-basierte Varianten von MariaDB, Solr und Elasticsearch ist einmalig
 `./container-security-scan.py --db-aktualisieren --oekosysteme Ubuntu` erforderlich. Der große Export
@@ -453,8 +488,8 @@ oder GitHub auch als Datenquelle ausgeschlossen sein soll.
 
 ### Supportende (EOL)
 
-`osv-daten/eol-daten.json` enthält einen Auszug aus [endoflife.date](https://endoflife.date) (MIT-Lizenz, siehe
-[`EOL-LIZENZ.txt`](EOL-LIZENZ.txt)), den die Action täglich aus dem vollständigen API-Export
+`eol-daten.json` im Branch `daten` enthält einen Auszug aus [endoflife.date](https://endoflife.date) (MIT-Lizenz, siehe
+[`EOL-LIZENZ.txt`](https://github.com/felixlohmeier/container-security-scan/blob/daten/EOL-LIZENZ.txt)), den die Action täglich aus dem vollständigen API-Export
 (`/api/v1/products/full/`) erzeugt. Geprüft werden:
 
 - **Pakete** mit npm-, Composer-, PyPI- oder Maven-Kennung bei endoflife.date (z. B. Laravel, Vue,
@@ -475,7 +510,7 @@ Ohne Git-Checkout oder mit `--db DIR` lädt `--db-aktualisieren` die EOL-Daten d
 
 ### Aktiv ausgenutzte Lücken (KEV)
 
-`osv-daten/kev.json` enthält aus dem [Katalog der CISA](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
+`kev.json` im Branch `daten` enthält aus dem [Katalog der CISA](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
 (Known Exploited Vulnerabilities, CC0) je CVE das Datum der Aufnahme; die Action lädt ihn täglich. Funde mit
 einer dieser CVEs sind im Bericht mit `KEV` markiert, stehen auch als P3/P4 in der Tabelle und sind
 **immer relevant** (Rückgabewert 1), unabhängig von Priorität und Schweregrad; `--nur-behebbare` gilt
@@ -566,6 +601,7 @@ als unabhängige Zweitmeinung: andere Datenquellen (NVD, GitHub, Hersteller) als
 
 ```bash
 python3 -m unittest discover -s tests                                   # Unit-Tests, ohne Docker (ca. 1 s)
+./container-security-scan.py --db-aktualisieren                       # Daten (Branch daten) für den Docker-Test
 CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit echten Containern
 ```
 
@@ -581,8 +617,8 @@ CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # m
 | `test_bewertung.py` | widersprüchliche Versionsbereiche der Distribution, Kernel-Pakete, Schweregrad über die CVE, KEV (Daten erzeugen, laden, markieren), Ausnahmeliste (Format, Rechte, Ablauf), nur Windows, Relevanz |
 | `test_eol.py` | EOL-Daten erzeugen, Supportende und Vorwarnung |
 | `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden, KEV macht P4 relevant, Ausnahme, Kernel-Pakete |
-| `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), `--db-aktualisieren` als root abgelehnt, Berichte nur für den Aufrufer lesbar, docker nicht erreichbar, fehlerhafte Ausnahmeliste und unerwartete Fehler → 2 |
-| `test_docker.py` | nginx (`-c`) als Proxy vor Node: Proxy-Erkennung, EOL-Warnungen, Berichte, `docker diff` unverändert |
+| `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), `--db-aktualisieren` als root abgelehnt, holt bzw. aktualisiert nur den Branch `daten` (nie den Code), altes Layout bricht ab, Berichte nur für den Aufrufer lesbar, docker nicht erreichbar, fehlerhafte Ausnahmeliste und unerwartete Fehler → 2 |
+| `test_docker.py` | mit den Daten aus dem Branch `daten` unter `osv-daten/`: nginx (`-c`) als Proxy vor Node: Proxy-Erkennung, EOL-Warnungen, Berichte, `docker diff` unverändert |
 
 Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11 und 3.13
 sowie den Docker-Test aus.

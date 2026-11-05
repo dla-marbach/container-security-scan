@@ -18,6 +18,8 @@ class Kommandozeile(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp)
         self.bin = os.path.join(self.tmp, "bin")
         os.mkdir(self.bin)
+        self.db = os.path.join(self.tmp, "leere-db")   # Daten liegen nicht im Code-Branch
+        os.mkdir(self.db)
 
     def docker(self, script):
         """docker-Ersatz im PATH: POSIX-sh-Skript, das die Argumente auswertet."""
@@ -58,16 +60,16 @@ class Kommandozeile(unittest.TestCase):
 
     def test_docker_nicht_erreichbar(self):
         self.docker("echo 'Cannot connect to the Docker daemon' >&2; exit 1\n")
-        rc, out = self.aufruf("--oeffentliche", "berichte")
+        rc, out = self.aufruf("--db", self.db, "--oeffentliche", "berichte")
         self.assertEqual(rc, 2)
         self.assertIn("docker nicht erreichbar", out)
-        rc, out = self.aufruf("web", "berichte")
+        rc, out = self.aufruf("--db", self.db, "web", "berichte")
         self.assertEqual(rc, 2)
         self.assertIn("nicht gefunden", out)
 
     def test_keine_oeffentlichen_container(self):
         self.docker('[ "$1" = ps ] && exit 0\nexit 1\n')
-        rc, out = self.aufruf("--oeffentliche", "berichte", LANG="C", LC_ALL="C")
+        rc, out = self.aufruf("--db", self.db, "--oeffentliche", "berichte", LANG="C", LC_ALL="C")
         self.assertEqual(rc, 0)
         self.assertIn("Keine Container mit veröffentlichten Ports gefunden.", out)
 
@@ -86,36 +88,59 @@ class Kommandozeile(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertIn("nur ein --db", out)
 
-    def git_checkout(self, euid):
-        """Kopie des Skripts in einem (scheinbaren) Git-Checkout, --db-aktualisieren mit vorgetäuschter UID;
-        git-Ersatz im PATH vermerkt, ob git pull aufgerufen wurde."""
+    def git_checkout(self, euid, daten="clone"):
+        """Kopie des Skripts in einem (scheinbaren) Git-Checkout, --db-aktualisieren mit vorgetäuschter UID.
+        daten: "clone" = osv-daten ist ein Clone des Branches daten, "fehlt" = noch nicht geholt,
+        "alt" = osv-daten ohne Git (altes Layout). Der git-Ersatz im PATH protokolliert seine Aufrufe."""
         repo = os.path.join(self.tmp, "repo")
-        for d in (".git", "osv-daten"):
-            os.makedirs(os.path.join(repo, d))
+        os.makedirs(os.path.join(repo, ".git"))
+        if daten == "clone":
+            os.makedirs(os.path.join(repo, "osv-daten", ".git"))
+        elif daten == "alt":
+            os.makedirs(os.path.join(repo, "osv-daten"))
         shutil.copy(SKRIPT, os.path.join(repo, "container-security-scan.py"))
-        marke = os.path.join(self.tmp, "git-aufgerufen")
+        protokoll = os.path.join(self.tmp, "git-aufrufe")
         path = os.path.join(self.bin, "git")
         with open(path, "w") as f:
-            f.write('#!/bin/sh\necho "$@" > %s\n' % marke)
+            f.write('#!/bin/sh\necho "$@" >> %s\n'
+                    'case "$*" in *"remote get-url origin"*) echo https://example.invalid/css.git ;; esac\n' % protokoll)
         os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR)
         code = ("import os, runpy, sys; os.geteuid = lambda: %d; sys.argv = [sys.argv[1], '--db-aktualisieren']; "
                 "runpy.run_path(sys.argv[0], run_name='__main__')" % euid)
         e = dict(os.environ, PATH=self.bin + os.pathsep + os.environ.get("PATH", ""))
         p = subprocess.run([sys.executable, "-c", code, os.path.join(repo, "container-security-scan.py")],
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=e, cwd=self.tmp, timeout=120)
-        return p.returncode, p.stderr.decode("utf-8", "replace"), os.path.exists(marke)
+        aufrufe = []
+        if os.path.exists(protokoll):
+            with open(protokoll) as f:
+                aufrufe = f.read().splitlines()
+        return p.returncode, p.stderr.decode("utf-8", "replace"), aufrufe, repo
 
-    def test_git_pull_nicht_als_root(self):
-        rc, out, git = self.git_checkout(0)
+    def test_daten_nicht_als_root_aktualisieren(self):
+        rc, out, aufrufe, _ = self.git_checkout(0)
         self.assertEqual(rc, 2)
         self.assertIn("als root abgelehnt", out)
-        self.assertFalse(git)
+        self.assertEqual(aufrufe, [])
 
-    def test_git_pull_als_benutzer(self):
-        rc, out, git = self.git_checkout(1000)
+    def test_git_pull_nur_im_daten_clone(self):
+        rc, out, aufrufe, repo = self.git_checkout(1000)
         self.assertEqual(rc, 0, out)
         self.assertIn("per git pull aktualisiert", out)
-        self.assertTrue(git)
+        # nur die Daten, nie der Code-Checkout
+        self.assertEqual(aufrufe, ["-C %s pull --ff-only --quiet" % os.path.join(repo, "osv-daten")])
+
+    def test_daten_branch_wird_geholt(self):
+        rc, out, aufrufe, repo = self.git_checkout(1000, daten="fehlt")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(aufrufe, ["-C %s remote get-url origin" % repo,
+                                   "clone --quiet --single-branch --branch daten https://example.invalid/css.git %s"
+                                   % os.path.join(repo, "osv-daten")])
+
+    def test_altes_layout_bricht_ab(self):
+        rc, out, aufrufe, _ = self.git_checkout(1000, daten="alt")
+        self.assertEqual(rc, 2)
+        self.assertIn("kein Git-Checkout des Branches daten", out)
+        self.assertEqual(aufrufe, [])
 
     def als_root(self, *args):
         """Skript (kein Git-Checkout) mit vorgetäuschter UID 0 aufrufen."""
@@ -155,7 +180,7 @@ class Kommandozeile(unittest.TestCase):
     def test_unerwarteter_fehler_ergibt_2(self):
         # docker inspect liefert Unsinn -> Ausnahme im Skript, darf nie als 0 oder 1 enden
         self.docker('[ "$1" = inspect ] && echo "[{}]" && exit 0\nexit 1\n')
-        rc, out = self.aufruf("web", "berichte")
+        rc, out = self.aufruf("--db", self.db, "web", "berichte")
         self.assertEqual(rc, 2)
         self.assertIn("Traceback", out)
 
