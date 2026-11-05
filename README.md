@@ -162,7 +162,9 @@ chmod 440 /etc/sudoers.d/rundeck-container-scan && visudo -c
   Ressourcen teilen (VMs auf demselben Host), nacheinander oder in kleinen Gruppen abarbeiten.
 - Benachrichtigung bei Fehlschlag. Rückgabewert 1 und 2 sind in Rundeck beide rot; die letzte Zeile
   `ERGEBNIS: FUNDE` bzw. `ERGEBNIS: UNVOLLSTAENDIG` unterscheidet sie. Berichte und Logs bleiben auf dem
-  jeweiligen Server, die Konsolenausgabe steht zusätzlich im Rundeck-Log.
+  jeweiligen Server, die Konsolenausgabe steht zusätzlich im Rundeck-Log: je Container die Zusammenfassung,
+  Warnungen und **jeder relevante Fund** in einer Zeile (neue zuerst, mit `NEU:` markiert). Für alle
+  übrigen Befunde, Dienste und Belege den Bericht auf dem Server ansehen (Pfad in der Zusammenfassung).
 - Optional den SSH-Schlüssel auf diesen Befehl festlegen (`~rundeck/.ssh/authorized_keys` auf dem Server,
   eigener Schlüssel nur für diesen Job):
 
@@ -295,6 +297,16 @@ sudo $C --db $DB --alle <container> <ausgabeverzeichnis>      # alle Befunde in 
 | `--user` | Benutzer für `docker exec` (Standard `0`) |
 
 ## Ausgabe
+
+Auf der Konsole (beim Wrapper auch im Log, in der Mail und im Rundeck-Log) je Container Warnungen, eine
+Zusammenfassung mit dem Pfad des Berichts und darunter alle relevanten Funde, neue zuerst:
+
+```
+app-php830: RELEVANTE SCHWACHSTELLEN – 6963 Befunde, davon 92 relevant (3 neu); öffentlich: apache2:80 – Bericht: …
+app-php830:   NEU: CVE-2026-28780 (CRITICAL) in apache2-bin 2.4.66-1~deb12u1 – behoben in 2.4.67-1~deb12u2 – genutzt von apache2:80
+app-php830:   CVE-2025-14179 (CRITICAL) in php 8.3.30 – behoben in 8.3.31 – genutzt von apache2:80
+…
+```
 
 Je Container im Ausgabeverzeichnis:
 
