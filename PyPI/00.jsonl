@@ -8950,6 +8950,8 @@
 {"affected":[{"package":{"ecosystem":"PyPI","name":"privacypass-py"},"versions":["0.1.101","0.1.99","0.1.100"]}],"id":"MAL-2026-18435","published":"2026-11-01T08:01:23Z","summary":"Malicious code in privacypass-py (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"wallet-tracking"},"ranges":[{"events":[{"introduced":"1.0.3"}],"type":"ECOSYSTEM"}]}],"id":"MAL-2026-18443","published":"2025-11-16T16:22:41.638865Z","summary":"Malicious code in wallet-tracking (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"protecteda"},"versions":["0.1.0"]}],"id":"MAL-2026-18584","published":"2026-11-03T22:50:47Z","summary":"Malicious code in protecteda (PyPI)"}
+{"affected":[{"package":{"ecosystem":"PyPI","name":"strands-aidr"},"versions":["9999.0.0"]}],"id":"MAL-2026-18657","published":"2026-11-05T00:44:34Z","summary":"Malicious code in strands-aidr (PyPI)"}
+{"affected":[{"package":{"ecosystem":"PyPI","name":"dbt-adapter"},"versions":["0.0.0","0.1.0a2"]}],"id":"MAL-2026-18704","published":"2026-11-05T06:58:26Z","summary":"Malicious code in dbt-adapter (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"async-substrate-interface-sub"},"versions":["1.5.156","1.5.157"]}],"id":"MAL-2026-1894","published":"2026-03-18T12:11:16Z","summary":"Malicious code in async-substrate-interface-sub (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"bigmathex"},"versions":["0.0.1","0.0.2","0.0.3"]}],"id":"MAL-2026-1895","published":"2026-03-18T12:11:53Z","summary":"Malicious code in bigmathex (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"bigmathix"},"versions":["0.0.1","1.0.0","1.0.1"]}],"id":"MAL-2026-1896","published":"2026-03-18T12:11:54Z","summary":"Malicious code in bigmathix (PyPI)"}
