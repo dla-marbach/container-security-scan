@@ -19,6 +19,14 @@ class Adressen(unittest.TestCase):
         self.assertEqual(scanner.decode_addr("0100007F"), "localhost")
         self.assertEqual(scanner.decode_addr("0100A8C0"), "192.168.0.1")
         self.assertEqual(scanner.decode_addr("000080FE00000000FF0F00000100A8C0"), "IPv6")
+        self.assertEqual(scanner.decode_addr("0000000000000000FFFF00000100007F"), "localhost")   # ::ffff:127.0.0.1
+        self.assertEqual(scanner.decode_addr("0000000000000000FFFF00000100A8C0"), "192.168.0.1")
+        self.assertTrue(scanner.nur_lokal("127.0.0.11"))     # Dockers DNS im Container
+        self.assertFalse(scanner.nur_lokal("alle"))
+        # Verbindungsziele vollständig, auch IPv6
+        self.assertEqual(scanner.decode_ip("050012AC"), "172.18.0.5")
+        self.assertEqual(scanner.decode_ip("0000000000000000FFFF0000050012AC"), "172.18.0.5")
+        self.assertEqual(scanner.decode_ip("000000FD000000000000000002000000"), "fd00::2")
 
 
 class Prozesse(unittest.TestCase):
@@ -27,7 +35,13 @@ class Prozesse(unittest.TestCase):
         ausgaben = {
             "0:0": "P\t1\t/usr/sbin/nginx\t/\tnginx: master process nginx\x1f-g\x1fdaemon off;\t0:0\t0\n"
                    "S\t1\t111\nS\t1\t333\nM\t1\t/usr/lib/x86_64-linux-gnu/libssl.so.3\n"
-                   "T\t111\t00000000:0050\ttcp\nT\t333\t00000000:0035\tudp\n",
+                   "T\t111\t00000000:0050\ttcp\nT\t333\t00000000:0035\tudp\n"
+                   # ohne Prozess: Container mit gemeinsamem Netzwerk-Namespace bzw. Dockers DNS (nur lokal)
+                   "T\t999\t00000000:1F90\ttcp\nT\t998\t0B00007F:811D\ttcp\n"
+                   # eingehend (lokaler Port 80 lauscht) und ausgehend zu 172.18.0.5:3000
+                   "S\t1\t444\nC\t444\t020012AC:0050\t090012AC:D431\n"
+                   "S\t1\t555\nC\t555\t020012AC:D432\t050012AC:0BB8\n"
+                   "S\t1\t666\nC\t666\t000000FD000000000000000003000000:D433\t000000FD000000000000000002000000:1F90\n",
             "33:33": "P\t7\t/usr/local/bin/node (deleted)\t/app\tnode\x1fserver.js\t33:33\t1\n"
                      "E\t7\tPATH=/usr/local/bin:/usr/bin\nF\t7\t/app/data.db\nS\t7\t222\n"
                      "T\t222\t0100007F:0BB8\ttcp\n"}
@@ -39,8 +53,10 @@ class Prozesse(unittest.TestCase):
                 return 0, "1 0:0\n7 33:33\n9 33:33\n"
             return 0, ausgaben[user]
         c.sh.side_effect = sh
-        procs, how = scanner.collect_procs(c)
+        procs, how, fremd = scanner.collect_procs(c)
         self.assertEqual(how, "im Container (je Prozess-Benutzer)")
+        self.assertEqual(fremd, {"8080": ("alle", "999")})
+        self.assertEqual(list(procs["1"]["verbindungen"]), [("172.18.0.5", "3000"), ("fd00::2", "8080")])
         self.assertIn(("33:33", ["7", "9"]), aufrufe)
         self.assertEqual(procs["1"]["ports"], {"80": "alle", "53/udp": "alle"})
         self.assertEqual(procs["1"]["argv"], ["nginx: master process nginx", "-g", "daemon off;"])
@@ -55,7 +71,7 @@ class Prozesse(unittest.TestCase):
     def test_ohne_shell_ueber_proc_des_hosts(self):
         c = mock.Mock(has_sh=False, id="abc")
         with mock.patch.object(scanner, "run", side_effect=[(0, "PID\n4242\n"), (0, "P\t4242\t/app\t/\tapp\t:\n")]) as run:
-            procs, how = scanner.collect_procs(c)
+            procs, how, _ = scanner.collect_procs(c)
         self.assertEqual(how, "über /proc des Hosts")
         self.assertEqual(run.call_args_list[1][0][0], ["sh", "-s", "--", "4242"])
         self.assertEqual((procs["4242"]["exe"], procs["4242"]["user"]), ("/app", ""))

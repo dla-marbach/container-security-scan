@@ -308,11 +308,22 @@ class Konfiguration(unittest.TestCase):
 class RootDienste(unittest.TestCase):
     """Warnung für öffentliche Dienste, die vollständig als root laufen."""
 
-    def warnungen(self, procs, exposed=True, info=None, docker_info=(0, '["name=apparmor","name=seccomp"]')):
+    def warnungen(self, procs, exposed=True, info=None, docker_info=(0, '["name=apparmor","name=seccomp"]'), **web_kw):
         c = mock.Mock(info=info or {"HostConfig": {}})
         published = {port: ["0.0.0.0:" + port] for p in procs for port in p["ports"] if exposed is True or port in exposed}
         with mock.patch.object(scanner, "run", return_value=docker_info):
-            return scanner.root_dienste(c, {p["pid"]: p for p in procs}, web(published=published))
+            return scanner.root_dienste(c, {p["pid"]: p for p in procs}, web(**dict({"published": published}, **web_kw)))
+
+    def test_erreichbar_wie_die_prioritaet(self):
+        # dieselbe Erreichbarkeit wie für P1: auch "möglicherweise" und LAN-Netz; nie Loopback; Datenbank nicht
+        # schon durch den Aufruf einer Anwendung
+        node = proc(1, "/usr/local/bin/node", ports={"3000": "alle"}, user="0:0")
+        self.assertEqual(len(self.warnungen([node], exposed=(), via_proxy={"*": ["traefik:443 in proxy"]})), 1)
+        self.assertEqual(len(self.warnungen([node], exposed=(), lan=["macvlan-Netz mv"])), 1)
+        lokal = proc(1, "/usr/local/bin/node", ports={"3000": "localhost"}, user="0:0")
+        self.assertEqual(self.warnungen([lokal]), [])
+        redis = proc(1, "/usr/bin/redis-server", ports={"6379": "alle"}, user="0:0")
+        self.assertEqual(self.warnungen([redis], exposed=(), via_proxy={"6379": ["node:3000 (offene Verbindung) in gw"]}), [])
 
     def test_node_als_root(self):
         w = self.warnungen([proc(1, "/usr/local/bin/node", ports={"3000": "alle"}, user="0:0")])

@@ -1,4 +1,7 @@
 """Webserver-Konfiguration (nginx, Apache), veröffentlichte Ports, Backends in anderen Containern."""
+import os
+import shutil
+import tempfile
 import unittest
 from unittest import mock
 
@@ -110,6 +113,206 @@ class Nginx(unittest.TestCase):
             self.assertEqual(w["containers"][key], "app-api")
 
 
+NGINX_VARIABLEN = """
+http {
+    map $http_x_tenant $tenant_backend { default http://app-a:3000; beta http://app-b:3000; }
+    server {
+        listen 80;
+        resolver 127.0.0.11 valid=10s;
+        set $backend "http://app:3000";
+        set $api api;
+        location / { proxy_pass $backend; }
+        location /x/ { proxy_pass http://$api:8000$request_uri; }
+        location /t/ { proxy_pass $tenant_backend; }
+        location /h/ { proxy_pass $scheme://$host; }
+        location /k/ { proxy_pass http://${api}:9000; }
+    }
+}
+"""
+
+
+class NginxVariablen(unittest.TestCase):
+    def test_set_und_map_werden_aufgeloest(self):
+        w = web(docroots=scanner.defaultdict(list), backends=scanner.defaultdict(list),
+                vhosts=scanner.defaultdict(list), upstreams=scanner.defaultdict(list))
+        scanner.parse_nginx(NGINX_VARIABLEN, w, "/usr/sbin/nginx")
+        self.assertEqual(w["backends"]["/usr/sbin/nginx"], [
+            "http://app:3000", "http://api:8000", "http://app-a:3000", "http://app-b:3000", "http://$host",
+            "http://api:9000"])
+        self.assertEqual(len(w["vhosts"]["/usr/sbin/nginx"]), 1)     # ${api} kein Block
+
+    def test_nginx_ziele(self):
+        v = {"b": ["http://app:3000"], "zwei": ["x:1", "y:2"]}
+        self.assertEqual(scanner.nginx_ziele("http://$b$request_uri", v), ["http://app:3000"])
+        self.assertEqual(scanner.nginx_ziele("$scheme://${zwei}/$1", v), ["http://x:1/", "http://y:2/"])
+        self.assertEqual(scanner.nginx_ziele("http://$unbekannt", v), ["http://$unbekannt"])
+
+
+def inspect(name, netze=(), mode="bridge", ports=None, labels=None, cid=None):
+    """Container wie von docker inspect geliefert."""
+    return {"Id": cid or (name + "0" * 12), "Name": "/" + name, "HostConfig": {"NetworkMode": mode},
+            "Config": {"Hostname": name[:3], "Labels": labels or {}},
+            "NetworkSettings": {"Ports": ports or {}, "Networks": {n: {"IPAddress": "10.0.%d.%d" % (i, len(name)),
+                                                                       "DNSNames": [name]} for i, n in enumerate(netze)}}}
+
+
+class DockerLage(unittest.TestCase):
+    def setUp(self):
+        self.proxy = inspect("proxy", ["front", "back"], ports={"443/tcp": [{"HostIp": "0.0.0.0", "HostPort": "443"}]})
+        self.app = inspect("app", ["back"])
+        self.vpn = inspect("vpn", ["back"], ports={"8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8080"}]})
+        self.mit = inspect("mit", [], mode="container:" + self.vpn["Id"])
+        self.lan = inspect("lan", ["mv"])
+        self.allein = inspect("allein", ["eigen"])
+        self.hostnetz = inspect("hostnetz", [], mode="host")
+        self.infos = [self.proxy, self.app, self.vpn, self.mit, self.lan, self.allein, self.hostnetz]
+        self.netze = {"front": {"Driver": "bridge"}, "back": {"Driver": "bridge"}, "mv": {"Driver": "macvlan"},
+                      "eigen": {"Driver": "bridge", "Options": {"com.docker.network.bridge.gateway_mode_ipv6": "routed"}}}
+
+    def test_direkt_erreichbar(self):
+        published, host, lan, spender = scanner.direkt_erreichbar(self.proxy, self.infos, self.netze)
+        self.assertEqual((dict(published), host, lan, spender), ({"443": ["0.0.0.0:443"]}, False, [], None))
+        self.assertEqual(scanner.direkt_erreichbar(self.app, self.infos, self.netze)[:3], ({}, False, []))
+        # gemeinsamer Netzwerk-Namespace: Ports des Spenders gelten
+        published, _, _, spender = scanner.direkt_erreichbar(self.mit, self.infos, self.netze)
+        self.assertEqual((list(published), spender), (["8080"], "vpn"))
+        self.assertEqual(scanner.direkt_erreichbar(self.lan, self.infos, self.netze)[2], ["macvlan-Netz mv"])
+        self.assertEqual(scanner.direkt_erreichbar(self.allein, self.infos, self.netze)[2], ["Netz eigen (IPv6 routed)"])
+        self.assertTrue(scanner.direkt_erreichbar(self.hostnetz, self.infos, self.netze)[1])
+
+    def test_nachbarn_und_netz_gruppe(self):
+        self.assertEqual(scanner.nachbarn_von(self.proxy, self.infos), ["app", "mit", "vpn"])
+        self.assertEqual(scanner.nachbarn_von(self.mit, self.infos), ["app", "proxy", "vpn"])
+        self.assertEqual(scanner.nachbarn_von(self.allein, self.infos), [])
+        # Host-Netzwerk: der Host erreicht alle Container mit einem Docker-Netz
+        self.assertEqual(scanner.nachbarn_von(self.hostnetz, self.infos), ["allein", "app", "lan", "mit", "proxy", "vpn"])
+        self.assertEqual(scanner.netz_gruppe(self.vpn, self.infos), ["mit"])
+        self.assertEqual(scanner.netz_gruppe(self.mit, self.infos), ["vpn"])
+        self.assertEqual(scanner.netz_gruppe(self.app, self.infos), [])
+        # Docker speichert die volle ID; ältere Angaben per Name
+        self.assertIs(scanner.spender_von(inspect("x", mode="container:vpn"), self.infos), self.vpn)
+
+    def test_label_ziele(self):
+        infos = [inspect("a", labels={"traefik.enable": "true",
+                                      "traefik.http.services.a.loadbalancer.server.port": "8080",
+                                      "traefik.udp.services.d.loadbalancer.server.port": "53"}),
+                 inspect("b", labels={"traefik.http.routers.b.rule": "Host(`b`)"}),
+                 inspect("c", labels={"traefik.enable": "false", "traefik.http.routers.c.rule": "Host(`c`)"}),
+                 inspect("d", labels={"caddy": "d.example.org", "caddy.reverse_proxy": "{{upstreams 3000}}",
+                                      "caddy_1.reverse_proxy": "{{upstreams https}}"}),
+                 inspect("e")]
+        self.assertEqual(scanner.label_ziele("traefik", infos), [("a", "8080"), ("a", "53/udp"), ("b", "*")])
+        self.assertEqual(scanner.label_ziele("caddy", infos), [("d", "3000"), ("d", "443")])
+
+    def test_collect_web(self):
+        c = mock.Mock(info=self.mit)
+        infos = self.infos
+
+        def run(cmd, *a, **kw):
+            if cmd[:2] == ["docker", "ps"]:
+                return 0, "x\n"
+            if cmd[:3] == ["docker", "network", "inspect"]:
+                return 0, scanner.json.dumps([dict(v, Name=k) for k, v in self.netze.items()])
+            return 0, scanner.json.dumps(infos)
+        traefik = proc(1, "/usr/local/bin/traefik", ports={"80": "alle"})
+        with mock.patch.object(scanner, "run", side_effect=run):
+            w = scanner.collect_web(c, {"1": traefik})
+        self.assertEqual((list(w["published"]), w["spender"], w["netz_gruppe"]), (["8080"], "vpn", ["vpn"]))
+        self.assertEqual(w["nachbarn"], ["app", "proxy", "vpn"])
+        self.assertEqual(w["label_ziele"], {"traefik": []})
+        self.assertEqual(w["containers"]["app.back"], "app")     # Docker-DNS: <name>.<netz>
+
+    def test_docker_nicht_erreichbar(self):
+        with mock.patch.object(scanner, "run", return_value=(1, "")):
+            self.assertRaises(scanner.ScanError, scanner.docker_lage)
+
+    def test_zwischenzeitlich_entfernter_container(self):
+        # docker run --rm zwischen docker ps und docker inspect beendet: docker liefert die übrigen und 1
+        def run(cmd, *a, **kw):
+            if cmd[:2] == ["docker", "ps"]:
+                return 0, "a\nweg\n"
+            if cmd[:3] == ["docker", "network", "inspect"]:
+                return 0, scanner.json.dumps([dict(self.netze["back"], Name="back")])
+            return 1, scanner.json.dumps([self.app])
+        with mock.patch.object(scanner, "run", side_effect=run):
+            infos, netze = scanner.docker_lage()
+        self.assertEqual(([scanner.name_von(d) for d in infos], list(netze)), (["app"], ["back"]))
+
+
+class HostProxys(unittest.TestCase):
+    def test_host_proxy_pids(self):
+        # nur bekannte Proxys mit dem Wurzelverzeichnis des Hosts und nicht in der cgroup eines Containers
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        anderes = os.path.join(tmp, "rootfs")
+        os.mkdir(anderes)
+        for pid, exe, root, cgroup in (("10", "/usr/sbin/nginx", "/", "0::/system.slice/nginx.service\n"),
+                                       ("11", "/usr/sbin/sshd", "/", "0::/system.slice/ssh.service\n"),
+                                       ("12", "/usr/sbin/nginx", anderes, "0::/system.slice/docker-x.scope\n"),
+                                       ("13", "/usr/sbin/nginx", "/", "0::/system.slice/docker-abc123.scope\n"),
+                                       ("14", "/usr/local/bin/cloudflared (deleted)", "/", "0::/x\n")):
+            os.mkdir(os.path.join(tmp, pid))
+            os.symlink(exe, os.path.join(tmp, pid, "exe"))
+            os.symlink(root, os.path.join(tmp, pid, "root"))
+            with open(os.path.join(tmp, pid, "cgroup"), "w") as f:
+                f.write(cgroup)
+        os.mkdir(os.path.join(tmp, "15"))       # Kernel-Thread: kein exe
+        self.assertEqual(scanner.host_proxy_pids([{"Id": "abc123"}], proc=tmp), (["10", "14"], 0))
+
+    def test_host_proxys(self):
+        infos = [inspect("app", ["back"]), inspect("db", ["back"]), inspect("ohne")]
+        infos[2]["NetworkSettings"]["Networks"] = {}
+        ip = infos[0]["NetworkSettings"]["Networks"]["back"]["IPAddress"]
+        procs = ("P\t10\t/usr/sbin/nginx\t/\tnginx: master process /usr/sbin/nginx\t0:0\t1\nS\t10\t5\n"
+                 "T\t5\t00000000:01BB\ttcp\n")
+        conf = "http { server { listen 443; location / { proxy_pass http://%s:3000; } } }" % ip
+        with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 0)), \
+                mock.patch.object(scanner, "run", return_value=(0, procs)), \
+                mock.patch.object(scanner.Host, "exec", return_value=(0, conf)) as ex:
+            ziele, services, warnings, problems = scanner.host_proxys(infos)
+        self.assertEqual(ex.call_args[0][0], ["/usr/sbin/nginx", "-T"])
+        self.assertEqual(ex.call_args[1]["user"], "0:0")
+        self.assertEqual(ziele, [("app", "3000", "nginx:443 auf dem Host")])
+        self.assertEqual((warnings, problems), ([], []))
+        # offene Verbindung des Proxys auf dem Host: Kennzeichen bleibt im Grund erhalten
+        db_ip = infos[1]["NetworkSettings"]["Networks"]["back"]["IPAddress"]
+        hex_ip = "".join("%02X" % int(x) for x in reversed(db_ip.split(".")))
+        mit_verbindung = procs + "S\t10\t6\nC\t6\t0100000A:D431\t%s:1F90\n" % hex_ip
+        with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 0)), \
+                mock.patch.object(scanner, "run", return_value=(0, mit_verbindung)), \
+                mock.patch.object(scanner.Host, "exec", return_value=(0, conf)):
+            ziele = scanner.host_proxys(infos)[0]
+        self.assertEqual(ziele, [("app", "3000", "nginx:443 auf dem Host"),
+                                 ("db", "8080", "nginx:443 auf dem Host (offene Verbindung)")])
+        # variables Ziel: alle Container mit Docker-Netz möglicherweise erreichbar
+        conf = "http { server { listen 443; location / { proxy_pass http://$host; } } }"
+        with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 2)), \
+                mock.patch.object(scanner, "run", return_value=(0, procs)), \
+                mock.patch.object(scanner.Host, "exec", return_value=(0, conf)):
+            ziele, services, warnings, problems = scanner.host_proxys(infos)
+        self.assertEqual(ziele, [("app", "*", "nginx:443 auf dem Host"), ("db", "*", "nginx:443 auf dem Host")])
+        self.assertIn("nicht vollständig lesbar (2;", warnings[0])
+        self.assertIn("Weiterleitungen von nginx:443 auf dem Host nicht vollständig auswertbar", warnings[1])
+
+    def test_host_exec_mit_benutzer_des_masters(self):
+        h = scanner.Host()
+        with mock.patch.object(scanner, "run", return_value=(0, "")) as run, \
+                mock.patch.object(scanner.os, "geteuid", return_value=0), mock.patch.object(scanner.os, "getegid", return_value=0):
+            h.exec(["/usr/sbin/nginx", "-T"], user="0:0")
+            self.assertEqual(run.call_args[0][0], ["env", "-i", "PATH=" + scanner.SAFE_PATH, "/usr/sbin/nginx", "-T"])
+            h.exec(["/usr/sbin/nginx", "-T"], user="33:33")
+            self.assertEqual(run.call_args[0][0][:5], ["setpriv", "--reuid=33", "--regid=33", "--clear-groups", "--"])
+        with mock.patch.object(scanner, "run") as run, \
+                mock.patch.object(scanner.os, "geteuid", return_value=1000), mock.patch.object(scanner.os, "getegid", return_value=1000):
+            self.assertEqual(h.exec(["/usr/sbin/nginx", "-T"], user="0:0")[0], 126)   # ohne root kein Wechsel
+            run.assert_not_called()
+
+    def test_tunnel_container_vorgezogen(self):
+        infos = [inspect("app", ["n"]), inspect("tunnel", ["n"])]
+        infos[1]["Config"].update(Image="cloudflare/cloudflared:2026.1.0", Cmd=["tunnel", "run"])
+        self.assertEqual(scanner.container_liste(infos, {})[:2], (["tunnel"], ["app"]))
+
+
 class Apache(unittest.TestCase):
     def test_debian_konfiguration_mit_umgebungsvariablen(self):
         c = mock.Mock(has_sh=False)
@@ -137,8 +340,17 @@ class Apache(unittest.TestCase):
         self.assertEqual(w["docroots"]["/usr/sbin/apache2"], ["/var/www/html", "/var/www/html/public", "/srv/static"])
         self.assertEqual(w["backends"]["/usr/sbin/apache2"], ["http://backend:8080/api", "fcgi://php-fpm:9000"])
         self.assertEqual(w["modphp"], {"/usr/sbin/apache2"})
+        self.assertEqual((w["problems"], w["unlesbar"]), ([], set()))
         self.assertEqual(w["vhosts"]["/usr/sbin/apache2"],
                          ["VirtualHost *:80 ServerName shop.example.org DocumentRoot /var/www/html/public"])
+
+    def test_apache_abfrage_fehlgeschlagen_ist_unvollstaendig(self):
+        c = mock.Mock(has_sh=False, info={"Config": {"Env": []}})
+        c.exec.side_effect = lambda cmd, **kw: (1, "AH00526: Syntax error") if cmd[1] in ("-S", "-t") else (0, "")
+        w = scanner.web_leer()
+        scanner.parse_apache(c, "/usr/sbin/apache2", w)
+        self.assertEqual(w["unlesbar"], {"/usr/sbin/apache2"})
+        self.assertIn("/usr/sbin/apache2 -S bzw. -t -D DUMP_INCLUDES fehlgeschlagen", w["problems"][0])
 
 
 class ApacheBenutzer(unittest.TestCase):
@@ -165,6 +377,29 @@ class Backends(unittest.TestCase):
         self.assertEqual(scanner.split_target("https://app"), ("app", "443"))
         self.assertEqual(scanner.split_target("php:9000"), ("php", "9000"))
         self.assertEqual(scanner.split_target("unix:/run/php.sock"), ("", ""))
+        # ohne Port: wie nginx 80 (upstream { server app; }), sonst Standardport des Schemas
+        self.assertEqual(scanner.split_target("app"), ("app", "80"))
+        self.assertEqual(scanner.split_target("ajp://tomcat"), ("tomcat", "8009"))
+        self.assertEqual(scanner.split_target("grpcs://api"), ("api", "443"))
+        self.assertEqual(scanner.split_target("http://[fd00::2]:8080/x"), ("fd00::2", "8080"))
+        self.assertEqual(scanner.split_target("http://[fd00::2]"), ("fd00::2", "80"))
+
+    def test_ipv6_ziele(self):
+        w = web(containers={"fd00::2": "app6"}, self="proxy")
+        self.assertEqual(scanner.backend_containers("http://[fd00::2]:8080", w), [("app6", "8080")])
+        self.assertEqual(scanner.backend_containers("http://[::1]:9000", w), [("proxy", "9000")])
+        self.assertIn("-> Container app6", scanner.resolve_backend("http://[fd00::2]:8080", w, "proxy"))
+        self.assertIn("(gleicher Container)", scanner.resolve_backend("http://[::1]:9000", w, "proxy"))
+
+    def test_upstream_ohne_port(self):
+        w = web(upstreams={"b": ["app"]}, containers={"app": "app-c"})
+        self.assertEqual(scanner.backend_containers("http://b", w), [("app-c", "80")])
+
+    def test_ziel_variabel(self):
+        self.assertTrue(scanner.ziel_variabel("http://$host"))
+        self.assertTrue(scanner.ziel_variabel("http://app:$port/x"))
+        self.assertFalse(scanner.ziel_variabel("http://app:3000/$1"))
+        self.assertFalse(scanner.ziel_variabel("unix:/run/php.sock"))
 
     def test_backend_containers(self):
         self.assertEqual(scanner.backend_containers("http://api", self.w), [("app-api", "8000"), ("app", "9000")])
@@ -174,7 +409,7 @@ class Backends(unittest.TestCase):
         self.assertEqual(scanner.resolve_backend("http://app-api:8000", self.w, "app"), "http://app-api:8000 -> Container app-api")
         self.assertEqual(scanner.resolve_backend("http://app:80", self.w, "app"), "http://app:80 (gleicher Container)")
         self.assertEqual(scanner.resolve_backend("unix:/run/php.sock", self.w, "app"), "unix:/run/php.sock (gleicher Container)")
-        self.assertEqual(scanner.resolve_backend("http://$host", self.w, "app"), "http://$host (Variable)")
+        self.assertEqual(scanner.resolve_backend("http://$host", self.w, "app"), "http://$host (Variable, nicht auswertbar)")
         self.assertEqual(scanner.resolve_backend("http://example.com", self.w, "app"), "http://example.com (extern/unbekannt)")
         self.assertIn("-> Container app-api", scanner.resolve_backend("http://api", self.w, "app"))
 

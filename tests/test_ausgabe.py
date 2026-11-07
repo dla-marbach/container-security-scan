@@ -167,14 +167,14 @@ class Gesamtlauf(unittest.TestCase):
         self.problems = []
         self.info = {}
 
-    def lauf(self, ports=None):
+    def lauf(self, ports=None, fremd=None, via=None, **web_kw):
         nginx = proc(1, "/usr/sbin/nginx", ports=ports or {"80": "alle"}, maps={"/usr/lib/x86_64-linux-gnu/libssl.so.3"})
-        w = web(published={"80": ["0.0.0.0:80"]})
+        w = web(**dict({"published": {"80": ["0.0.0.0:80"]}}, **web_kw))
         container = FakeContainer()
         container.info = dict(container.info, **self.info)
         patches = [mock.patch.object(scanner, "Container", return_value=container),
                    mock.patch.object(scanner, "collect_files", return_value=(dict(self.files), [], "test", list(self.problems))),
-                   mock.patch.object(scanner, "collect_procs", return_value=({"1": nginx}, "test")),
+                   mock.patch.object(scanner, "collect_procs", return_value=({"1": nginx}, "test", fremd or {})),
                    mock.patch.object(scanner, "probe_runtimes", return_value=[]),
                    mock.patch.object(scanner, "host_components", return_value=[]),
                    mock.patch.object(scanner, "collect_web", return_value=w),
@@ -184,7 +184,7 @@ class Gesamtlauf(unittest.TestCase):
         for p in patches:
             p.start()
         try:
-            ergebnis = scanner.scan_container("app", self.a)
+            ergebnis = scanner.scan_container("app", self.a, via)
             self.konsole = scanner.sys.stdout.getvalue()
             return ergebnis
         finally:
@@ -202,6 +202,65 @@ class Gesamtlauf(unittest.TestCase):
             self.assertEqual(f.read().split()[0], scanner.datei_sha256(base + ".md"))
         self.assertEqual(scanner.json_datei(os.path.join(self.a.ausgabe, "bekannt_app.json")),
                          [["libssl3", "3.0.15-1~deb12u1", "CVE-2026-9"]])
+
+    def test_port_eines_mitnutzenden_containers(self):
+        # vpn veröffentlicht 8080, darauf lauscht ein Prozess im Container "mit" (network_mode: service:vpn):
+        # nicht "unbekannter Dienst", sondern dort bewertet
+        with mock.patch.object(scanner, "ports_in_gruppe", return_value={"8080"}) as besitz:
+            code, backends, base = self.lauf(fremd={"8080": ("alle", "999")}, netz_gruppe=["mit"],
+                                             published={"80": ["0.0.0.0:80"], "8080": ["127.0.0.1:8080"]})
+        besitz.assert_called_with(["mit"], "0")
+        with open(base + ".md", encoding="utf-8") as f:
+            bericht = f.read()
+        self.assertIn("Port 8080/tcp (alle): Prozess in einem Container mit demselben Netzwerk (mit)", bericht)
+        self.assertNotIn("unbekannter Dienst", bericht)
+        self.assertNotIn("nicht ermittelbar", self.konsole)
+        # Besitzer in der Gruppe nicht nachweisbar (z.B. dort nicht lesbar): Rückfallregel, nicht "dort bewertet"
+        with mock.patch.object(scanner, "ports_in_gruppe", return_value=set()):
+            self.lauf(fremd={"8080": ("alle", "999")}, netz_gruppe=["mit"],
+                      published={"80": ["0.0.0.0:80"], "8080": ["127.0.0.1:8080"]})
+        self.assertIn("WARNUNG: Prozess zu Port 8080 nicht ermittelbar", self.konsole)
+
+    def test_ports_in_gruppe(self):
+        # wie beim Scan des anderen Containers: nur Ports lesbarer Prozesse; nicht erreichbarer Container zählt nicht
+        def container(name, user):
+            if name == "weg":
+                raise scanner.ScanError("nicht gefunden")
+            return name
+        procs = {"mit": ({"1": proc(1, "/usr/local/bin/node", ports={"8080": "alle"}), "2": proc(2, "/bin/sleep")},
+                         "test", {"9090": ("alle", "5")})}
+        with mock.patch.object(scanner, "Container", side_effect=container), \
+                mock.patch.object(scanner, "collect_procs", side_effect=lambda c: procs[c]):
+            self.assertEqual(scanner.ports_in_gruppe(["mit", "weg"], "0"), {"8080"})
+
+    def test_unbekannter_dienst_macht_nachbarn_erreichbar(self):
+        # auf 8443 lauscht ein Prozess, der nicht lesbar ist: könnte ein Proxy sein
+        code, backends, base = self.lauf(published={"80": ["0.0.0.0:80"], "8443": ["0.0.0.0:8443"]},
+                                         nachbarn=["shop", "db"], fremd={"8443": ("alle", "7")})
+        self.assertEqual(backends, [("shop", "*", "unbekannter Dienst:8443 in app"),
+                                    ("db", "*", "unbekannter Dienst:8443 in app")])
+        self.assertIn("WARNUNG: Prozess zu Port 8443 nicht ermittelbar", self.konsole)
+        # auf 8443 lauscht nichts: alle Komponenten vorsichtshalber öffentlich, aber kein Proxy denkbar
+        code, backends, base = self.lauf(published={"80": ["0.0.0.0:80"], "8443": ["0.0.0.0:8443"]},
+                                         nachbarn=["shop", "db"])
+        self.assertEqual(backends, [])
+        self.assertIn("WARNUNG: Prozess zu Port 8443 nicht ermittelbar", self.konsole)
+
+    def test_aufruf_ziel_ohne_lauschenden_prozess(self):
+        # Ziel-URL auf einen Port, auf dem nichts lauscht (z.B. URL für eine andere Umgebung): kein "unbekannter Dienst"
+        code, backends, base = self.lauf(via={"8080": ["node:3000 (Ziel-URL API_URL) in gw"]})
+        self.assertNotIn("nicht ermittelbar", self.konsole)
+        # lauscht dort ein nicht lesbarer Prozess, gilt die Rückfallregel
+        self.lauf(via={"8080": ["node:3000 (Ziel-URL API_URL) in gw"]}, fremd={"8080": ("alle", "7")})
+        self.assertIn("WARNUNG: Prozess zu Port 8080 nicht ermittelbar", self.konsole)
+        # Proxy-Ziel ohne lauschenden Prozess: wie bisher vorsichtshalber alles öffentlich
+        self.lauf(via={"8080": ["nginx:80 in proxy"]})
+        self.assertIn("WARNUNG: Prozess zu Port 8080 nicht ermittelbar", self.konsole)
+
+    def test_warnung_bei_unklaren_weiterleitungen(self):
+        self.lauf(nachbarn=["shop"], backends={"/usr/sbin/nginx": ["http://$host"]})
+        self.assertIn("app: WARNUNG: Weiterleitungen von nginx:80 nicht vollständig auswertbar (Ziel http://$host) – "
+                      "Container in denselben Docker-Netzen gelten als möglicherweise öffentlich: shop", self.konsole)
 
     def test_relevante_funde_auf_der_konsole(self):
         # für Rundeck/Mail: nicht nur die Zusammenfassung, sondern jeder relevante Fund

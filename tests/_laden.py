@@ -11,10 +11,11 @@ scanner = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(scanner)
 
 
-def proc(pid, exe, argv=None, cwd="/", ports=None, maps=(), files=(), env=None, user="0:0", ppid=""):
+def proc(pid, exe, argv=None, cwd="/", ports=None, maps=(), files=(), env=None, user="0:0", ppid="", verbindungen=()):
     """Prozess wie von collect_procs geliefert."""
     p = {"pid": str(pid), "exe": exe, "cwd": cwd, "argv": list(argv or [exe]), "user": user, "ppid": str(ppid),
-         "maps": set(maps), "files": set(files), "env": dict(env or {}), "ports": dict(ports or {})}
+         "maps": set(maps), "files": set(files), "env": dict(env or {}), "ports": dict(ports or {}),
+         "verbindungen": dict.fromkeys(verbindungen)}
     p["base"] = os.path.basename(exe)
     p["label"] = p["base"] + (":" + ",".join(p["ports"]) if p["ports"] else "")
     return p
@@ -24,7 +25,8 @@ def web(**kw):
     """Webserver-Kontext wie von collect_web geliefert (ohne Docker)."""
     w = {"docroots": {}, "backends": {}, "vhosts": {}, "upstreams": {}, "modphp": set(), "raw": [],
          "published": {}, "containers": {}, "via_proxy": {}, "problems": [], "host_network": False,
-         "self": "app", "venvs": set()}
+         "self": "app", "venvs": set(), "lan": [], "spender": None, "nachbarn": [], "netz_gruppe": [],
+         "label_ziele": {}, "unlesbar": set()}
     w.update(kw)
     return w
 
