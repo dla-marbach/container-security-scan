@@ -1,5 +1,5 @@
 """Bewertung der Funde: widersprüchliche Bereiche, Kernel-Pakete, Schweregrad über die CVE, KEV, Ausnahmeliste,
-Lücken nur unter Windows."""
+Lücken nur unter Windows, gefährliche Einstellungen des Containers, öffentliche Dienste als root."""
 import datetime
 import io
 import json
@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from _laden import scanner, schreibe_jsonl, eintrag
+from _laden import scanner, schreibe_jsonl, eintrag, proc
 
 ALPINE = {"id": "alpine", "version": "3.21.3", "pretty": "Alpine Linux v3.21"}
 DEBIAN = {"id": "debian", "version": "12.7", "pretty": "Debian GNU/Linux 12"}
@@ -245,6 +245,93 @@ class Relevanz(unittest.TestCase):
     def test_schwere_text(self):
         self.assertEqual(scanner.schwere_text(self.row(sev="HIGH", sev_quelle="BIT-1", kev="2025")), "HIGH* KEV")
         self.assertEqual(scanner.schwere_text(self.row()), "MEDIUM")
+
+
+class Konfiguration(unittest.TestCase):
+    """Gefährliche Einstellungen aus docker inspect (KONF-…)."""
+
+    def pruefen(self, host=None, mounts=()):
+        c = mock.Mock(info={"HostConfig": host or {}, "Mounts": list(mounts)})
+        c.name = "app"
+        return [(k["id"], k["pkg"]) for k in scanner.konfiguration_pruefen(c)]
+
+    def test_unauffaellig(self):
+        self.assertEqual(self.pruefen(), [])
+        self.assertEqual(self.pruefen({"Privileged": False, "PidMode": "", "CapAdd": ["NET_BIND_SERVICE", "CHOWN"],
+                                       "CapDrop": ["ALL"], "SecurityOpt": ["no-new-privileges:true",
+                                                                           "seccomp=/etc/docker/profil.json"]},
+                                      [{"Type": "volume", "Source": "/var/lib/docker/volumes/daten/_data", "RW": True},
+                                       {"Type": "bind", "Source": "/srv/app", "RW": True},
+                                       {"Type": "bind", "Source": "/etc/letsencrypt", "RW": True},
+                                       {"Type": "bind", "Source": "/etc/localtime", "RW": False},
+                                       {"Type": "bind", "Source": "/var/lib/docker/containers", "RW": False},
+                                       {"Type": "bind", "Source": "/run/udev", "RW": False},
+                                       {"Type": "bind", "Source": "/usr/share/zoneinfo", "RW": True}]), [])
+
+    def test_privileged_umfasst_capabilities_und_profile(self):
+        self.assertEqual(self.pruefen({"Privileged": True, "CapAdd": ["SYS_ADMIN"],
+                                       "SecurityOpt": ["seccomp=unconfined"]}), [("KONF-PRIVILEGED", "app")])
+
+    def test_capabilities_profile_pid(self):
+        self.assertEqual(self.pruefen({"CapAdd": ["CAP_SYS_ADMIN", "sys_module", "NET_ADMIN", "ALL", "SYS_ADMIN"],
+                                       "SecurityOpt": ["seccomp:unconfined", "apparmor=unconfined", "label=disable"],
+                                       "PidMode": "host"}),
+                         [("KONF-CAP-SYS-ADMIN", "app"), ("KONF-CAP-SYS-MODULE", "app"), ("KONF-CAP-ALL", "app"),
+                          ("KONF-SECCOMP-UNCONFINED", "app"), ("KONF-APPARMOR-UNCONFINED", "app"),
+                          ("KONF-PID-HOST", "app")])
+
+    def test_socket_auch_schreibgeschuetzt(self):
+        for src in ("/var/run/docker.sock", "/run/docker.sock", "/run/containerd/containerd.sock",
+                    "/run/user/1000/podman/podman.sock", "/var/run", "/run/"):
+            self.assertEqual(self.pruefen(mounts=[{"Type": "bind", "Source": src, "Destination": "/x", "RW": False}]),
+                             [("KONF-SOCKET", "app")], src)
+
+    def test_host_pfade_nur_beschreibbar(self):
+        for src in ("/", "/etc", "/etc/shadow", "/etc/cron.d", "/root/.ssh", "/boot", "/usr", "/usr/local/bin",
+                    "/lib64", "/sys/fs/cgroup", "/proc/sys", "/dev", "/home", "/var/lib/docker",
+                    "/var/lib/docker/containers"):
+            m = {"Type": "bind", "Source": src, "Destination": "/host", "RW": True}
+            self.assertEqual(self.pruefen(mounts=[m]), [("KONF-HOST-PFAD", "app")], src)
+            self.assertEqual(self.pruefen(mounts=[dict(m, RW=False)]), [], src)
+
+    def test_ausnahme_nach_containername(self):
+        konf = [{"id": "KONF-SOCKET", "pkg": "traefik"}, {"id": "KONF-SOCKET", "pkg": "app"}]
+        scanner.ausnahmen_anwenden(konf, [{"id": "KONF-SOCKET", "paket": "traefik", "bis": datetime.date(2099, 1, 1),
+                                           "grund": "nur über Socket-Proxy", "zeile": 1}], [])
+        self.assertEqual([bool(k.get("ausgenommen")) for k in konf], [True, False])
+
+
+class RootDienste(unittest.TestCase):
+    """Warnung für öffentliche Dienste, die vollständig als root laufen."""
+
+    def warnungen(self, procs, exposed=True, info=None, docker_info=(0, '["name=apparmor","name=seccomp"]')):
+        c = mock.Mock(info=info or {"HostConfig": {}})
+        services = [{"label": p["label"], "exposed": exposed} for p in procs if p["ports"]]
+        with mock.patch.object(scanner, "run", return_value=docker_info):
+            return scanner.root_dienste(c, services, {p["pid"]: p for p in procs})
+
+    def test_node_als_root(self):
+        w = self.warnungen([proc(1, "/usr/local/bin/node", ports={"3000": "alle"}, user="0:0")])
+        self.assertEqual(len(w), 1)
+        self.assertIn("Öffentlicher Dienst node:3000 läuft als root", w[0])
+
+    def test_unkritisch(self):
+        # nginx: Master root, Worker unprivilegiert am selben Port
+        self.assertEqual(self.warnungen([proc(1, "/usr/sbin/nginx", ports={"80": "alle"}, user="0:0"),
+                                         proc(7, "/usr/sbin/nginx", ports={"80": "alle"}, user="101:101")]), [])
+        self.assertEqual(self.warnungen([proc(1, "/usr/local/bin/node", ports={"3000": "alle"}, user="1000:1000")]), [])
+        self.assertEqual(self.warnungen([proc(1, "/usr/local/bin/node", ports={"3000": "alle"}, user="")]), [])
+        self.assertEqual(self.warnungen([proc(1, "/usr/local/bin/node", ports={"3000": "alle"})], exposed=False), [])
+
+    def test_userns_remap_und_rootless(self):
+        node = [proc(1, "/usr/local/bin/node", ports={"3000": "alle"}, user="0:0")]
+        for opts in ('["name=seccomp","name=userns"]', '["name=seccomp","name=rootless"]'):
+            self.assertEqual(self.warnungen(node, docker_info=(0, opts)), [])
+        # userns=host schaltet userns-remap für den Container ab
+        self.assertEqual(len(self.warnungen(node, info={"HostConfig": {"UsernsMode": "host"}},
+                                            docker_info=(0, '["name=userns"]'))), 1)
+        # docker info nicht auswertbar: lieber warnen
+        self.assertEqual(len(self.warnungen(node, docker_info=(1, ""))), 1)
 
 
 if __name__ == "__main__":
