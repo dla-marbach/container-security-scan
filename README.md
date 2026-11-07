@@ -95,7 +95,7 @@ id csscan >/dev/null 2>&1 || useradd -r -U -m -d "$D" -s /sbin/nologin csscan
     "https://github.com/$REPO.git" "$D/daten"
 
 # Wrapper
-sed "s/@VERSION@/$VERSION/" > /usr/local/sbin/container-security-scan-lauf <<'LAUF'
+sed "s/@VERSION@/$VERSION/" > "$TMP/lauf" <<'LAUF'
 #!/bin/bash
 # container-security-scan @VERSION@ – vom Installscript erzeugt, nicht von Hand ändern.
 # Daten als csscan aktualisieren, dann als root mit dem installierten Code scannen.
@@ -134,7 +134,7 @@ echo "ERGEBNIS: $e (Rückgabewert $rc) – $(hostname)" | tee -a "$LOG"
 [ "$MAIL" = ja ] && [ $rc -ne 0 ] && mail -s "container-security-scan $(hostname): $e" root < "$LOG"
 exit $rc
 LAUF
-chmod 755 /usr/local/sbin/container-security-scan-lauf
+install -m 755 "$TMP/lauf" /usr/local/sbin/container-security-scan-lauf   # neue Datei: ein laufender Scan bleibt unberührt
 
 # Ausnahmeliste, falls sie fehlt: nur auskommentierte Beispiele
 mkdir -p /etc/container-security-scan
