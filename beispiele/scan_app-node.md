@@ -2,8 +2,8 @@
 
 - Image: node:22.22.0-alpine (sha256:e4bf2a82ad0a)  
 - OS: Alpine Linux v3.23  
-- Zeitpunkt: 2026-11-07 20:37  
-- Scanner: container-security-scan 0.1.0  
+- Zeitpunkt: 2026-11-07 21:15  
+- Scanner: container-security-scan 0.2.0  
 - Datenbank: OSV, Stand 2026-11-07 14:13 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
@@ -208,8 +208,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        38213bf1f5b2baa85538a83d5dc025fa7c42e731c01438cf386c79ee5b77f0ec
-Gestartet: 2026-11-07T20:36:31.321776519Z
+ID:        c50e26e09beab00ac7f7cdf11a7d1edde416ce6062096e76ba4d203e2265c32a
+Gestartet: 2026-11-07T21:15:08.881739762Z
 Kommando:  ["docker-entrypoint.sh"] ["node", "server.js"]
 Mounts:    /home/user/container-security-scan/beispiele/umgebung/node->/app
 Host:      Kernel 6.18.44-fc-v310
@@ -219,7 +219,7 @@ Host:      Kernel 6.18.44-fc-v310
 
 ```
 PID                 USER                COMMAND
-1581                root                node server.js
+2067                root                node server.js
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

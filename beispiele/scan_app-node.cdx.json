@@ -1,16 +1,16 @@
 {
  "bomFormat": "CycloneDX",
  "specVersion": "1.5",
- "serialNumber": "urn:uuid:22dc806a-5def-49e0-a7ac-ff7b7dff84d5",
+ "serialNumber": "urn:uuid:5d56f098-24b5-49ee-90a0-9f67d6651705",
  "version": 1,
  "metadata": {
-  "timestamp": "2026-11-07T20:37:32Z",
+  "timestamp": "2026-11-07T21:15:54Z",
   "tools": {
    "components": [
     {
      "type": "application",
      "name": "container-security-scan.py",
-     "version": "0.1.0"
+     "version": "0.2.0"
     }
    ]
   },
@@ -26,15 +26,11 @@
     },
     {
      "name": "container-security-scan:container-id",
-     "value": "38213bf1f5b2baa85538a83d5dc025fa7c42e731c01438cf386c79ee5b77f0ec"
+     "value": "c50e26e09beab00ac7f7cdf11a7d1edde416ce6062096e76ba4d203e2265c32a"
     },
     {
      "name": "container-security-scan:repo-digest",
      "value": "node@sha256:e4bf2a82ad0a4037d28035ae71529873c069b13eb0455466ae0bc13363826e34"
-    },
-    {
-     "name": "container-security-scan:repo-digest",
-     "value": "mirror.gcr.io/library/node@sha256:e4bf2a82ad0a4037d28035ae71529873c069b13eb0455466ae0bc13363826e34"
     }
    ]
   }

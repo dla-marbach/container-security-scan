@@ -79,7 +79,7 @@ from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
@@ -1000,7 +1000,8 @@ def decode_ip(hexaddr):
 
 
 def nur_lokal(addr):
-    """Lauscht nur auf Loopback (127.0.0.1, ::1, Dockers DNS auf 127.0.0.11): von außen nicht erreichbar."""
+    """Lauscht nur auf Loopback (127.0.0.1, ::1, Dockers DNS auf 127.0.0.11): von außen nur über einen Proxy mit
+    demselben Loopback erreichbar (Host-Netzwerk, gemeinsamer Netzwerk-Namespace)."""
     return addr == "localhost" or addr.startswith("127.")
 
 
@@ -1397,6 +1398,9 @@ def aufruf_ziele(ps, web, env):
 # Tunnel-Agenten: leiten Verkehr aus dem Internet weiter, ohne selbst auf einem Port zu lauschen -> immer erreichbar
 TUNNEL = {"cloudflared", "frpc", "ngrok", "chisel"}
 LAN_TREIBER = ("macvlan", "ipvlan")     # Container mit eigener Adresse im LAN, ohne veröffentlichte Ports erreichbar
+# Kennzeichen im Grund eines Proxy-Ziels per 127.0.0.1/localhost in einem anderen Container, der dasselbe Loopback
+# nutzt (Host-Netzwerk, gemeinsamer Netzwerk-Namespace): erreicht auch Dienste, die nur auf Loopback lauschen
+LOOPBACK_GRUND = " (über Loopback)"
 
 
 def docker_lage():
@@ -1484,6 +1488,19 @@ def netz_gruppe(d, infos):
                   - {name_von(d)})
 
 
+def im_host_netz(d, infos):
+    return ((spender_von(d, infos) or d).get("HostConfig") or {}).get("NetworkMode") == "host"
+
+
+def loopback_gruppe(d, infos):
+    """Andere Container, die dasselbe Loopback wie d nutzen und dort Ziele per 127.0.0.1/localhost erreichen:
+    im Host-Netzwerk alle Container im Host-Netzwerk (und der Host selbst), sonst die im selben
+    Netzwerk-Namespace."""
+    if im_host_netz(d, infos):
+        return sorted({name_von(x) for x in infos if im_host_netz(x, infos)} - {name_von(d)})
+    return netz_gruppe(d, infos)
+
+
 def nachbarn_von(d, infos):
     """Container, die d über ein Docker-Netz direkt erreichen kann; im Host-Netzwerk alle mit einem Docker-Netz
     (der Host erreicht sie über ihre IP)."""
@@ -1522,7 +1539,7 @@ def web_leer():
     return {"docroots": defaultdict(list), "backends": defaultdict(list), "vhosts": defaultdict(list),
             "upstreams": defaultdict(list), "modphp": set(), "raw": [], "published": defaultdict(list), "containers": {},
             "via_proxy": {}, "problems": [], "unlesbar": set(), "label_ziele": {}, "host_network": False, "lan": [],
-            "spender": None, "nachbarn": [], "netz_gruppe": []}
+            "spender": None, "nachbarn": [], "netz_gruppe": [], "loopback": []}
 
 
 def collect_web(c, procs):
@@ -1533,6 +1550,7 @@ def collect_web(c, procs):
     web["nachbarn"] = nachbarn_von(c.info, infos)
     # Container im selben Netzwerk-Namespace (network_mode: container:/service:): lauschen auf denselben Ports
     web["netz_gruppe"] = netz_gruppe(c.info, infos)
+    web["loopback"] = loopback_gruppe(c.info, infos)
     for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
         web["label_ziele"][proxy] = label_ziele(proxy, infos)
     web["containers"] = container_index(infos)
@@ -1589,7 +1607,9 @@ def resolve_backend(target, web, self_name, depth=0):
     """Backend-Ziel (http://app:3000, fcgi://php:9000, upstream-Name) einem Container zuordnen."""
     host = re.sub(r"^[a-z]+://", "", target).split("/")[0]
     if target.startswith("unix:") or re.match(r"(localhost|127\.|\[::1\])", host):
-        return target + " (gleicher Container)"
+        mit = [] if target.startswith("unix:") else web.get("loopback", [])
+        return target + " (%s%s)" % ("Host" if self_name == "Host" else "gleicher Container",
+                                     "; Loopback gemeinsam mit " + ", ".join(mit) if mit else "")
     host = re.sub(r":\d+$", "", host)
     host = host[1:-1] if host.startswith("[") and host.endswith("]") else host
     if host in web["upstreams"] and depth < 3:
@@ -1638,15 +1658,17 @@ def ziel_variabel(target):
     return "$" in "".join(split_target(target))
 
 
-def backend_containers(target, web, depth=0):
-    """[(Container, Port)] eines Backend-Ziels, upstream-Namen werden aufgelöst."""
+def backend_containers(target, web, depth=0, nur_loopback=False):
+    """[(Container, Port)] eines Backend-Ziels, upstream-Namen werden aufgelöst. Ein Ziel per 127.0.0.1/localhost
+    trifft auch die Container, die dasselbe Loopback nutzen (nur_loopback: nur diese)."""
     host, port = split_target(target)
     if host in web["upstreams"] and depth < 3:
-        return [x for t in web["upstreams"][host] for x in backend_containers(t, web, depth + 1)]
+        return [x for t in web["upstreams"][host] for x in backend_containers(t, web, depth + 1, nur_loopback)]
     if host in web["containers"]:
-        return [(web["containers"][host], port)]
+        return [] if nur_loopback else [(web["containers"][host], port)]
     if re.match(r"(localhost|127\.|::1$)", host):
-        return [(web["self"], port)]
+        mit = [(ct, port) for ct in web.get("loopback", [])]
+        return mit if nur_loopback else [(web["self"], port)] + mit
     return []
 
 
@@ -1805,6 +1827,7 @@ def mark_usage(comps, procs, owners, web):
         backends = OrderedDict.fromkeys(web["backends"].get(p["exe"], []))
         ziele = [(ct, port) for b in backends for ct, port in backend_containers(b, web)] + \
             list(web.get("label_ziele", {}).get(p["base"], []))
+        ueber_loopback = {x for b in backends for x in backend_containers(b, web, nur_loopback=True)}
         for ct, port in web.get("label_ziele", {}).get(p["base"], []):
             desc.append("Ziel aus Docker-Labels: Container %s, Port %s" % (ct, "alle" if port == "*" else port))
         # Weiterleitungen nicht vollständig bekannt: im Zweifel erreichbar -> alle Container in den Docker-Netzen
@@ -1819,6 +1842,9 @@ def mark_usage(comps, procs, owners, web):
             desc.append("Weiterleitungen nicht vollständig auswertbar (%s) – Container in denselben Docker-Netzen "
                         "gelten als möglicherweise öffentlich: %s" % ("; ".join(unklar), ", ".join(web.get("nachbarn", [])) or "keine"))
             ziele += [(ct, "*") for ct in web.get("nachbarn", [])]
+            # dasselbe Loopback (Host-Netzwerk, gemeinsamer Netzwerk-Namespace): auch dort lauschende Dienste
+            ziele += [(ct, "*") for ct in web.get("loopback", [])]
+            ueber_loopback |= {(ct, "*") for ct in web.get("loopback", [])}
         # Aufrufe der Anwendung (API-Gateway, App ruft internen HTTP-Dienst): auch über einen Webserver im selben
         # Container (php-fpm hinter nginx); die Umgebung des Containers nur einmal zuordnen
         aufrufe = []
@@ -1840,7 +1866,8 @@ def mark_usage(comps, procs, owners, web):
                                         and not ziel_variabel(b)
                                         and not (b.startswith("unix:") and "php" in b and php_servers)],
                          # öffentlich erreichbare Ziele in anderen Containern (für --oeffentliche/--alle-container)
-                         "backends": ([(ct, port, label) for ct, port in OrderedDict.fromkeys(ziele)
+                         "backends": ([(ct, port, label + (LOOPBACK_GRUND if (ct, port) in ueber_loopback else ""))
+                                       for ct, port in OrderedDict.fromkeys(ziele)
                                        if ct != web["self"]] if wirkt[label] else []) +
                                      [(ct, port, "%s (%s)" % (label, quelle)) for ct, port, quelle in aufrufe]})
     return services
@@ -1850,7 +1877,16 @@ def port_erreichbar(p, port, addr, web):
     """(Beschreibung, erreichbar) für einen Port eines Prozesses. Aufrufe einer erreichbaren Anwendung (Ziel-URL,
     offene Verbindung) machen Datenbanken, Caches und Message Broker nicht erreichbar."""
     via = [r for r in web["via_proxy"].get(port, []) if not (datendienst(p) and aufruf_grund(r))]
-    if nur_lokal(addr):     # Docker-Portweiterleitung, Proxys und andere Container erreichen Loopback nicht
+    if nur_lokal(addr):
+        # Loopback erreichen nur Proxys mit demselben Loopback (auf dem Host bzw. in einem Container im
+        # Host-Netzwerk, im selben Netzwerk-Namespace) – Docker-Portweiterleitung und andere Container nicht
+        lo = [r for r in via if LOOPBACK_GRUND in r]
+        if lo:
+            return "lauscht nur auf Loopback, öffentlich über " + ", ".join(lo), True
+        lo = [r for r in web["via_proxy"].get("*", []) if LOOPBACK_GRUND in r]
+        if lo:
+            return "lauscht nur auf Loopback, möglicherweise öffentlich über " + ", ".join(lo) + \
+                " (Weiterleitungen dort nicht vollständig auswertbar)", True
         return "lauscht nur auf Loopback – von außen nicht erreichbar" + (
             " (obwohl veröffentlicht als %s)" % ", ".join(web["published"][port]) if web["published"].get(port) else ""), False
     if web["published"].get(port):
@@ -2778,6 +2814,29 @@ def root_dienste(c, procs, web):
             for base, ports in found.items()]
 
 
+def offene_datendienste(procs, web):
+    """Warnungen (kein Rückgabewert): Datenbanken, Caches und Message Broker, die direkt von außerhalb des Hosts
+    erreichbar sind – Port an eine Adresse außer Loopback veröffentlicht, Host-Netzwerk oder LAN-Netz. Anwendungen
+    erreichen sie über das Docker-Netz; offen sind sie Ziel von Anmeldeversuchen und Lücken im Protokoll."""
+    found = OrderedDict()   # Programm:Port -> Wege
+    for p in procs.values():
+        if not datendienst(p):
+            continue
+        for port, addr in p["ports"].items():
+            if nur_lokal(addr):
+                continue
+            wege = ["veröffentlicht als " + e.split(" ")[0] for e in web["published"].get(port, [])
+                    if not (nur_lokal(e.split(" ")[0].rpartition(":")[0]) or e.startswith("::1:"))]
+            if web["host_network"]:
+                wege.append("Host-Netzwerk")
+            wege += ["im " + n for n in web.get("lan", [])]
+            if wege:
+                found.setdefault("%s:%s" % (p["base"], port), wege)
+    return ["Datenbank/Cache/Message Broker %s direkt von außerhalb des Hosts erreichbar (%s) – Anwendungen "
+            "erreichen ihn über das Docker-Netz: Port nicht veröffentlichen (ports: entfernen) oder nur an 127.0.0.1 "
+            "binden" % (label, ", ".join(wege)) for label, wege in found.items()]
+
+
 def konf_text(k, fett=""):
     return "%s%s%s: %s" % (fett, k["id"], fett, k["text"])
 
@@ -3008,24 +3067,36 @@ def scan_container(name, a, via_proxy=None):
     # Docker-Netzen gelten als möglicherweise öffentlich
     # Ziele nur aus Aufrufen (Ziel-URL, Verbindung), auf denen nichts lauscht: nichts erreichbar (z.B. URL für eine
     # andere Umgebung) – anders als bei einem Proxy-Ziel kein Anlass, alles als öffentlich zu werten
+    # Ziele über Loopback, auf denen hier nichts lauscht: gelten einem anderen Container mit demselben Loopback
+    # (Host-Netzwerk, gemeinsamer Netzwerk-Namespace) oder dem Host selbst – außer im gemeinsamen
+    # Netzwerk-Namespace lauscht dort ein Socket, dessen Prozess nicht nachweisbar ist (dann Rückfallregel). Im
+    # Host-Netzwerk sind das auch alle Sockets des Hosts; sie gehören nicht zu diesem Container.
     unmatched = sorted(port for port in web["published"] if port not in listening and port not in fremd
                        and port not in web["via_proxy"]) + \
         sorted(port for port, reasons in web["via_proxy"].items() if port != "*" and port not in listening
-               and port not in fremd and not (all(aufruf_grund(r) for r in reasons) and port not in ohne_prozess))
+               and port not in fremd
+               and (any(LOOPBACK_GRUND not in r for r in reasons) or (port in ohne_prozess and not web["host_network"]))
+               and not (all(aufruf_grund(r) for r in reasons if LOOPBACK_GRUND not in r) and port not in ohne_prozess))
     if unmatched or (not procs and (web["published"] or web["host_network"] or web.get("lan") or web["via_proxy"])):
         label = "unbekannter Dienst:" + (",".join(unmatched) or "?")
         for x in comps:
             if x["typ"] != "host" and label not in x["aktiv"]:
                 x["aktiv"].append(label)
-        nachbarn = web.get("nachbarn", []) if not procs or any(port in ohne_prozess for port in unmatched) else []
+        # könnte ein Proxy sein: Nachbarn in den Docker-Netzen, Container mit demselben Loopback auch dort, wo
+        # nur auf Loopback gelauscht wird
+        unbekannt = not procs or any(port in ohne_prozess for port in unmatched)
+        loopback = list(web.get("loopback", [])) if unbekannt else []
+        nachbarn = [ct for ct in web.get("nachbarn", []) if ct not in loopback] if unbekannt else []
         services.append({"label": label, "name": "?", "version": "", "exe": "?", "exposed": True,
-                         "backends": [(ct, "*", label) for ct in nachbarn],
+                         "backends": [(ct, "*", label) for ct in nachbarn] +
+                                     [(ct, "*", label + LOOPBACK_GRUND) for ct in loopback],
                          "unresolved": [], "unklar": ["Prozess nicht ermittelbar"],
                          "endpoints": [e for port in unmatched for e in web["published"].get(port, [])],
                          "description": "Kein lesbarer Prozess für Port %s – alle Komponenten werden als öffentlich "
                                         "genutzt gewertet%s" % (", ".join(unmatched) or "?",
-                                        ", Container in denselben Docker-Netzen als möglicherweise öffentlich: " +
-                                        ", ".join(nachbarn) if nachbarn else "")})
+                                        ", Container in denselben Docker-Netzen bzw. mit demselben Loopback als "
+                                        "möglicherweise öffentlich: " + ", ".join(nachbarn + loopback)
+                                        if nachbarn or loopback else "")})
         warnings.append("Prozess zu Port %s nicht ermittelbar (%s) – alle Komponenten als öffentlich genutzt gewertet"
                         % (", ".join(unmatched) or "?", how["procs"]))
     for svc in services:
@@ -3037,6 +3108,7 @@ def scan_container(name, a, via_proxy=None):
                 "Container in denselben Docker-Netzen gelten als möglicherweise öffentlich: " + ", ".join(web["nachbarn"])
                 if web.get("nachbarn") else "keine Container in denselben Docker-Netzen"))
     warnings.extend(root_dienste(c, procs, web))
+    warnings.extend(offene_datendienste(procs, web))
     how["warnungen"] = warnings
     konf = konfiguration_pruefen(c)
     ausnahmen_anwenden(konf, getattr(a, "ausnahmen_liste", None) or [], warnings)
@@ -3192,7 +3264,8 @@ def host_proxys(infos):
     procs, _ = procs_auswerten(out)
     web = web_leer()
     web.update(self="Host", host_network=True, containers=container_index(infos),
-               nachbarn=sorted(name_von(d) for d in infos if netze_von(spender_von(d, infos) or d)))
+               nachbarn=sorted(name_von(d) for d in infos if netze_von(spender_von(d, infos) or d)),
+               loopback=sorted(name_von(d) for d in infos if im_host_netz(d, infos)))
     webserver_lesen(Host(), procs, web)
     for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
         web["label_ziele"][proxy] = label_ziele(proxy, infos)

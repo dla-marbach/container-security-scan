@@ -2,8 +2,8 @@
 
 - Image: traefik:v3.6 (sha256:31267173a15b)  
 - OS: Alpine Linux v3.24  
-- Zeitpunkt: 2026-11-07 20:37  
-- Scanner: container-security-scan 0.1.0  
+- Zeitpunkt: 2026-11-07 21:15  
+- Scanner: container-security-scan 0.2.0  
 - Datenbank: OSV, Stand 2026-11-07 14:13 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 0 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
@@ -189,8 +189,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        10da5cab82cec4ef756eb8940e5e43201d600eed7c94c60e89ca69b2ed910b3a
-Gestartet: 2026-11-07T20:36:31.196394011Z
+ID:        3e47369fedccb647fa3bfbfd4af1b1da5f91e9304ee0e58cd61d7c6d6d276be6
+Gestartet: 2026-11-07T21:15:08.696282742Z
 Kommando:  ["/entrypoint.sh"] ["--providers.docker=true", "--providers.docker.exposedbydefault=false", "--entrypoints.web.address=:80"]
 Mounts:    /var/run/docker.sock->/var/run/docker.sock
 Host:      Kernel 6.18.44-fc-v310
@@ -200,7 +200,7 @@ Host:      Kernel 6.18.44-fc-v310
 
 ```
 PID                 USER                COMMAND
-1500                root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
+1985                root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

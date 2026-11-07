@@ -185,8 +185,10 @@ gewertet. Das Ergebnis hängt nur von der Docker-Konfiguration ab, nicht vom Net
 internen Netz mit derselben Konfiguration findet dieselben relevanten Funde wie die Produktion.
 
 Grundsatz: **im Zweifel erreichbar.** Als intern gilt ein Dienst nur, wenn der Weg dorthin vollständig
-bekannt ist. Ein Dienst, der nur auf Loopback lauscht (127.0.0.1, ::1), ist nie erreichbar. Sonst gilt er als
-erreichbar, wenn eine der folgenden Bedingungen zutrifft:
+bekannt ist. Ein Dienst, der nur auf Loopback lauscht (127.0.0.1, ::1), ist nur über einen Proxy mit demselben
+Loopback erreichbar: im Host-Netzwerk ein Proxy auf dem Host oder in einem anderen Container im Host-Netzwerk,
+sonst einer im selben Netzwerk-Namespace (`proxy_pass http://127.0.0.1:…`); im Bericht `öffentlich über … (über
+Loopback)`. Sonst gilt er als erreichbar, wenn eine der folgenden Bedingungen zutrifft:
 
 | Weg | Erkennung |
 |---|---|
@@ -196,10 +198,10 @@ erreichbar, wenn eine der folgenden Bedingungen zutrifft:
 | gemeinsamer Netzwerk-Namespace | `network_mode: container:…`/`service:…` (z. B. VPN- oder Sidecar-Container): es gelten die Ports des Spenders; ein Ziel des Spenders wird an alle Container dieses Namespace weitergegeben |
 | hinter einem erreichbaren nginx/Apache | Backends aus `nginx -T` bzw. der Apache-Konfiguration (`proxy_pass`, `fastcgi_pass`, `upstream`, `ProxyPass`, `SetHandler proxy:`), auch über mehrere Proxys und Variablen aus `set`/`map`; Ziele per Container-Name, Alias, Compose-Dienst oder IP |
 | hinter einem erreichbaren Traefik bzw. caddy-docker-proxy | Ziele aus Docker-Labels (`traefik.*.services.*.loadbalancer.server.port`, `caddy.reverse_proxy: {{upstreams …}}`) |
-| hinter einem Reverse Proxy **direkt auf dem Host** | nginx/Apache außerhalb von Docker (Programm mit dem Wurzelverzeichnis des Hosts, nicht in der cgroup eines Containers), das nicht nur auf Loopback lauscht: Konfiguration wie oben, Ziele über die Container-IP (z. B. `proxy_pass http://172.18.0.5:3000`). Ergebnis auf der Konsole als `Host: …`; gilt auch für den Einzelscan |
+| hinter einem Reverse Proxy **direkt auf dem Host** | nginx/Apache außerhalb von Docker (Programm mit dem Wurzelverzeichnis des Hosts, nicht in der cgroup eines Containers), das nicht nur auf Loopback lauscht: Konfiguration wie oben, Ziele über die Container-IP (z. B. `proxy_pass http://172.18.0.5:3000`), bei Containern im Host-Netzwerk über `127.0.0.1`. Ergebnis auf der Konsole als `Host: …`; gilt auch für den Einzelscan |
 | aufgerufen von einer erreichbaren Anwendung | z. B. API-Gateway oder php-fpm hinter nginx im selben Container: Ziel-URLs (`http(s)://`, `ws(s)://`, `grpc(s)://`) auf andere Container in Umgebung oder Kommandozeile sowie beim Scan offene TCP-Verbindungen. Datenbanken, Caches und Message Broker als Ziel zählen nicht. Im Bericht als `Aufruf: Container …, Port … (Quelle)`, ohne Werte der Umgebung |
 | hinter einem Tunnel-Agenten | cloudflared, frpc, ngrok, chisel – im Container oder auf dem Host: leiten Verkehr von außen weiter, ohne zu lauschen; gelten immer als erreichbar und nicht auswertbar (siehe nächste Zeile). Container mit einem solchen Image bzw. Befehl werden vorgezogen |
-| **möglicherweise** erreichbar | Container im selben Docker-Netz wie ein erreichbarer Dienst, dessen Weiterleitungen nicht vollständig bekannt sind: Traefik, Caddy, HAProxy, Envoy, Varnish u. a. (Konfiguration wird nicht ausgewertet; Labels geben nur einen Teil der Ziele an), nginx-Ziel mit nicht auflösbarer Variable (`proxy_pass http://$host`), nicht lesbare nginx-Konfiguration, veröffentlichter Port ohne erkennbaren Prozess. Bei einem solchen Dienst auf dem Host oder im Host-Netzwerk: alle Container mit einem Docker-Netz (der Host erreicht sie über ihre IP). Mit Warnung je Dienst |
+| **möglicherweise** erreichbar | Container im selben Docker-Netz wie ein erreichbarer Dienst, dessen Weiterleitungen nicht vollständig bekannt sind: Traefik, Caddy, HAProxy, Envoy, Varnish u. a. (Konfiguration wird nicht ausgewertet; Labels geben nur einen Teil der Ziele an), nginx-Ziel mit nicht auflösbarer Variable (`proxy_pass http://$host`), nicht lesbare nginx-Konfiguration, veröffentlichter Port ohne erkennbaren Prozess. Bei einem solchen Dienst auf dem Host oder im Host-Netzwerk: alle Container mit einem Docker-Netz (der Host erreicht sie über ihre IP). Container mit demselben Loopback (Host-Netzwerk, gemeinsamer Netzwerk-Namespace) auch mit Diensten, die nur auf Loopback lauschen. Mit Warnung je Dienst |
 
 Die Prozesse auf dem Host liest das Skript nur als root vollständig; sonst warnt es (`Host: WARNUNG: Prozesse
 auf dem Host nicht vollständig lesbar`), da ein Proxy auf dem Host unerkannt bleiben könnte. Ist die
@@ -256,6 +258,13 @@ CONF-SOCKET       traefik       2027-03-31  liest nur Labels, Umstieg auf Socket
 [Erreichbarkeit](#erreichbarkeit), auch „möglicherweise“) als root (je Port geprüft), erscheint eine **Warnung** (kein Rückgabewert), z. B. Node oder Python als root. nginx, Apache
 und php-fpm (Master root, Worker unprivilegiert am selben Port) zählen nicht. Mit userns-remap oder rootless Docker ist root im
 Container nicht root auf dem Host; dann entfällt die Warnung (außer bei `--userns=host`).
+
+**Datenbank direkt erreichbar:** Ist eine Datenbank, ein Cache oder ein Message Broker (PostgreSQL, MySQL/MariaDB,
+Redis, MongoDB, Elasticsearch, RabbitMQ u. a.) direkt von außerhalb des Hosts erreichbar – Port an eine Adresse
+außer Loopback veröffentlicht (z. B. `ports: ["5432:5432"]`), Host-Netzwerk oder LAN-Netz –, erscheint eine
+**Warnung** (kein Rückgabewert). Anwendungen erreichen solche Dienste über das Docker-Netz; Docker öffnet
+veröffentlichte Ports an der Firewall des Hosts vorbei (ufw, oft auch firewalld). Abhilfe: `ports:` entfernen
+oder an `127.0.0.1` binden.
 
 Nicht geprüft werden allgemeine Härtung (no-new-privileges, `cap_drop: ALL`, read-only, Limits, Ports nur
 an bestimmte IPs) und der Docker-Daemon. Geprüft werden die gescannten (laufenden) Container, mit
@@ -565,9 +574,12 @@ sudo env REPO=/tmp/css.bundle bash installation/installieren.sh $V && sudo /usr/
 ### Releases
 
 Server installieren nur Releases: Git-Tags `vX.Y.Z` auf `main`. Die Version steht nur in `VERSION` am Anfang
-von `container-security-scan.py`; Installscript, Wrapper und README nennen sie nicht. Ein Release:
+von `container-security-scan.py`; Installscript, Wrapper und README nennen sie nicht. Jeder Pull Request, der
+`container-security-scan.py` oder `installation/` ändert, erhöht `VERSION` und wird nach dem Merge ein
+Release: `Z` bei Korrekturen ohne Einfluss auf Ergebnisse, `Y` bei neuen Funktionen oder anderer Bewertung,
+`X` bei inkompatiblen Änderungen (Rückgabewerte, `ERGEBNIS: …`, Optionen, Schritte für Admins). Ein Release:
 
-1. Per Pull Request nach `main`: `VERSION` erhöhen und die [Beispiele neu erzeugen](#entwicklung-und-tests).
+1. Im Pull Request nach `main`: `VERSION` erhöhen und die [Beispiele neu erzeugen](#entwicklung-und-tests).
 2. Nach dem Merge den Merge-Commit taggen (signiert, wenn möglich) und den Tag pushen:
 
    ```bash

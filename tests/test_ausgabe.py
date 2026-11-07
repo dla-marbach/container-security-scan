@@ -167,14 +167,15 @@ class Gesamtlauf(unittest.TestCase):
         self.problems = []
         self.info = {}
 
-    def lauf(self, ports=None, fremd=None, via=None, **web_kw):
+    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, **web_kw):
         nginx = proc(1, "/usr/sbin/nginx", ports=ports or {"80": "alle"}, maps={"/usr/lib/x86_64-linux-gnu/libssl.so.3"})
         w = web(**dict({"published": {"80": ["0.0.0.0:80"]}}, **web_kw))
         container = FakeContainer()
         container.info = dict(container.info, **self.info)
         patches = [mock.patch.object(scanner, "Container", return_value=container),
                    mock.patch.object(scanner, "collect_files", return_value=(dict(self.files), [], "test", list(self.problems))),
-                   mock.patch.object(scanner, "collect_procs", return_value=({"1": nginx}, "test", fremd or {})),
+                   mock.patch.object(scanner, "collect_procs",
+                                     return_value=({} if keine_prozesse else {"1": nginx}, "test", fremd or {})),
                    mock.patch.object(scanner, "probe_runtimes", return_value=[]),
                    mock.patch.object(scanner, "host_components", return_value=[]),
                    mock.patch.object(scanner, "collect_web", return_value=w),
@@ -256,6 +257,45 @@ class Gesamtlauf(unittest.TestCase):
         # Proxy-Ziel ohne lauschenden Prozess: wie bisher vorsichtshalber alles öffentlich
         self.lauf(via={"8080": ["nginx:80 in proxy"]})
         self.assertIn("WARNUNG: Prozess zu Port 8080 nicht ermittelbar", self.konsole)
+
+    def test_loopback_ziel(self):
+        # nginx auf dem Host vor 127.0.0.1:7777, Container im Host-Netzwerk lauscht dort nur auf Loopback: P1
+        code, _, base = self.lauf(ports={"7777": "localhost"}, published={}, host_network=True,
+                                  via={"7777": ["nginx:443 auf dem Host (über Loopback)"]})
+        with open(base + ".md", encoding="utf-8") as f:
+            bericht = f.read()
+        self.assertIn("Port 7777/tcp (localhost) lauscht nur auf Loopback, öffentlich über nginx:443 auf dem Host", bericht)
+        self.assertEqual(code, 1)
+        # Ziel über Loopback, auf dem hier nichts lauscht (anderer Container im Host-Netzwerk, der Host selbst):
+        # kein "unbekannter Dienst"
+        self.lauf(via={"9000": ["nginx:443 auf dem Host (über Loopback)"]})
+        self.assertNotIn("nicht ermittelbar", self.konsole)
+        # im Host-Netzwerk auch nicht, wenn auf dem Port ein Socket ohne lesbaren Prozess lauscht (alle Sockets des
+        # Hosts erscheinen so, z.B. ein php-fpm direkt auf dem Host)
+        self.lauf(via={"9000": ["nginx:443 auf dem Host (über Loopback)"]}, host_network=True,
+                  fremd={"9000": ("alle", "7")})
+        self.assertNotIn("Prozess zu Port 9000 nicht ermittelbar", self.konsole)
+
+    def test_loopback_ziel_mit_unbekanntem_socket(self):
+        # gemeinsamer Netzwerk-Namespace: Ziel über Loopback, dort lauscht ein Socket, dessen Prozess weder hier
+        # noch im anderen Container nachweisbar ist -> Rückfallregel wie bei anderen Zielen
+        with mock.patch.object(scanner, "ports_in_gruppe", return_value=set()):
+            self.lauf(via={"9000": ["nginx:443 in sidecar (über Loopback)"]}, netz_gruppe=["sidecar"],
+                      loopback=["sidecar"], fremd={"9000": ("alle", "7")})
+        self.assertIn("WARNUNG: Prozess zu Port 9000 nicht ermittelbar", self.konsole)
+        # Prozess im anderen Container nachweisbar: dort bewertet
+        with mock.patch.object(scanner, "ports_in_gruppe", return_value={"9000"}):
+            self.lauf(via={"9000": ["nginx:443 in sidecar (über Loopback)"]}, netz_gruppe=["sidecar"],
+                      loopback=["sidecar"], fremd={"9000": ("alle", "7")})
+        self.assertNotIn("nicht ermittelbar", self.konsole)
+
+    def test_unbekannter_dienst_im_host_netzwerk(self):
+        # kein Prozess lesbar: könnte ein Proxy auf 127.0.0.1 sein -> Container mit demselben Loopback mit Kennzeichen
+        # (erreicht dort auch Dienste nur auf Loopback), übrige Nachbarn wie bisher
+        code, backends, base = self.lauf(published={}, host_network=True, nachbarn=["hostnetz2", "shop"],
+                                         loopback=["hostnetz2"], ports={"8443": "alle"}, keine_prozesse=True)
+        self.assertEqual(backends, [("shop", "*", "unbekannter Dienst:? in app"),
+                                    ("hostnetz2", "*", "unbekannter Dienst:? (über Loopback) in app")])
 
     def test_warnung_bei_unklaren_weiterleitungen(self):
         self.lauf(nachbarn=["shop"], backends={"/usr/sbin/nginx": ["http://$host"]})
