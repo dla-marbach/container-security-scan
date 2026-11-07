@@ -1408,24 +1408,17 @@ def direkt_erreichbar(d, infos, netze):
     return published, (d.get("HostConfig") or {}).get("NetworkMode") == "host", lan, name_von(spender) if spender else None
 
 
-def socket_inodes(names, proc="/proc"):
-    """Socket-Inodes, die Prozesse dieser Container geöffnet haben (über /proc des Hosts, als root)."""
-    inodes = set()
+def ports_in_gruppe(names, user):
+    """Ports, auf denen ein lesbarer Prozess in einem dieser Container lauscht – erfasst wie bei deren eigenem
+    Scan, also genau die Ports, die dort bewertet werden."""
+    ports = set()
     for name in names:
-        rc, out = run(["docker", "top", name, "-eo", "pid"])
-        for pid in (out.split()[1:] if rc == 0 else []):
-            try:
-                fds = os.listdir(os.path.join(proc, pid, "fd")) if pid.isdigit() else []
-            except OSError:
-                continue
-            for fd in fds:
-                try:
-                    m = re.match(r"socket:\[(\d+)\]$", os.readlink(os.path.join(proc, pid, "fd", fd)))
-                except OSError:
-                    continue
-                if m:
-                    inodes.add(m.group(1))
-    return inodes
+        try:
+            procs = collect_procs(Container(name, user))[0]
+        except ScanError:
+            continue
+        ports.update(port for p in procs.values() for port in p["ports"])
+    return ports
 
 
 def netz_gruppe(d, infos):
@@ -2843,9 +2836,9 @@ def scan_container(name, a, via_proxy=None):
     warnings = []
     listening = {port for p in procs.values() for port in p["ports"]}
     ohne_prozess = fremd       # lauschende Sockets ohne sichtbaren Prozess
-    # nur, wenn der Socket nachweislich einem Prozess eines anderen Containers der Gruppe gehört (sonst Rückfallregel)
-    besitz = socket_inodes(web["netz_gruppe"]) if web.get("netz_gruppe") and fremd else set()
-    fremd = OrderedDict((port, v) for port, v in fremd.items() if port not in listening and v[1] in besitz)
+    # nur, wenn dort ein lesbarer Prozess auf dem Port lauscht (also bewertet wird); sonst Rückfallregel
+    besitz = ports_in_gruppe(web["netz_gruppe"], a.user) if web.get("netz_gruppe") and fremd else set()
+    fremd = OrderedDict((port, v) for port, v in fremd.items() if port not in listening and port in besitz)
     for port in fremd:
         services.append({"label": "Port %s" % port, "name": "–", "version": "", "exe": "", "exposed": False,
                          "backends": [], "unresolved": [], "unklar": [], "endpoints": [],

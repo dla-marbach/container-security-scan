@@ -203,29 +203,32 @@ class Gesamtlauf(unittest.TestCase):
     def test_port_eines_mitnutzenden_containers(self):
         # vpn veröffentlicht 8080, darauf lauscht ein Prozess im Container "mit" (network_mode: service:vpn):
         # nicht "unbekannter Dienst", sondern dort bewertet
-        with mock.patch.object(scanner, "socket_inodes", return_value={"999"}) as besitz:
+        with mock.patch.object(scanner, "ports_in_gruppe", return_value={"8080"}) as besitz:
             code, backends, base = self.lauf(fremd={"8080": ("alle", "999")}, netz_gruppe=["mit"],
                                              published={"80": ["0.0.0.0:80"], "8080": ["127.0.0.1:8080"]})
-        besitz.assert_called_with(["mit"])
+        besitz.assert_called_with(["mit"], "0")
         with open(base + ".md", encoding="utf-8") as f:
             bericht = f.read()
         self.assertIn("Port 8080/tcp (alle): Prozess in einem Container mit demselben Netzwerk (mit)", bericht)
         self.assertNotIn("unbekannter Dienst", bericht)
         self.assertNotIn("nicht ermittelbar", self.konsole)
         # Besitzer in der Gruppe nicht nachweisbar (z.B. dort nicht lesbar): Rückfallregel, nicht "dort bewertet"
-        with mock.patch.object(scanner, "socket_inodes", return_value=set()):
+        with mock.patch.object(scanner, "ports_in_gruppe", return_value=set()):
             self.lauf(fremd={"8080": ("alle", "999")}, netz_gruppe=["mit"],
                       published={"80": ["0.0.0.0:80"], "8080": ["127.0.0.1:8080"]})
         self.assertIn("WARNUNG: Prozess zu Port 8080 nicht ermittelbar", self.konsole)
 
-    def test_socket_inodes(self):
-        tmp = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, tmp)
-        os.makedirs(os.path.join(tmp, "42", "fd"))
-        os.symlink("socket:[999]", os.path.join(tmp, "42", "fd", "3"))
-        os.symlink("/dev/null", os.path.join(tmp, "42", "fd", "1"))
-        with mock.patch.object(scanner, "run", return_value=(0, "PID\n42\n4711\n")):
-            self.assertEqual(scanner.socket_inodes(["mit"], proc=tmp), {"999"})
+    def test_ports_in_gruppe(self):
+        # wie beim Scan des anderen Containers: nur Ports lesbarer Prozesse; nicht erreichbarer Container zählt nicht
+        def container(name, user):
+            if name == "weg":
+                raise scanner.ScanError("nicht gefunden")
+            return name
+        procs = {"mit": ({"1": proc(1, "/usr/local/bin/node", ports={"8080": "alle"}), "2": proc(2, "/bin/sleep")},
+                         "test", {"9090": ("alle", "5")})}
+        with mock.patch.object(scanner, "Container", side_effect=container), \
+                mock.patch.object(scanner, "collect_procs", side_effect=lambda c: procs[c]):
+            self.assertEqual(scanner.ports_in_gruppe(["mit", "weg"], "0"), {"8080"})
 
     def test_unbekannter_dienst_macht_nachbarn_erreichbar(self):
         # auf 8443 lauscht ein Prozess, der nicht lesbar ist: könnte ein Proxy sein
