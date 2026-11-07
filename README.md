@@ -71,6 +71,7 @@ Git-Checkouts):
 #!/bin/bash
 # Daten als csscan aktualisieren, dann als root mit dem festgehaltenen Code scannen.
 # Aufruf von Hand, per cron (--mail) oder per Rundeck (sudo, ohne Argumente).
+# Von Hand optional genau ein Container (Name oder ID) statt aller: ... [--mail] [container]
 # Ausgabe auf die Konsole und ins Log; letzte Zeile "ERGEBNIS: …"; Rückgabewert 0/1/2 wie das Skript.
 set -u
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -78,7 +79,13 @@ CODE=/opt/container-security-scan/container-security-scan.py
 D=/var/lib/container-security-scan
 OUT=/var/log/container-security-scan
 AUSNAHMEN=/etc/container-security-scan/ausnahmen.txt   # wird verwendet, wenn vorhanden
-MAIL=nein; [ "${1:-}" = --mail ] && MAIL=ja
+MAIL=nein; [ "${1:-}" = --mail ] && { MAIL=ja; shift; }
+ZIEL=(--alle-container)                 # Standard: alle laufenden Container
+if [ $# -gt 0 ]; then                   # Name/ID wie bei Docker, nie mit "-" am Anfang (sonst Option)
+  [[ $# -eq 1 && $1 =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] \
+      || { echo "FEHLER: Aufruf: $0 [--mail] [container]"; exit 2; }
+  ZIEL=("$1")
+fi
 
 cd / && umask 077                       # Berichte enthalten u. a. Prozess-Kommandozeilen
 exec 9>/run/container-security-scan.lock
@@ -90,7 +97,7 @@ ARGS=(--db "$D/daten")
 {
   runuser -u csscan -- git -C "$D/daten" pull --ff-only --quiet \
       || { echo "FEHLER: Daten nicht aktualisiert (git pull als csscan)"; exit 2; }
-  "$CODE" "${ARGS[@]}" --alle-container "$OUT/berichte" --nur-behebbare
+  "$CODE" "${ARGS[@]}" --nur-behebbare "${ZIEL[@]}" "$OUT/berichte"
 } 2>&1 | tee "$LOG"
 rc=${PIPESTATUS[0]}
 case $rc in 0) e=OK ;; 1) e=FUNDE ;; *) e=UNVOLLSTAENDIG; rc=2 ;; esac
@@ -122,14 +129,16 @@ sudo /usr/local/sbin/container-security-scan-lauf
 
 Geprüft werden alle laufenden Container: zuerst die erreichbaren (siehe [Erreichbarkeit](#erreichbarkeit))
 samt den Backends hinter ihren Reverse Proxys, dann alle übrigen. Was nicht als erreichbar erkannt wird,
-fehlt so nicht, sondern erscheint mindestens als P2. Einen einzelnen Container mit denselben Daten (vorher
-einmal den Wrapper laufen lassen, damit die Daten aktuell sind; ohne Erreichbarkeit über Proxys in anderen
-Containern):
+fehlt so nicht, sondern erscheint mindestens als P2. Einen einzelnen Container (z. B. bei der Entwicklung)
+mit denselben Sicherheitsvorkehrungen – Daten aktualisieren, Sperre, Ausnahmeliste, Log, `ERGEBNIS:`-Zeile –,
+aber ohne Erreichbarkeit über Proxys in anderen Containern:
 
 ```bash
-sudo /opt/container-security-scan/container-security-scan.py --db /var/lib/container-security-scan/daten \
-    <container> /var/log/container-security-scan/berichte
+sudo /usr/local/sbin/container-security-scan-lauf <container>
 ```
+
+Erlaubt ist genau ein Name oder eine ID, wie Docker sie vergibt; alles andere (mehrere Argumente, Optionen,
+Tippfehler wie `--mial`) bricht mit Rückgabewert 2 ab, statt still etwas anderes zu scannen.
 
 ### 3. Täglich: cron oder Rundeck
 
@@ -156,8 +165,9 @@ EOF
 chmod 440 /etc/sudoers.d/rundeck-container-scan && visudo -c
 ```
 
-- `""` am Ende verbietet zusätzliche Argumente. `rundeck` an den eigenen Benutzer anpassen; bei
-  `requiretty` zusätzlich `Defaults:rundeck !requiretty`.
+- `""` am Ende verbietet zusätzliche Argumente – so lassen, auch wenn der Wrapper von Hand einen Container
+  annimmt (Rundeck scannt immer alle); kein `*`, das ließe beliebige Argumente zu. `rundeck` an den eigenen
+  Benutzer anpassen; bei `requiretty` zusätzlich `Defaults:rundeck !requiretty`.
 - Job mit dem Schritt „Command“: `sudo -n /usr/local/sbin/container-security-scan-lauf` – kein Schritt
   „Script“, der eine Datei auf den Server kopiert (dafür bräuchte Rundeck allgemeine root-Rechte).
 - Zeitplan wie oben; Zeitlimit großzügig (ein Container kann bis zu 30 Minuten dauern); Server, die sich
@@ -341,14 +351,15 @@ CVE-2026-107814   mariadb       2027-03-31  betrifft nur die RPM-Pakete von Mari
 
 ## Aufruf und Optionen
 
-Für den Betrieb genügt der Wrapper ([Installation und Betrieb](#installation-und-betrieb)). Direkter Aufruf
-für Spezialfälle, immer mit dem festgehaltenen Code und `--db`:
+Für den Betrieb genügt der Wrapper ([Installation und Betrieb](#installation-und-betrieb)), auch für einen
+einzelnen Container (`container-security-scan-lauf <container>`). Direkter Aufruf für Spezialfälle, immer mit
+dem festgehaltenen Code und `--db`; er verwendet den vorhandenen Datenstand, ohne ihn zu aktualisieren:
 
 ```bash
 C=/opt/container-security-scan/container-security-scan.py
 DB=/var/lib/container-security-scan/daten
 sudo $C --db $DB --alle-container <ausgabeverzeichnis>        # wie der Wrapper, ohne Datenaktualisierung
-sudo $C --db $DB <container> <ausgabeverzeichnis>             # einzelner Container
+sudo $C --db $DB <container> <ausgabeverzeichnis>             # einzelner Container, ohne Datenaktualisierung
 sudo $C --db $DB --alle <container> <ausgabeverzeichnis>      # alle Befunde in die Tabelle
 ```
 
