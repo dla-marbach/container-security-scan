@@ -16,11 +16,13 @@ Aufruf:
      mit --oekosysteme X,Y: zusätzlich diese Ökosysteme direkt von OSV nach osv-db laden (z.B. SUSE)
   ./container-security-scan.py <container> [ausgabeverzeichnis] [--nur-behebbare] [--alle] [--ausnahmen DATEI]
   ./container-security-scan.py --alle-container [ausgabeverzeichnis] [...]
-     alle laufenden Container: zuerst die erreichbaren (veröffentlichte Ports, Host-Netzwerk, LAN-Netz, Ziele
-     eines Reverse Proxys oder Tunnels direkt auf dem Host) und deren Backends hinter einem Reverse Proxy –
-     Dienste hinter einem erreichbaren Proxy gelten als öffentlich (P1) –, dann alle übrigen. Im Zweifel erreichbar: hinter einem Proxy, dessen Ziele nicht vollständig
-     bekannt sind (Traefik, HAProxy, nginx mit $host …), gelten alle Container im selben Docker-Netz als
-     möglicherweise öffentlich (P1). "Öffentlich" = von außerhalb des Docker-Hosts (Intranet oder Internet).
+     alle laufenden Container: zuerst die erreichbaren und ihre Ziele, dann alle übrigen. Erreichbar
+     ("öffentlich" = von außerhalb des Docker-Hosts, Intranet oder Internet): veröffentlichte Ports,
+     Host-Netzwerk, LAN-Netz; Ziele eines erreichbaren Reverse Proxys (im Container oder direkt auf dem Host)
+     oder Tunnels; Ziele, die eine erreichbare Anwendung aufruft (Ziel-URL in Umgebung/Kommandozeile, offene
+     Verbindung; nicht Datenbanken, Caches, Message Broker). Im Zweifel erreichbar: hinter einem Proxy, dessen
+     Ziele nicht vollständig bekannt sind (Traefik, HAProxy, nginx mit $host …), gelten alle Container im
+     selben Docker-Netz als möglicherweise öffentlich (P1).
   ./container-security-scan.py --oeffentliche [ausgabeverzeichnis] [...]
      wie --alle-container, aber nur die erreichbaren Container und deren Backends
   Daten: daten/ (Branch daten) und osv-db/ neben diesem Skript (oder --db DIR, auch mehrfach)
@@ -886,6 +888,7 @@ def pypi_packages(files):
 # Ausgabe je Zeile: P <pid> <exe> <cwd> <argv mit \037 getrennt> <uid:gid> <ppid> | M <pid> <datei>
 #                   F <pid> <offene datei> | E <pid> <PATH=... bzw. VIRTUAL_ENV=...> | S <pid> <socket-inode>
 #                   T <inode> <lokale-adresse:port> <tcp|udp>  (lauschende Sockets)
+#                   C <inode> <lokale-adresse:port> <entfernte-adresse:port>  (bestehende TCP-Verbindungen)
 # Nur die übergebenen PIDs (ohne Argumente: nichts) – über den Host aufgerufen sonst alle Host-Prozesse.
 PROC_SH = r"""
 self=$$
@@ -910,7 +913,8 @@ for pid in "$@"; do
         esac
     done
 done
-[ -n "$first" ] && cat "/proc/$first/net/tcp" "/proc/$first/net/tcp6" 2>/dev/null | awk '$4 == "0A" { print "T\t" $10 "\t" $2 "\ttcp" }'
+[ -n "$first" ] && cat "/proc/$first/net/tcp" "/proc/$first/net/tcp6" 2>/dev/null | awk '$4 == "0A" { print "T\t" $10 "\t" $2 "\ttcp" }
+    $4 == "01" && $10 != "0" { print "C\t" $10 "\t" $2 "\t" $3 }'
 [ -n "$first" ] && cat "/proc/$first/net/udp" "/proc/$first/net/udp6" 2>/dev/null | awk '$4 == "07" { print "T\t" $10 "\t" $2 "\tudp" }'
 """
 
@@ -959,15 +963,17 @@ def collect_procs(c):
 
 
 def procs_auswerten(out):
-    """Ausgabe von PROC_SH auswerten: (Prozesse, lauschende Ports ohne sichtbaren Prozess)."""
-    procs, sockets, listen = OrderedDict(), defaultdict(set), {}
+    """Ausgabe von PROC_SH auswerten: (Prozesse, lauschende Ports ohne sichtbaren Prozess). Je Prozess auch die
+    ausgehenden TCP-Verbindungen (Ziel-Adresse, Ziel-Port), z.B. eines API-Gateways zu seinen Zielen."""
+    procs, sockets, listen, conns = OrderedDict(), defaultdict(set), {}, []
     for line in out.splitlines():
         f = line.split("\t")
         if f[0] == "P" and len(f) >= 5:
             procs[f[1]] = {"pid": f[1], "exe": re.sub(r" \(deleted\)$", "", f[2]), "cwd": f[3],
                            "argv": [a for a in f[4].split("\x1f") if a], "user": f[5] if len(f) > 5 and f[5] != ":" else "",
                            "ppid": f[6] if len(f) > 6 else "",
-                           "maps": set(), "files": set(), "env": {}, "ports": OrderedDict()}
+                           "maps": set(), "files": set(), "env": {}, "ports": OrderedDict(),
+                           "verbindungen": OrderedDict()}
         elif f[0] == "E" and f[1] in procs and "=" in f[2]:
             k, _, v = f[2].partition("=")
             procs[f[1]]["env"][k] = v
@@ -981,6 +987,8 @@ def procs_auswerten(out):
             addr, port = f[2].split(":")
             port = str(int(port, 16)) + ("/udp" if len(f) > 3 and f[3] == "udp" else "")   # TCP ohne Zusatz
             listen[(f[1], port)] = (port, decode_addr(addr))
+        elif f[0] == "C" and len(f) > 3 and ":" in f[2] and ":" in f[3]:
+            conns.append(f[1:4])
     fremd = OrderedDict()
     for (inode, _), (port, addr) in listen.items():
         owners = [pid for pid in sockets.get(inode, ()) if pid in procs]
@@ -988,6 +996,15 @@ def procs_auswerten(out):
             procs[pid]["ports"][port] = addr
         if not owners and not nur_lokal(addr):
             fremd[port] = addr
+    # ausgehend: lokaler Port ist kein lauschender (sonst eingehende Verbindung eines Clients)
+    tcp = {port for (_, port) in listen if "/" not in port}
+    for inode, local, remote in conns:
+        if str(int(local.split(":")[1], 16)) in tcp:
+            continue
+        addr, port = remote.split(":")
+        for pid in sockets.get(inode, ()):
+            if pid in procs:
+                procs[pid]["verbindungen"][(decode_addr(addr), str(int(port, 16)))] = None
     for p in procs.values():
         p["base"] = posixpath.basename(p["exe"])
         p["label"] = p["base"] + (":" + ",".join(p["ports"]) if p["ports"] else "")
@@ -1256,6 +1273,47 @@ def parse_apache(c, exe, web, user=NOBODY):
 # erreichbar). Traefik und caddy-docker-proxy: Ziele aus Docker-Labels werden zusätzlich genau zugeordnet.
 PROXY_UNBEKANNT = {"traefik", "caddy", "haproxy", "envoy", "varnishd", "lighttpd", "h2o", "angie", "pound", "hitch",
                    "stunnel", "stunnel4", "socat", "sniproxy", "oauth2-proxy", "squid", "frps"}
+# Datenhaltung und Nachrichtenvermittlung: Anwendungen rufen sie auf, leiten aber keine Anfragen von außen
+# durch -> Aufrufe (Ziel-URL, offene Verbindung) machen sie nicht erreichbar. Java-Dienste über die Kommandozeile.
+DATENDIENST = re.compile(r"(mysqld|mariadbd|postgres|postmaster|redis-server|valkey-server|keydb-server|mongod|mongos|"
+                         r"memcached|beam\.smp|clickhouse(-server)?|influxd|etcd|cockroach|couchdb|arangod|rethinkdb|"
+                         r"meilisearch|typesense-server|qdrant|nats-server|mosquitto)$")
+JAVA_DATENDIENST = re.compile(r"org\.elasticsearch\.|org\.opensearch\.|-Dsolr\.|org\.apache\.solr\.|kafka\.Kafka\b|"
+                              r"org\.apache\.cassandra\.|org\.apache\.zookeeper\.|org\.apache\.activemq\.|org\.neo4j\.")
+# Kennzeichen der Gründe aus Aufrufen einer erreichbaren Anwendung (für DATENDIENST und die Rückfallregel)
+AUFRUF_GRUENDE = ("(Ziel-URL ", "(offene Verbindung)")
+ZIEL_URL = re.compile(r"\b(https?|wss?|grpcs?)://(?:[^@\s/'\"]*@)?([^\s/'\",;?#@]+)")
+
+
+def datendienst(p):
+    return bool(DATENDIENST.match(p["base"]) or (p["base"].startswith("java") and JAVA_DATENDIENST.search(" ".join(p["argv"]))))
+
+
+def aufruf_grund(reason):
+    return any(k in reason for k in AUFRUF_GRUENDE)
+
+
+def aufruf_ziele(ps, web, env):
+    """Ziele, die eine erreichbare Anwendung selbst aufruft (z.B. ein API-Gateway): HTTP/WebSocket/gRPC-URLs auf
+    andere Container in der Umgebung des Containers (env: [(Name, Wert)]) bzw. der Kommandozeile – mysql://,
+    redis:// u.ä. zählen nicht –, dazu bestehende TCP-Verbindungen zu Containern. [(Container, Port, Quelle)]"""
+    result = OrderedDict()
+    quellen = [("Ziel-URL in der Kommandozeile", " ".join(p["argv"])) for p in ps] + \
+        [("Ziel-URL %s" % k, v) for k, v in env]
+    for quelle, text in quellen:
+        for scheme, hostport in ZIEL_URL.findall(text):
+            host, port = split_target(scheme + "://" + hostport)
+            ct = web["containers"].get(host)
+            if ct and ct != web["self"]:
+                result.setdefault((ct, port), quelle)
+    for p in ps:
+        for addr, port in p.get("verbindungen", ()):
+            ct = web["containers"].get(addr)
+            if ct and ct != web["self"]:
+                result.setdefault((ct, port), "offene Verbindung")
+    return [(ct, port, quelle) for (ct, port), quelle in result.items()]
+
+
 # Tunnel-Agenten: leiten Verkehr aus dem Internet weiter, ohne selbst auf einem Port zu lauschen -> immer erreichbar
 TUNNEL = {"cloudflared", "frpc", "ngrok", "chisel"}
 LAN_TREIBER = ("macvlan", "ipvlan")     # Container mit eigener Adresse im LAN, ohne veröffentlichte Ports erreichbar
@@ -1376,6 +1434,7 @@ def collect_web(c, procs):
     for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
         web["label_ziele"][proxy] = label_ziele(proxy, infos)
     web["containers"] = container_index(infos)
+    web["env"] = [tuple(e.split("=", 1)) for e in (c.info.get("Config") or {}).get("Env") or [] if "=" in e]
     return web
 
 
@@ -1601,26 +1660,22 @@ def mark_usage(comps, procs, owners, web):
 
     services = []   # ein Eintrag je Prozess mit offenen Ports (gleiches Etikett nur einmal)
     versions = {norm(c["ort"]): c["version"] for c in comps if c["typ"] in ("runtime", "server")}
-    for label, p in OrderedDict((p["label"], p) for p in procs.values() if p["ports"] or p["base"] in TUNNEL).items():
-        desc, exposed = [], p["base"] in TUNNEL
-        if exposed:
+    gruppen = OrderedDict()     # gleiches Etikett: Hauptprozess und Worker (erben den lauschenden Socket)
+    for p in procs.values():
+        if p["ports"] or p["base"] in TUNNEL:
+            gruppen.setdefault(p["label"], []).append(p)
+    erreichbar = {label: ps[-1]["base"] in TUNNEL or any(port_erreichbar(ps[-1], port, addr, web)[1]
+                                                         for port, addr in ps[-1]["ports"].items())
+                  for label, ps in gruppen.items()}
+    env_vergeben = False
+    for label, ps in gruppen.items():
+        p = ps[-1]
+        desc, exposed = [], erreichbar[label]
+        if p["base"] in TUNNEL:
             desc.append("Tunnel-Agent: leitet Verkehr von außen weiter, ohne selbst auf einem Port zu lauschen")
         for port, addr in p["ports"].items():
-            if web["published"].get(port):
-                how, exposed = "veröffentlicht als " + ", ".join(web["published"][port]) + (
-                    " (über Container %s)" % web["spender"] if web.get("spender") else ""), True
-            elif web["host_network"] and not nur_lokal(addr):
-                how, exposed = "direkt im Host-Netzwerk erreichbar", True
-            elif web.get("lan") and not nur_lokal(addr):
-                how, exposed = "direkt erreichbar im " + ", ".join(web["lan"]), True
-            elif web["via_proxy"].get(port):
-                how, exposed = "öffentlich über " + ", ".join(web["via_proxy"][port]), True
-            elif web["via_proxy"].get("*") and not nur_lokal(addr):
-                how, exposed = "möglicherweise öffentlich über " + ", ".join(web["via_proxy"]["*"]) + \
-                    " (Weiterleitungen dort nicht vollständig auswertbar)", True
-            else:
-                how = "nicht veröffentlicht"
-            desc.append("Port %s (%s) %s" % (port if "/" in port else port + "/tcp", addr, how))
+            desc.append("Port %s (%s) %s" % (port if "/" in port else port + "/tcp", addr,
+                                            port_erreichbar(p, port, addr, web)[0]))
         if p.get("frontends"):
             desc.append("hinter " + ", ".join(p["frontends"]) + " (gleicher Container)")
         app = [a for i, a in enumerate(p["argv"]) if i and (a.startswith("/") or re.search(r"\.([cm]?js|py|php)$", a)
@@ -1652,6 +1707,16 @@ def mark_usage(comps, procs, owners, web):
             desc.append("Weiterleitungen nicht vollständig auswertbar (%s) – Container in denselben Docker-Netzen "
                         "gelten als möglicherweise öffentlich: %s" % ("; ".join(unklar), ", ".join(web.get("nachbarn", [])) or "keine"))
             ziele += [(ct, "*") for ct in web.get("nachbarn", [])]
+        # Aufrufe der Anwendung (API-Gateway, App ruft internen HTTP-Dienst): auch über einen Webserver im selben
+        # Container (php-fpm hinter nginx); die Umgebung des Containers nur einmal zuordnen
+        aufrufe = []
+        if exposed or any(erreichbar.get(f) for f in p.get("frontends", ())):
+            bekannt = set(ziele)
+            aufrufe = [(ct, port, quelle) for ct, port, quelle in
+                       aufruf_ziele(ps, web, [] if env_vergeben else web.get("env", [])) if (ct, port) not in bekannt]
+            env_vergeben = True
+            for ct, port, quelle in aufrufe:
+                desc.append("Aufruf: Container %s, Port %s (%s)" % (ct, port, quelle))
         services.append({"label": label, "name": p["base"], "version": versions.get(norm(p["exe"]), ""), "exe": p["exe"],
                          "description": "; ".join(desc),
                          "endpoints": [("udp://" if port.endswith("/udp") else "tcp://") + e.split(" ")[0]
@@ -1663,9 +1728,32 @@ def mark_usage(comps, procs, owners, web):
                                         and not ziel_variabel(b)
                                         and not (b.startswith("unix:") and "php" in b and php_servers)],
                          # öffentlich erreichbare Ziele in anderen Containern (für --oeffentliche/--alle-container)
-                         "backends": [(ct, port, label) for ct, port in OrderedDict.fromkeys(ziele)
-                                      if ct != web["self"]] if exposed else []})
+                         "backends": ([(ct, port, label) for ct, port in OrderedDict.fromkeys(ziele)
+                                       if ct != web["self"]] if exposed else []) +
+                                     [(ct, port, "%s (%s)" % (label, quelle)) for ct, port, quelle in aufrufe]})
     return services
+
+
+def port_erreichbar(p, port, addr, web):
+    """(Beschreibung, erreichbar) für einen Port eines Prozesses. Aufrufe einer erreichbaren Anwendung (Ziel-URL,
+    offene Verbindung) machen Datenbanken, Caches und Message Broker nicht erreichbar."""
+    via = [r for r in web["via_proxy"].get(port, []) if not (datendienst(p) and aufruf_grund(r))]
+    if web["published"].get(port):
+        return "veröffentlicht als " + ", ".join(web["published"][port]) + (
+            " (über Container %s)" % web["spender"] if web.get("spender") else ""), True
+    if web["host_network"] and not nur_lokal(addr):
+        return "direkt im Host-Netzwerk erreichbar", True
+    if web.get("lan") and not nur_lokal(addr):
+        return "direkt erreichbar im " + ", ".join(web["lan"]), True
+    if via:
+        return "öffentlich über " + ", ".join(via), True
+    if web["via_proxy"].get("*") and not nur_lokal(addr):
+        return "möglicherweise öffentlich über " + ", ".join(web["via_proxy"]["*"]) + \
+            " (Weiterleitungen dort nicht vollständig auswertbar)", True
+    if web["via_proxy"].get(port):
+        return "nicht veröffentlicht; aufgerufen von " + ", ".join(web["via_proxy"][port]) + \
+            " (Datenbank/Cache/Message Broker: dadurch nicht erreichbar)", False
+    return "nicht veröffentlicht", False
 
 
 # ===========================================================================
@@ -2701,9 +2789,12 @@ def scan_container(name, a, via_proxy=None):
     # Werkzeuge fehlen): Zuordnung unmöglich -> vorsichtshalber alles als öffentlich genutzt werten. Lauscht dort
     # ein nicht lesbarer Prozess (oder ist gar keiner lesbar), könnte es ein Proxy sein -> Container in denselben
     # Docker-Netzen gelten als möglicherweise öffentlich
+    # Ziele nur aus Aufrufen (Ziel-URL, Verbindung), auf denen nichts lauscht: nichts erreichbar (z.B. URL für eine
+    # andere Umgebung) – anders als bei einem Proxy-Ziel kein Anlass, alles als öffentlich zu werten
     unmatched = sorted(port for port in web["published"] if port not in listening and port not in fremd
                        and port not in web["via_proxy"]) + \
-        sorted(port for port in web["via_proxy"] if port != "*" and port not in listening and port not in fremd)
+        sorted(port for port, reasons in web["via_proxy"].items() if port != "*" and port not in listening
+               and port not in fremd and not (all(aufruf_grund(r) for r in reasons) and port not in ohne_prozess))
     if unmatched or (not procs and (web["published"] or web["host_network"] or web.get("lan") or web["via_proxy"])):
         label = "unbekannter Dienst:" + (",".join(unmatched) or "?")
         for x in comps:
@@ -2877,6 +2968,8 @@ def host_proxys(infos):
     for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
         web["label_ziele"][proxy] = label_ziele(proxy, infos)
     services = mark_usage([], procs, {}, web)
+    ziele = [(ct, port, grund.replace(svc["label"], svc["label"] + " auf dem Host", 1))
+             for svc in services for ct, port, grund in svc["backends"]]
     for svc in services:
         svc["label"] += " auf dem Host"
         for b in svc["unresolved"]:
@@ -2884,7 +2977,6 @@ def host_proxys(infos):
         if svc["unklar"]:
             warnings.append("Weiterleitungen von %s nicht vollständig auswertbar (%s) – alle Container mit einem "
                             "Docker-Netz gelten als möglicherweise öffentlich" % (svc["label"], "; ".join(svc["unklar"])))
-    ziele = [(ct, port, svc["label"]) for svc in services for ct, port, _ in svc["backends"]]
     return ziele, services, warnings, web["problems"]
 
 

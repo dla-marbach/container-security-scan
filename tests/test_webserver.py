@@ -259,6 +259,16 @@ class HostProxys(unittest.TestCase):
         self.assertEqual(ex.call_args[1]["user"], "0:0")
         self.assertEqual(ziele, [("app", "3000", "nginx:443 auf dem Host")])
         self.assertEqual((warnings, problems), ([], []))
+        # offene Verbindung des Proxys auf dem Host: Kennzeichen bleibt im Grund erhalten
+        db_ip = infos[1]["NetworkSettings"]["Networks"]["back"]["IPAddress"]
+        hex_ip = "".join("%02X" % int(x) for x in reversed(db_ip.split(".")))
+        mit_verbindung = procs + "S\t10\t6\nC\t6\t0100000A:D431\t%s:1F90\n" % hex_ip
+        with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 0)), \
+                mock.patch.object(scanner, "run", return_value=(0, mit_verbindung)), \
+                mock.patch.object(scanner.Host, "exec", return_value=(0, conf)):
+            ziele = scanner.host_proxys(infos)[0]
+        self.assertEqual(ziele, [("app", "3000", "nginx:443 auf dem Host"),
+                                 ("db", "8080", "nginx:443 auf dem Host (offene Verbindung)")])
         # variables Ziel: alle Container mit Docker-Netz möglicherweise erreichbar
         conf = "http { server { listen 443; location / { proxy_pass http://$host; } } }"
         with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 2)), \

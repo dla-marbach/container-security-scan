@@ -157,6 +157,49 @@ class Dienste(unittest.TestCase):
         self.assertEqual(s["backends"], [("shop", "*", "cloudflared")])
         self.assertIn("Tunnel-Agent", s["description"])
 
+    def test_ziel_urls_und_verbindungen_einer_erreichbaren_anwendung(self):
+        # API-Gateway: Ziele in der Umgebung (nur HTTP/WS/gRPC, auch mit Zugangsdaten) und offene Verbindungen
+        gw = proc(1, "/usr/local/bin/node", ["node", "/app/gw.js", "--upstream=http://orders:8080"],
+                  ports={"3000": "alle"}, verbindungen=[("172.18.0.7", "9000"), ("172.18.0.9", "5432")])
+        env = [("API_URL", "https://user:geheim@api:8443/v1"), ("DATABASE_URL", "mysql://db:3306/x"),
+               ("EXTERN", "https://example.com"), ("SELBST", "http://localhost:3000"), ("ZWEI", "http://a:1,http://b")]
+        containers = {"orders": "orders", "api": "api", "db": "db", "a": "a", "b": "b",
+                      "172.18.0.7": "billing", "172.18.0.9": "db", "localhost": "app"}
+        s = self.dienst(gw, published={"3000": ["0.0.0.0:3000"]}, env=env, containers=containers)
+        self.assertEqual(s["backends"], [
+            ("orders", "8080", "node:3000 (Ziel-URL in der Kommandozeile)"), ("api", "8443", "node:3000 (Ziel-URL API_URL)"),
+            ("a", "1", "node:3000 (Ziel-URL ZWEI)"), ("b", "80", "node:3000 (Ziel-URL ZWEI)"),
+            ("billing", "9000", "node:3000 (offene Verbindung)"), ("db", "5432", "node:3000 (offene Verbindung)")])
+        self.assertIn("Aufruf: Container api, Port 8443 (Ziel-URL API_URL)", s["description"])
+        self.assertNotIn("geheim", s["description"])
+        # nicht erreichbar: keine Weitergabe
+        self.assertEqual(self.dienst(gw, env=env, containers=containers)["backends"], [])
+
+    def test_aufrufe_hinter_webserver_im_selben_container(self):
+        # php-fpm hinter dem erreichbaren nginx: Verbindungen der Worker zählen; die Umgebung nur einmal
+        nginx = proc(1, "/usr/sbin/nginx", ports={"80": "alle"})
+        master = proc(2, "/usr/local/sbin/php-fpm", ports={"9000": "alle"})
+        worker = proc(3, "/usr/local/sbin/php-fpm", ports={"9000": "alle"}, verbindungen=[("10.0.0.3", "8080")], ppid=2)
+        w = web(published={"80": ["0.0.0.0:80"]}, backends={"/usr/sbin/nginx": ["127.0.0.1:9000"]},
+                containers={"10.0.0.3": "intern", "api": "api"}, env=[("API", "http://api:8000")])
+        services = scanner.mark_usage([], {"1": nginx, "2": master, "3": worker}, {}, w)
+        alle = [b for s in services for b in s["backends"]]
+        self.assertEqual(alle, [("api", "8000", "nginx:80 (Ziel-URL API)"),
+                                ("intern", "8080", "php-fpm:9000 (offene Verbindung)")])
+
+    def test_datendienste_durch_aufrufe_nicht_erreichbar(self):
+        for p in (proc(1, "/usr/bin/redis-server", ports={"6379": "alle"}),
+                  proc(1, "/opt/java/bin/java", ["java", "-Dsolr.solr.home=/var/solr", "-jar", "start.jar"],
+                       ports={"8983": "alle"})):
+            port = list(p["ports"])[0]
+            s = self.dienst(p, via_proxy={port: ["node:3000 (offene Verbindung) in gw"]})
+            self.assertFalse(s["exposed"], p["base"])
+            self.assertIn("aufgerufen von node:3000 (offene Verbindung) in gw", s["description"])
+            # hinter einem Proxy weiterhin erreichbar
+            self.assertTrue(self.dienst(p, via_proxy={port: ["nginx:80 in proxy"]})["exposed"])
+        node = proc(1, "/usr/local/bin/node", ports={"8080": "alle"})
+        self.assertTrue(self.dienst(node, via_proxy={"8080": ["node:3000 (Ziel-URL API_URL) in gw"]})["exposed"])
+
     def test_beschreibung(self):
         p = proc(1, "/usr/local/bin/node", ["node", "/app/server.js"], cwd="/app", ports={"3000": "alle"})
         s = self.dienst(p)

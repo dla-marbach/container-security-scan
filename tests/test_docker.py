@@ -7,12 +7,15 @@ Szenario (Lauf mit --alle-container):
   im Zweifel erreichbar
 - Node.js im Netzwerk-Namespace eines anderen Containers (network_mode: container:), der den Port veröffentlicht
 - Node.js in einem eigenen Netz ohne veröffentlichten Port: wird mitgeprüft, gilt als intern
+- Gateway in Node.js (veröffentlichter Port): Ziel-URL in der Umgebung (API_URL), offene Verbindungen zu einem
+  weiteren Dienst und zu Redis – die Ziele gelten als öffentlich, Redis nicht (Datenbank/Cache)
 - nur wenn nginx auf dem Host installiert ist: nginx direkt auf dem Host (eigene Konfiguration, ohne root)
   vor Node.js über die Container-IP, ohne veröffentlichten Port
 Geprüft werden Rückgabewert, Erreichbarkeit, Berichte, EOL-Warnungen und dass der Scan im Container nichts
 verändert (docker diff).
 """
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -29,6 +32,12 @@ AKTIV = os.environ.get("CSS_DOCKER_TESTS") == "1"
 NGINX_IMAGE = os.environ.get("CSS_NGINX_IMAGE", "nginx:1.27-alpine")
 NODE_IMAGE = os.environ.get("CSS_NODE_IMAGE", "node:20-alpine")
 TRAEFIK_IMAGE = os.environ.get("CSS_TRAEFIK_IMAGE", "traefik:v3.3")
+REDIS_IMAGE = os.environ.get("CSS_REDIS_IMAGE", "redis:7-alpine")
+# Gateway: HTTP-Server, dazu dauerhafte Verbindungen zu Zielen (bei Abbruch neu)
+GATEWAY = ("require('http').createServer((q, r) => r.end('ok')).listen(3007);"
+           "const verbinde = (port, host) => { const s = require('net').connect(port, host);"
+           " s.on('error', () => {}); s.on('close', () => setTimeout(() => verbinde(port, host), 500)); };"
+           "verbinde(3009, '%s'); verbinde(6379, '%s');")
 NODE_SERVER = "require('http').createServer((q, r) => r.end('ok')).listen(%d)"
 HOST_NGINX = shutil.which("nginx") or next((p for p in ("/usr/sbin/nginx", "/usr/local/sbin/nginx") if os.path.exists(p)), None)
 
@@ -50,6 +59,7 @@ class Integration(unittest.TestCase):
         cls.vpn, cls.mit = cls.id + "-vpn", cls.id + "-mit"
         cls.inet, cls.intern = cls.id + "-i", cls.id + "-intern"
         cls.hnet, cls.hinterhost = cls.id + "-h", cls.id + "-hinterhost"
+        cls.gnet, cls.gw, cls.api, cls.ziel, cls.redis = (cls.id + x for x in ("-g", "-gw", "-api", "-ziel", "-redis"))
         conf = os.path.join(cls.tmp, "proxy.conf")
         with open(conf, "w") as f:
             f.write("events {}\nhttp { server { listen 8080; resolver 127.0.0.11 valid=10s;\n"
@@ -57,7 +67,7 @@ class Integration(unittest.TestCase):
                     "  location /v/ { set $backend http://%s:3001; proxy_pass $backend; } } }\n" % (cls.node, cls.varnode))
         os.chmod(cls.tmp, 0o755)
         os.chmod(conf, 0o644)
-        for net in (cls.net, cls.tnet, cls.inet, cls.hnet):
+        for net in (cls.net, cls.tnet, cls.inet, cls.hnet, cls.gnet):
             docker("network", "create", net)
         docker("run", "-d", "--name", cls.node, "--network", cls.net, NODE_IMAGE, "node", "-e", NODE_SERVER % 3000)
         docker("run", "-d", "--name", cls.varnode, "--network", cls.net, NODE_IMAGE, "node", "-e", NODE_SERVER % 3001)
@@ -75,8 +85,14 @@ class Integration(unittest.TestCase):
                NODE_SERVER % 3004)
         docker("run", "-d", "--name", cls.intern, "--network", cls.inet, NODE_IMAGE, "node", "-e", NODE_SERVER % 3005)
         docker("run", "-d", "--name", cls.hinterhost, "--network", cls.hnet, NODE_IMAGE, "node", "-e", NODE_SERVER % 3006)
+        docker("run", "-d", "--name", cls.api, "--network", cls.gnet, NODE_IMAGE, "node", "-e", NODE_SERVER % 3008)
+        docker("run", "-d", "--name", cls.ziel, "--network", cls.gnet, NODE_IMAGE, "node", "-e",
+               "require('net').createServer(s => s.on('error', () => {})).listen(3009)")
+        docker("run", "-d", "--name", cls.redis, "--network", cls.gnet, REDIS_IMAGE)
+        docker("run", "-d", "--name", cls.gw, "--network", cls.gnet, "-p", "127.0.0.1::3007",
+               "-e", "API_URL=http://%s:3008/v1" % cls.api, NODE_IMAGE, "node", "-e", GATEWAY % (cls.ziel, cls.redis))
         cls.alle = (cls.node, cls.varnode, cls.proxy, cls.label, cls.nachbar, cls.traefik, cls.vpn, cls.mit, cls.intern,
-                    cls.hinterhost)
+                    cls.hinterhost, cls.api, cls.ziel, cls.redis, cls.gw)
         cls.host_nginx = None
         if HOST_NGINX:      # nginx auf dem Host vor hinterhost, über dessen IP (wie ein Proxy außerhalb von Docker)
             ip = docker("inspect", "-f", "{{(index .NetworkSettings.Networks \"%s\").IPAddress}}" % cls.hnet,
@@ -110,6 +126,9 @@ class Integration(unittest.TestCase):
             antwort = [docker("exec", cls.proxy, "wget", "-qO-", "http://127.0.0.1:8080" + pfad, timeout=30).strip()
                        for pfad in ("/", "/v/")]
             antwort.append(docker("exec", cls.vpn, "wget", "-qO-", "http://127.0.0.1:3004/", timeout=30).strip())
+            # Gateway mit beiden Verbindungen (Zustand 01 in /proc/net/tcp zu Port 3009 = 0BC1 und 6379 = 18EB)
+            tcp = docker("exec", cls.gw, "cat", "/proc/net/tcp", timeout=30)
+            antwort.append("ok" if all(re.search(r":%s 01 " % p, tcp) for p in ("0BC1", "18EB")) else tcp)
             if cls.host_nginx:
                 try:
                     antwort.append(urllib.request.urlopen("http://127.0.0.1:18099/", timeout=5).read().decode())
@@ -129,7 +148,7 @@ class Integration(unittest.TestCase):
             cls.host_nginx.wait(30)
         docker("rm", "-f", cls.mit)
         docker("rm", "-f", *cls.alle)
-        docker("network", "rm", cls.net, cls.tnet, cls.inet, cls.hnet)
+        docker("network", "rm", cls.net, cls.tnet, cls.inet, cls.hnet, cls.gnet)
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def bericht(self, container):
@@ -166,6 +185,18 @@ class Integration(unittest.TestCase):
         self.assertIn("Host: nginx:18099 auf dem Host – erreichbar; Ziele in Containern: %s (3006)" % self.hinterhost,
                       self.ausgabe)
         self.assertIn("Port 3006/tcp (alle) öffentlich über nginx:18099 auf dem Host", self.bericht(self.hinterhost))
+
+    def test_aufrufe_eines_gateways(self):
+        gw = self.bericht(self.gw)
+        self.assertIn("Aufruf: Container %s, Port 3008 (Ziel-URL API_URL)" % self.api, gw)
+        self.assertIn("Aufruf: Container %s, Port 3009 (offene Verbindung)" % self.ziel, gw)
+        self.assertIn("Port 3008/tcp (alle) öffentlich über node:3007 (Ziel-URL API_URL) in %s" % self.gw,
+                      self.bericht(self.api))
+        self.assertIn("Port 3009/tcp (alle) öffentlich über node:3007 (offene Verbindung) in %s" % self.gw,
+                      self.bericht(self.ziel))
+        self.assertIn("Datenbank/Cache/Message Broker: dadurch nicht erreichbar", self.bericht(self.redis))
+        self.assertIn("öffentlich: nichts", [l for l in self.ausgabe.splitlines() if l.startswith(self.redis + ": ")
+                                             and "Bericht:" in l][0])
 
     def test_interner_container_wird_mitgeprueft(self):
         self.assertIn("Port 3005/tcp (alle) nicht veröffentlicht", self.bericht(self.intern))

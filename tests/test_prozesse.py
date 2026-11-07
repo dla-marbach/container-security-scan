@@ -33,7 +33,10 @@ class Prozesse(unittest.TestCase):
                    "S\t1\t111\nS\t1\t333\nM\t1\t/usr/lib/x86_64-linux-gnu/libssl.so.3\n"
                    "T\t111\t00000000:0050\ttcp\nT\t333\t00000000:0035\tudp\n"
                    # ohne Prozess: Container mit gemeinsamem Netzwerk-Namespace bzw. Dockers DNS (nur lokal)
-                   "T\t999\t00000000:1F90\ttcp\nT\t998\t0B00007F:811D\ttcp\n",
+                   "T\t999\t00000000:1F90\ttcp\nT\t998\t0B00007F:811D\ttcp\n"
+                   # eingehend (lokaler Port 80 lauscht) und ausgehend zu 172.18.0.5:3000
+                   "S\t1\t444\nC\t444\t020012AC:0050\t090012AC:D431\n"
+                   "S\t1\t555\nC\t555\t020012AC:D432\t050012AC:0BB8\n",
             "33:33": "P\t7\t/usr/local/bin/node (deleted)\t/app\tnode\x1fserver.js\t33:33\t1\n"
                      "E\t7\tPATH=/usr/local/bin:/usr/bin\nF\t7\t/app/data.db\nS\t7\t222\n"
                      "T\t222\t0100007F:0BB8\ttcp\n"}
@@ -48,6 +51,7 @@ class Prozesse(unittest.TestCase):
         procs, how, fremd = scanner.collect_procs(c)
         self.assertEqual(how, "im Container (je Prozess-Benutzer)")
         self.assertEqual(fremd, {"8080": "alle"})
+        self.assertEqual(list(procs["1"]["verbindungen"]), [("172.18.0.5", "3000")])
         self.assertIn(("33:33", ["7", "9"]), aufrufe)
         self.assertEqual(procs["1"]["ports"], {"80": "alle", "53/udp": "alle"})
         self.assertEqual(procs["1"]["argv"], ["nginx: master process nginx", "-g", "daemon off;"])

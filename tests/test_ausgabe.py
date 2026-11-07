@@ -166,7 +166,7 @@ class Gesamtlauf(unittest.TestCase):
                       "/var/lib/dpkg/info/libssl3.list": b"/usr/lib/x86_64-linux-gnu/libssl.so.3\n"}
         self.problems = []
 
-    def lauf(self, ports=None, fremd=None, **web_kw):
+    def lauf(self, ports=None, fremd=None, via=None, **web_kw):
         nginx = proc(1, "/usr/sbin/nginx", ports=ports or {"80": "alle"}, maps={"/usr/lib/x86_64-linux-gnu/libssl.so.3"})
         w = web(**dict({"published": {"80": ["0.0.0.0:80"]}}, **web_kw))
         patches = [mock.patch.object(scanner, "Container", return_value=FakeContainer()),
@@ -181,7 +181,7 @@ class Gesamtlauf(unittest.TestCase):
         for p in patches:
             p.start()
         try:
-            ergebnis = scanner.scan_container("app", self.a)
+            ergebnis = scanner.scan_container("app", self.a, via)
             self.konsole = scanner.sys.stdout.getvalue()
             return ergebnis
         finally:
@@ -223,6 +223,17 @@ class Gesamtlauf(unittest.TestCase):
                                          nachbarn=["shop", "db"])
         self.assertEqual(backends, [])
         self.assertIn("WARNUNG: Prozess zu Port 8443 nicht ermittelbar", self.konsole)
+
+    def test_aufruf_ziel_ohne_lauschenden_prozess(self):
+        # Ziel-URL auf einen Port, auf dem nichts lauscht (z.B. URL für eine andere Umgebung): kein "unbekannter Dienst"
+        code, backends, base = self.lauf(via={"8080": ["node:3000 (Ziel-URL API_URL) in gw"]})
+        self.assertNotIn("nicht ermittelbar", self.konsole)
+        # lauscht dort ein nicht lesbarer Prozess, gilt die Rückfallregel
+        self.lauf(via={"8080": ["node:3000 (Ziel-URL API_URL) in gw"]}, fremd={"8080": "alle"})
+        self.assertIn("WARNUNG: Prozess zu Port 8080 nicht ermittelbar", self.konsole)
+        # Proxy-Ziel ohne lauschenden Prozess: wie bisher vorsichtshalber alles öffentlich
+        self.lauf(via={"8080": ["nginx:80 in proxy"]})
+        self.assertIn("WARNUNG: Prozess zu Port 8080 nicht ermittelbar", self.konsole)
 
     def test_warnung_bei_unklaren_weiterleitungen(self):
         self.lauf(nachbarn=["shop"], backends={"/usr/sbin/nginx": ["http://$host"]})
