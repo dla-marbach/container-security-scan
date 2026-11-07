@@ -284,18 +284,18 @@ class Gesamtlauf(unittest.TestCase):
             text = f.read()
         self.assertIn("**0 relevante Schwachstellen**", text)
         self.assertIn("**2 gefährliche Einstellungen des Containers**", text)
-        self.assertIn("- **KONF-PRIVILEGED**: --privileged", text)
+        self.assertIn("- **CONF-PRIVILEGED**: --privileged", text)
         self.assertIn("app: GEFÄHRLICHE EINSTELLUNGEN – 0 Befunde, davon 0 relevant (0 neu), 2 gefährliche Einstellungen;",
                       self.konsole)
-        self.assertIn("app:   KONF-SOCKET: /var/run/docker.sock eingebunden", self.konsole)
+        self.assertIn("app:   CONF-SOCKET: /var/run/docker.sock eingebunden", self.konsole)
         self.assertEqual(scanner.json_datei(os.path.join(self.a.ausgabe, "bekannt_app.json")),
-                         [["app", "", "KONF-PRIVILEGED"], ["app", "", "KONF-SOCKET"]])
+                         [["app", "", "CONF-PRIVILEGED"], ["app", "", "CONF-SOCKET"]])
         self.lauf()     # bekannt: nicht neu
         self.assertNotIn("NEU:", self.konsole)
 
     def test_ausnahme_fuer_einstellung(self):
         self.info = {"HostConfig": {"PidMode": "host"}, "Mounts": []}
-        self.a.ausnahmen_liste = [{"id": "KONF-PID-HOST", "paket": "app", "bis": scanner.datetime.date(2026, 12, 31),
+        self.a.ausnahmen_liste = [{"id": "CONF-PID-HOST", "paket": "app", "bis": scanner.datetime.date(2026, 12, 31),
                                    "grund": "Monitoring-Agent", "zeile": 1}]
         self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2")
         code, _, base = self.lauf()
@@ -303,7 +303,7 @@ class Gesamtlauf(unittest.TestCase):
         with open(base + ".md", encoding="utf-8") as f:
             text = f.read()
         self.assertIn("Gefährliche Einstellungen des Containers (privileged, Docker-Socket, pid=host …): keine gezählt.", text)
-        self.assertIn("Nicht gezählt (wären sonst relevant):\n- KONF-PID-HOST: pid=host: sieht und beeinflusst alle "
+        self.assertIn("Nicht gezählt (wären sonst relevant):\n- CONF-PID-HOST: pid=host: sieht und beeinflusst alle "
                       "Prozesse des Hosts – Ausnahme bis 2026-12-31: Monitoring-Agent", text)
 
     def test_root_dienst_ist_nur_warnung(self):

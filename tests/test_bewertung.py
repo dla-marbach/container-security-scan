@@ -248,7 +248,7 @@ class Relevanz(unittest.TestCase):
 
 
 class Konfiguration(unittest.TestCase):
-    """Gefährliche Einstellungen aus docker inspect (KONF-…)."""
+    """Gefährliche Einstellungen aus docker inspect (CONF-…)."""
 
     def pruefen(self, host=None, mounts=()):
         c = mock.Mock(info={"HostConfig": host or {}, "Mounts": list(mounts)})
@@ -270,33 +270,33 @@ class Konfiguration(unittest.TestCase):
 
     def test_privileged_umfasst_capabilities_und_profile(self):
         self.assertEqual(self.pruefen({"Privileged": True, "CapAdd": ["SYS_ADMIN"],
-                                       "SecurityOpt": ["seccomp=unconfined"]}), [("KONF-PRIVILEGED", "app")])
+                                       "SecurityOpt": ["seccomp=unconfined"]}), [("CONF-PRIVILEGED", "app")])
 
     def test_capabilities_profile_pid(self):
         self.assertEqual(self.pruefen({"CapAdd": ["CAP_SYS_ADMIN", "sys_module", "NET_ADMIN", "ALL", "SYS_ADMIN"],
                                        "SecurityOpt": ["seccomp:unconfined", "apparmor=unconfined", "label=disable"],
                                        "PidMode": "host"}),
-                         [("KONF-CAP-SYS-ADMIN", "app"), ("KONF-CAP-SYS-MODULE", "app"), ("KONF-CAP-ALL", "app"),
-                          ("KONF-SECCOMP-UNCONFINED", "app"), ("KONF-APPARMOR-UNCONFINED", "app"),
-                          ("KONF-PID-HOST", "app")])
+                         [("CONF-CAP-SYS-ADMIN", "app"), ("CONF-CAP-SYS-MODULE", "app"), ("CONF-CAP-ALL", "app"),
+                          ("CONF-SECCOMP-UNCONFINED", "app"), ("CONF-APPARMOR-UNCONFINED", "app"),
+                          ("CONF-PID-HOST", "app")])
 
     def test_socket_auch_schreibgeschuetzt(self):
         for src in ("/var/run/docker.sock", "/run/docker.sock", "/run/containerd/containerd.sock",
                     "/run/user/1000/podman/podman.sock", "/var/run", "/run/"):
             self.assertEqual(self.pruefen(mounts=[{"Type": "bind", "Source": src, "Destination": "/x", "RW": False}]),
-                             [("KONF-SOCKET", "app")], src)
+                             [("CONF-SOCKET", "app")], src)
 
     def test_host_pfade_nur_beschreibbar(self):
         for src in ("/", "/etc", "/etc/shadow", "/etc/cron.d", "/root/.ssh", "/boot", "/usr", "/usr/local/bin",
                     "/lib64", "/sys/fs/cgroup", "/proc/sys", "/dev", "/home", "/var/lib/docker",
                     "/var/lib/docker/containers"):
             m = {"Type": "bind", "Source": src, "Destination": "/host", "RW": True}
-            self.assertEqual(self.pruefen(mounts=[m]), [("KONF-HOST-PFAD", "app")], src)
+            self.assertEqual(self.pruefen(mounts=[m]), [("CONF-HOST-PFAD", "app")], src)
             self.assertEqual(self.pruefen(mounts=[dict(m, RW=False)]), [], src)
 
     def test_ausnahme_nach_containername(self):
-        konf = [{"id": "KONF-SOCKET", "pkg": "traefik"}, {"id": "KONF-SOCKET", "pkg": "app"}]
-        scanner.ausnahmen_anwenden(konf, [{"id": "KONF-SOCKET", "paket": "traefik", "bis": datetime.date(2099, 1, 1),
+        konf = [{"id": "CONF-SOCKET", "pkg": "traefik"}, {"id": "CONF-SOCKET", "pkg": "app"}]
+        scanner.ausnahmen_anwenden(konf, [{"id": "CONF-SOCKET", "paket": "traefik", "bis": datetime.date(2099, 1, 1),
                                            "grund": "nur über Socket-Proxy", "zeile": 1}], [])
         self.assertEqual([bool(k.get("ausgenommen")) for k in konf], [True, False])
 

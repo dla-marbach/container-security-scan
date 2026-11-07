@@ -183,8 +183,7 @@ chmod 440 /etc/sudoers.d/rundeck-container-scan && visudo -c
 - **2** – Ursache beheben (Daten nicht aktualisiert oder veraltet, Container nicht lesbar …), sonst ist
   die Überwachung blind. Details: [Rückgabewert](#rückgabewert).
 - Warnungen (Supportende, öffentlicher Dienst als root …) ändern den Rückgabewert nicht. Der Host selbst
-  ist nicht Teil des Scans (SLES: `zypper list-patches --category security`; Docker-Daemon und alle
-  Container: [docker-audit](https://github.com/felixlohmeier/docker-audit)).
+  ist nicht Teil des Scans (SLES: `zypper list-patches --category security`).
 
 ### 5. Code aktualisieren
 
@@ -265,12 +264,12 @@ immer. Geprüft wird nur, was ein Dienst praktisch nie braucht, aus `docker insp
 
 | Kennung | Befund |
 |---|---|
-| `KONF-PRIVILEGED` | `--privileged` |
-| `KONF-SOCKET` | Socket der Container-Laufzeit eingebunden (`docker.sock`, `containerd.sock`, `podman.sock`, `/run`, `/var/run`) – auch schreibgeschützt, denn `:ro` verhindert den Zugriff auf einen Socket nicht |
-| `KONF-PID-HOST` | `pid=host` |
-| `KONF-CAP-…` | zusätzliche Capability, die den Ausbruch erlaubt: `ALL`, `SYS_ADMIN`, `SYS_MODULE`, `SYS_RAWIO`, `DAC_READ_SEARCH`, `BPF` (z. B. `KONF-CAP-SYS-ADMIN`) |
-| `KONF-SECCOMP-UNCONFINED`, `KONF-APPARMOR-UNCONFINED` | Schutzprofil ausdrücklich abgeschaltet |
-| `KONF-HOST-PFAD` | Host-Pfad beschreibbar eingebunden: `/`, `/etc` (ganz oder `passwd`, `shadow`, `sudoers`, `cron*`, `systemd`, `ssh`, `docker`), `/root`, `/boot`, `/bin`, `/sbin`, `/lib*`, `/usr` (Programme, Bibliotheken), `/proc`, `/sys`, `/dev`, `/home`, `/var/lib/docker` (außer benannten Volumes) |
+| `CONF-PRIVILEGED` | `--privileged` |
+| `CONF-SOCKET` | Socket der Container-Laufzeit eingebunden (`docker.sock`, `containerd.sock`, `podman.sock`, `/run`, `/var/run`) – auch schreibgeschützt, denn `:ro` verhindert den Zugriff auf einen Socket nicht |
+| `CONF-PID-HOST` | `pid=host` |
+| `CONF-CAP-…` | zusätzliche Capability, die den Ausbruch erlaubt: `ALL`, `SYS_ADMIN`, `SYS_MODULE`, `SYS_RAWIO`, `DAC_READ_SEARCH`, `BPF` (z. B. `CONF-CAP-SYS-ADMIN`) |
+| `CONF-SECCOMP-UNCONFINED`, `CONF-APPARMOR-UNCONFINED` | Schutzprofil ausdrücklich abgeschaltet |
+| `CONF-HOST-PFAD` | Host-Pfad beschreibbar eingebunden: `/`, `/etc` (ganz oder `passwd`, `shadow`, `sudoers`, `cron*`, `systemd`, `ssh`, `docker`), `/root`, `/boot`, `/bin`, `/sbin`, `/lib*`, `/usr` (Programme, Bibliotheken), `/proc`, `/sys`, `/dev`, `/home`, `/var/lib/docker` (außer benannten Volumes) |
 
 Mit `--privileged` entfallen die Befunde zu Capabilities und Schutzprofilen (darin enthalten). Typischer
 begründeter Fall ist ein Reverse Proxy wie Traefik mit `docker.sock`: besser einen Socket-Proxy mit
@@ -278,7 +277,7 @@ Lesezugriff vorschalten (z. B. `tecnativa/docker-socket-proxy`), sonst Ausnahme 
 Ablaufdatum (Paket = Containername):
 
 ```
-KONF-SOCKET       traefik       2027-03-31  liest nur Labels, Umstieg auf Socket-Proxy geplant
+CONF-SOCKET       traefik       2027-03-31  liest nur Labels, Umstieg auf Socket-Proxy geplant
 ```
 
 **Öffentlicher Dienst als root:** Laufen alle Prozesse an einem öffentlichen Port als root, erscheint eine
@@ -286,9 +285,8 @@ KONF-SOCKET       traefik       2027-03-31  liest nur Labels, Umstieg auf Socket
 Worker unprivilegiert am selben Port) zählen nicht. Mit userns-remap oder rootless Docker ist root im
 Container nicht root auf dem Host; dann entfällt die Warnung (außer bei `--userns=host`).
 
-Weitere Härtung (no-new-privileges, `cap_drop: ALL`, read-only, Limits, Ports nur an bestimmte IPs) und
-den Docker-Daemon prüft [docker-audit](https://github.com/felixlohmeier/docker-audit) – dort auch für
-gestoppte und interne Container. Hier zählen nur die gescannten (laufenden) Container, mit
+Nicht geprüft werden allgemeine Härtung (no-new-privileges, `cap_drop: ALL`, read-only, Limits, Ports nur
+an bestimmte IPs) und der Docker-Daemon. Geprüft werden nur die gescannten (laufenden) Container, mit
 `--oeffentliche` also die öffentlichen und deren Backends.
 
 ### Ausnahmen
@@ -304,8 +302,8 @@ CVE-2024-8926     php           2027-06-30  betrifft nur PHP-CGI unter Windows (
 CVE-2026-107814   mariadb       2027-03-31  betrifft nur die RPM-Pakete von MariaDB, hier Ubuntu-Image
 ```
 
-- Kennung wie im Bericht (CVE, Kennung der Quelle oder `KONF-…`), Paket wie in der Spalte „Paket“ (bei
-  `KONF-…` der Containername) oder `*` für alle.
+- Kennung wie im Bericht (CVE, Kennung der Quelle oder `CONF-…`), Paket wie in der Spalte „Paket“ (bei
+  `CONF-…` der Containername) oder `*` für alle.
 - Jede Ausnahme braucht ein Ablaufdatum und eine Begründung: Danach zählt der Fund wieder, mit Warnung im
   Bericht. So bleibt keine Ausnahme unbemerkt für immer.
 - Ausgenommene Funde stehen im Bericht unter „Nicht gezählt“ und in der Tabelle mit Begründung.
@@ -577,7 +575,7 @@ CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # m
 | `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c` und dem Benutzer des Hauptprozesses (nie root für fremde Programme/Optionen), veröffentlichte Ports, Backends |
 | `test_nutzung.py` | Zuordnung Komponente → Dienst, Erreichbarkeit, Priorität P1–P4 |
 | `test_osv.py` | Abgleich je Ökosystem, Quellpakete, Fremdquellen über Bitnami, Datenformat, Kürzung der Ubuntu-Daten (gleiche Funde wie vollständig), inkrementelle Aktualisierung, ungültige Kennungen (kein Pfad) |
-| `test_bewertung.py` | widersprüchliche Versionsbereiche der Distribution, Kernel-Pakete, Schweregrad über die CVE, KEV (Daten erzeugen, laden, markieren), Ausnahmeliste (Format, Rechte, Ablauf), nur Windows, Relevanz, gefährliche Einstellungen (`KONF-…`), öffentliche Dienste als root (auch userns-remap/rootless) |
+| `test_bewertung.py` | widersprüchliche Versionsbereiche der Distribution, Kernel-Pakete, Schweregrad über die CVE, KEV (Daten erzeugen, laden, markieren), Ausnahmeliste (Format, Rechte, Ablauf), nur Windows, Relevanz, gefährliche Einstellungen (`CONF-…`), öffentliche Dienste als root (auch userns-remap/rootless) |
 | `test_eol.py` | EOL-Daten erzeugen, Supportende und Vorwarnung |
 | `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden, KEV macht P4 relevant, gefährliche Einstellungen ergeben 1 (auch ohne Schwachstellen, Ausnahme nach Containername), root-Dienst nur Warnung, Ausnahme, Kernel-Pakete |
 | `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), `--db-aktualisieren` als root abgelehnt, holt bzw. aktualisiert nur den Branch `daten` (nie den Code), `daten/` ohne Git bricht ab, Berichte nur für den Aufrufer lesbar, docker nicht erreichbar, fehlerhafte Ausnahmeliste und unerwartete Fehler → 2 |

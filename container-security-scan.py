@@ -25,7 +25,7 @@ Ergebnis: scan_<name>_<zeit>.md        Bericht: Ergebnis, Dienste, Befunde nach 
           scan_<name>_<zeit>.sha256    Prüfsummen
 Rückgabewert: 0 = keine relevanten Schwachstellen, 1 = relevante Schwachstellen gefunden (siehe RELEVANT;
                   dazu immer aktiv ausgenutzte laut CISA-KEV-Katalog) oder gefährliche Einstellungen des
-                  Containers (KONF-…: privileged, Docker-Socket, pid=host …),
+                  Containers (CONF-…: privileged, Docker-Socket, pid=host …),
               2 = Fehler oder Prüfung unvollständig (z.B. Datenbank fehlt) – nie als "sauber" werten!
 
 Priorität (P1 = zuerst beheben):
@@ -72,9 +72,9 @@ from functools import cmp_to_key
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
-# Gefährliche Einstellungen des Containers (-> Rückgabewert 1, Kennung KONF-… für die Ausnahmeliste): Mit ihnen
-# wird aus einer Lücke im Container root auf dem Host. Nur, was ein Dienst praktisch nie braucht; weitere Härtung
-# (no-new-privileges, cap_drop, Limits, Ports …) und den Host prüft docker-audit.
+# Gefährliche Einstellungen des Containers (-> Rückgabewert 1, Kennung CONF-… für die Ausnahmeliste): Mit ihnen
+# wird aus einer Lücke im Container root auf dem Host. Nur, was ein Dienst praktisch nie braucht (keine allgemeine
+# Härtung wie no-new-privileges, cap_drop, Limits).
 KONF_CAPS = ("ALL", "SYS_ADMIN", "SYS_MODULE", "SYS_RAWIO", "DAC_READ_SEARCH", "BPF")
 # Socket der Container-Laufzeit (auch schreibgeschützt eingebunden nutzbar) bzw. Verzeichnisse, die ihn enthalten
 KONF_SOCKET = re.compile(r"/(var/)?run(/(docker|containerd))?|.*/(docker|containerd|podman)\.sock")
@@ -2297,8 +2297,8 @@ def osv_records(dbdir, fname):
 # 9a. Gefährliche Einstellungen des Containers
 # ===========================================================================
 def konfiguration_pruefen(c):
-    """Gefährliche Einstellungen aus docker inspect. Je Fund Kennung KONF-… (für die Ausnahmeliste, als Paket
-    gilt der Containername) und Text. Weitere Härtung und den Host prüft docker-audit."""
+    """Gefährliche Einstellungen aus docker inspect. Je Fund Kennung CONF-… (für die Ausnahmeliste, als Paket
+    gilt der Containername) und Text."""
     h = c.info.get("HostConfig") or {}
     funde = []
 
@@ -2306,26 +2306,26 @@ def konfiguration_pruefen(c):
         funde.append({"id": kennung, "pkg": c.name, "text": text})
 
     if h.get("Privileged"):
-        fund("KONF-PRIVILEGED", "--privileged: alle Capabilities und Zugriff auf alle Geräte des Hosts")
+        fund("CONF-PRIVILEGED", "--privileged: alle Capabilities und Zugriff auf alle Geräte des Hosts")
     else:   # privileged umfasst die folgenden ohnehin
         for cap in OrderedDict.fromkeys(re.sub(r"^CAP_", "", x.upper()) for x in h.get("CapAdd") or []):
             if cap in KONF_CAPS:
-                fund("KONF-CAP-" + cap.replace("_", "-"), "cap_add %s: ermöglicht den Ausbruch aus dem Container" % cap)
+                fund("CONF-CAP-" + cap.replace("_", "-"), "cap_add %s: ermöglicht den Ausbruch aus dem Container" % cap)
         for opt in h.get("SecurityOpt") or []:
             k, _, v = re.sub(r"[:=]", "=", opt, count=1).partition("=")
             if k in ("seccomp", "apparmor") and v == "unconfined":
-                fund("KONF-%s-UNCONFINED" % k.upper(), "%s=unconfined: Schutzprofil abgeschaltet" % k)
+                fund("CONF-%s-UNCONFINED" % k.upper(), "%s=unconfined: Schutzprofil abgeschaltet" % k)
     if h.get("PidMode") == "host":
-        fund("KONF-PID-HOST", "pid=host: sieht und beeinflusst alle Prozesse des Hosts")
+        fund("CONF-PID-HOST", "pid=host: sieht und beeinflusst alle Prozesse des Hosts")
     for m in c.info.get("Mounts") or []:
         if m.get("Type") != "bind":
             continue
         src = (m.get("Source") or "").rstrip("/") or "/"
         if KONF_SOCKET.fullmatch(src):
-            fund("KONF-SOCKET", "%s eingebunden als %s: Zugriff auf die Container-Laufzeit = root auf dem Host "
+            fund("CONF-SOCKET", "%s eingebunden als %s: Zugriff auf die Container-Laufzeit = root auf dem Host "
                                 "(auch schreibgeschützt)" % (src, m.get("Destination")))
         elif m.get("RW") and KONF_HOST_PFAD.fullmatch(src):
-            fund("KONF-HOST-PFAD", "%s beschreibbar eingebunden als %s" % (src, m.get("Destination")))
+            fund("CONF-HOST-PFAD", "%s beschreibbar eingebunden als %s" % (src, m.get("Destination")))
     return funde
 
 
