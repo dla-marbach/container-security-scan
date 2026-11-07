@@ -29,15 +29,10 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 
 ## Installation und Betrieb
 
-Das Skript läuft als root (oder mit docker-Rechten, was gleichwertig ist: Wer docker steuern darf, ist
-faktisch root). Deshalb sind **Code und Daten getrennt**:
-
-- **Code** ist genau eine Datei aus einem **Release** (Git-Tag `vX.Y.Z`), root-eigen unter
-  `/opt/container-security-scan/`. Das Installscript übernimmt sie nur mit der SHA-256-Prüfsumme, die im
-  Installscript steht. Aktualisiert wird nie automatisch, nur von Hand nach Prüfung ([Schritt 5](#5-code-aktualisieren)).
-- **Daten** (Branch `daten`: nur JSON, kein Code) holt der Benutzer `csscan` ohne Rechte per `git pull`.
-- Der Wrapper `container-security-scan-lauf` verbindet beides: Daten als `csscan` aktualisieren, dann als
-  root scannen. Er dient für den Aufruf von Hand, per cron und per Rundeck.
+Das Skript läuft als root, deshalb sind Code und Daten getrennt: Der **Code** ist eine Datei aus einem
+Release, geprüft per SHA-256 und nur von Hand aktualisiert. Die **Daten** (Branch `daten`, nur JSON) holt
+der Benutzer `csscan` ohne Rechte per `git pull`. Der Wrapper `container-security-scan-lauf` aktualisiert
+die Daten und scannt dann als root – von Hand, per cron oder per Rundeck.
 
 ```
 /opt/container-security-scan/                  Code (nur container-security-scan.py): root
@@ -52,18 +47,16 @@ faktisch root). Deshalb sind **Code und Daten getrennt**:
 Voraussetzungen: Linux mit Docker, Python ≥ 3.6 (SLES 15: `python3`), `git`, `curl`; optional `rpm` (nur für
 RPM-Container ohne eigenes `rpm`).
 
-Das Installscript dient zum Einrichten und zum Aktualisieren. Es steht bewusst nur hier und nicht als Datei
-im Repository, damit es niemand ungelesen per `curl … | sudo bash` startet. Aus dem README **des Releases**
-kopieren (aktuell [v1.0.0](https://github.com/felixlohmeier/container-security-scan/blob/v1.0.0/README.md#1-einrichten)),
-als Datei speichern, lesen, bei Bedarf `PROXY` setzen und ausführen:
+Das Installscript (zum Einrichten und Aktualisieren) aus dem README **des Releases** kopieren
+(aktuell [v1.0.0](https://github.com/felixlohmeier/container-security-scan/blob/v1.0.0/README.md#1-einrichten)), als
+Datei speichern, lesen, bei Bedarf `PROXY` setzen und ausführen:
 
 ```bash
 sudo bash container-security-scan-installieren.sh
 ```
 
-Passt die Prüfsumme nicht, bricht es ab, bevor etwas verändert ist. Code und Wrapper ersetzt es jedes Mal
-vollständig, auch einen Git-Checkout aus einer früheren Einrichtung. Benutzer, Daten und Ausnahmeliste legt
-es nur an, wenn sie fehlen.
+Passt die Prüfsumme nicht, bricht es ab, bevor etwas verändert ist. Code und Wrapper ersetzt es jedes Mal;
+Benutzer, Daten und Ausnahmeliste legt es nur an, wenn sie fehlen.
 
 ```bash
 #!/bin/bash
@@ -153,15 +146,8 @@ fi
 echo "container-security-scan $VERSION installiert. Testlauf: sudo /usr/local/sbin/container-security-scan-lauf"
 ```
 
-Danach von Hand prüfen ([Schritt 2](#2-bei-bedarf-von-hand-prüfen)) und den täglichen Lauf einrichten
-([Schritt 3](#3-täglich-cron-oder-rundeck)).
-
-**Ausnahmeliste:** `/etc/container-security-scan/ausnahmen.txt` blendet anfangs nichts aus; die Beispiele
-(eines davon für eine [gefährliche Einstellung](#gefährliche-einstellungen-des-containers) `CONF-…`) sind
-auskommentiert. Einträge für Fehlalarme und bewusst akzeptierte Risiken, mit Begründung und Ablaufdatum,
-kommen später aus den Berichten ([Schritt 4](#4-auf-das-ergebnis-reagieren)). Die Datei muss root gehören und
-darf nur für root beschreibbar sein, sonst bricht der Scan ab (Rückgabewert 2). Format und Wirkung:
-[Ausnahmen](#ausnahmen).
+Die [Ausnahmeliste](#ausnahmen) `/etc/container-security-scan/ausnahmen.txt` enthält anfangs nur
+auskommentierte Beispiele. Sie muss root gehören und nur für root beschreibbar sein.
 
 ### 2. Bei Bedarf von Hand prüfen
 
@@ -169,25 +155,17 @@ darf nur für root beschreibbar sein, sonst bricht der Scan ab (Rückgabewert 2)
 sudo /usr/local/sbin/container-security-scan-lauf
 ```
 
-Geprüft werden alle laufenden Container: zuerst die erreichbaren (siehe [Erreichbarkeit](#erreichbarkeit))
-samt den Backends hinter ihren Reverse Proxys, dann alle übrigen. Was nicht als erreichbar erkannt wird,
-fehlt so nicht, sondern erscheint mindestens als P2. Einen einzelnen Container (z. B. bei der Entwicklung)
-mit denselben Sicherheitsvorkehrungen – Daten aktualisieren, Sperre, Ausnahmeliste, Log, `ERGEBNIS:`-Zeile –,
-aber ohne Erreichbarkeit über Proxys in anderen Containern:
+Geprüft werden alle laufenden Container, zuerst die [erreichbaren](#erreichbarkeit) samt den Backends
+hinter ihren Reverse Proxys. Nur ein Container (dann ohne Erreichbarkeit über Proxys in anderen Containern):
 
 ```bash
 sudo /usr/local/sbin/container-security-scan-lauf <container>
 ```
 
-Erlaubt ist genau ein Name oder eine ID, wie Docker sie vergibt; alles andere (mehrere Argumente, Optionen,
-Tippfehler wie `--mial`) bricht mit Rückgabewert 2 ab, statt still etwas anderes zu scannen.
-
 ### 3. Täglich: cron oder Rundeck
 
-Neue Schwachstellen erscheinen in den OSV-Daten typischerweise 1–2 Tage nach Veröffentlichung; die GitHub
-Action übernimmt sie täglich um 03:17 UTC in den Branch `daten`, GitHub startet sie oft bis zu einer Stunde
-später. Den Scan mit Abstand ansetzen, z. B. 07:23 Ortszeit; welcher Datenstand verwendet wurde, steht im
-Bericht unter „Datenbank“.
+Die Daten werden täglich um 03:17 UTC aktualisiert (oft bis zu einer Stunde später); den Scan mit Abstand
+ansetzen, z. B. 07:23 Ortszeit.
 
 **cron** – `/etc/cron.d/container-security-scan` (Mail an root nur bei Rückgabewert 1 oder 2):
 
@@ -196,9 +174,7 @@ MAILTO=""
 23 7 * * * root /usr/local/sbin/container-security-scan-lauf --mail >/dev/null 2>&1
 ```
 
-**Rundeck** – statt cron. Rundeck darf per sudo nur genau den Wrapper starten, ohne Argumente: keine
-allgemeinen root-Rechte, kein `docker`, kein `python3`. Wer Rundeck übernimmt, kann so Scans auslösen,
-aber nicht root auf den Servern werden.
+**Rundeck** – statt cron. Rundeck darf per sudo nur den Wrapper ohne Argumente starten:
 
 ```bash
 cat > /etc/sudoers.d/rundeck-container-scan <<'EOF'
@@ -207,20 +183,14 @@ EOF
 chmod 440 /etc/sudoers.d/rundeck-container-scan && visudo -c
 ```
 
-- `""` am Ende verbietet zusätzliche Argumente – so lassen, auch wenn der Wrapper von Hand einen Container
-  annimmt (Rundeck scannt immer alle); kein `*`, das ließe beliebige Argumente zu. `rundeck` an den eigenen
-  Benutzer anpassen; bei `requiretty` zusätzlich `Defaults:rundeck !requiretty`.
-- Job mit dem Schritt „Command“: `sudo -n /usr/local/sbin/container-security-scan-lauf` – kein Schritt
-  „Script“, der eine Datei auf den Server kopiert (dafür bräuchte Rundeck allgemeine root-Rechte).
-- Zeitplan wie oben; Zeitlimit großzügig (ein Container kann bis zu 30 Minuten dauern); Server, die sich
-  Ressourcen teilen (VMs auf demselben Host), nacheinander oder in kleinen Gruppen abarbeiten.
-- Benachrichtigung bei Fehlschlag. Rückgabewert 1 und 2 sind in Rundeck beide rot; die letzte Zeile
-  `ERGEBNIS: FUNDE` bzw. `ERGEBNIS: UNVOLLSTAENDIG` unterscheidet sie. Berichte und Logs bleiben auf dem
-  jeweiligen Server, die Konsolenausgabe steht zusätzlich im Rundeck-Log: je Container die Zusammenfassung,
-  Warnungen und **jeder relevante Fund** in einer Zeile (neue zuerst, mit `NEU:` markiert). Für alle
-  übrigen Befunde, Dienste und Belege den Bericht auf dem Server ansehen (Pfad in der Zusammenfassung).
-- Optional den SSH-Schlüssel auf diesen Befehl festlegen (`~rundeck/.ssh/authorized_keys` auf dem Server,
-  eigener Schlüssel nur für diesen Job):
+- `""` verbietet Argumente (kein `*`). `rundeck` an den eigenen Benutzer anpassen; bei `requiretty`
+  zusätzlich `Defaults:rundeck !requiretty`.
+- Job mit dem Schritt „Command“ (nicht „Script“): `sudo -n /usr/local/sbin/container-security-scan-lauf`.
+- Zeitlimit großzügig (bis zu 30 Minuten je Container); Server, die sich einen Host teilen, nacheinander.
+- Rückgabewert 1 und 2 sind beide rot; die letzte Zeile `ERGEBNIS: FUNDE` bzw. `ERGEBNIS: UNVOLLSTAENDIG`
+  unterscheidet sie. Das Rundeck-Log enthält je Container die Zusammenfassung und jeden relevanten Fund;
+  der vollständige Bericht liegt auf dem Server.
+- Optional den SSH-Schlüssel auf diesen Befehl festlegen (`~rundeck/.ssh/authorized_keys`):
 
   ```
   command="sudo -n /usr/local/sbin/container-security-scan-lauf",from="<IP des Rundeck-Servers>",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA… rundeck-container-scan
@@ -229,38 +199,28 @@ chmod 440 /etc/sudoers.d/rundeck-container-scan && visudo -c
 ### 4. Auf das Ergebnis reagieren
 
 - **0** – nichts zu tun.
-- **1** – Funde im Bericht prüfen (seit dem letzten Lauf neue sind markiert) und Images aktualisieren bzw.
-  [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) beseitigen. Fehlalarme und bewusst
-  akzeptierte Risiken mit Begründung und Ablaufdatum in die [Ausnahmeliste](#ausnahmen), nicht die
-  Alarmierung abschalten.
-- **2** – Ursache beheben (Daten nicht aktualisiert oder veraltet, Container nicht lesbar …), sonst ist
-  die Überwachung blind. Details: [Rückgabewert](#rückgabewert).
-- Warnungen (Supportende, öffentlicher Dienst als root …) ändern den Rückgabewert nicht. Der Host selbst
-  ist nicht Teil des Scans (SLES: `zypper list-patches --category security`).
+- **1** – Funde im Bericht prüfen (neue sind markiert), Images aktualisieren bzw.
+  [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) beseitigen; Fehlalarme und
+  akzeptierte Risiken in die [Ausnahmeliste](#ausnahmen).
+- **2** – Ursache beheben (siehe [Rückgabewert](#rückgabewert)).
+
+Warnungen (Supportende, öffentlicher Dienst als root …) ändern den Rückgabewert nicht. Der Host selbst ist
+nicht Teil des Scans.
 
 ### 5. Code aktualisieren
 
-Nur nach Prüfung – jede Änderung am Code läuft danach als root:
+1. Änderungen ansehen, z. B. `…/compare/v1.0.0...v1.1.0` und die Hinweise im Release. Die installierte
+   Version steht in Zeile 2 des Wrappers (`sed -n 2p /usr/local/sbin/container-security-scan-lauf`).
+2. Das Installscript aus dem README des neuen Releases wie in [Schritt 1](#1-einrichten) ausführen
+   (ggf. `PROXY` wieder eintragen). Daten, Ausnahmeliste und Berichte bleiben.
 
-1. Änderungen seit der installierten Version ansehen, z. B.
-   `https://github.com/felixlohmeier/container-security-scan/compare/v1.0.0...v1.1.0`, dazu die Hinweise im
-   Release. Die installierte Version steht in der zweiten Zeile des Wrappers
-   (`sed -n 2p /usr/local/sbin/container-security-scan-lauf`).
-2. Das Installscript aus dem README des neuen Releases kopieren – es enthält Version und Prüfsumme genau
-   dieses Stands – und wie in [Schritt 1](#1-einrichten) ausführen. Code und Wrapper werden vollständig
-   ersetzt; Daten, Ausnahmeliste und Berichte bleiben. Bei Bedarf `PROXY` wieder eintragen.
-
-Wer die Prüfsumme unabhängig von GitHubs Weboberfläche nachrechnen will (nicht als root nötig):
+Prüfsumme unabhängig von GitHubs Weboberfläche nachrechnen:
 
 ```bash
 git clone https://github.com/felixlohmeier/container-security-scan.git /tmp/css && cd /tmp/css
-git diff v1.0.0 v1.1.0 -- container-security-scan.py         # Änderungen am Code
+git diff v1.0.0 v1.1.0 -- container-security-scan.py
 git show v1.1.0:container-security-scan.py | sha256sum        # = SHA256 im Installscript von v1.1.0
 ```
-
-Nie: den Code automatisch (per cron) aktualisieren, das Installscript ungelesen per `curl … | sudo bash`
-ausführen, den Code aus dem Daten-Clone starten, `--db-aktualisieren` als root (wird abgelehnt) – und keine
-Datei, die ein anderer Benutzer ändern kann, als root oder mit docker-Rechten ausführen.
 
 ## Ergebnis verstehen
 
@@ -312,10 +272,10 @@ erreichbar, wenn eine der folgenden Bedingungen zutrifft:
 | Host-Netzwerk | `network_mode: host` |
 | eigene Adresse im LAN | Docker-Netz mit Treiber macvlan/ipvlan oder `gateway_mode_ipv4/6` `routed` bzw. `nat-unprotected` |
 | gemeinsamer Netzwerk-Namespace | `network_mode: container:…`/`service:…` (z. B. VPN- oder Sidecar-Container): es gelten die Ports des Spenders; ein Ziel des Spenders wird an alle Container dieses Namespace weitergegeben |
-| hinter einem erreichbaren nginx/Apache | Backends aus `nginx -T` bzw. der Apache-Konfiguration (`proxy_pass`, `fastcgi_pass`, `upstream`, `ProxyPass`, `SetHandler proxy:`), auch über mehrere Proxys hintereinander. Variablen aus `set` und `map` (`proxy_pass $backend` mit `resolver`) werden aufgelöst; Ziele per Container-Name, Alias, Compose-Dienst, IP oder `<name>.<netz>` |
+| hinter einem erreichbaren nginx/Apache | Backends aus `nginx -T` bzw. der Apache-Konfiguration (`proxy_pass`, `fastcgi_pass`, `upstream`, `ProxyPass`, `SetHandler proxy:`), auch über mehrere Proxys und Variablen aus `set`/`map`; Ziele per Container-Name, Alias, Compose-Dienst oder IP |
 | hinter einem erreichbaren Traefik bzw. caddy-docker-proxy | Ziele aus Docker-Labels (`traefik.*.services.*.loadbalancer.server.port`, `caddy.reverse_proxy: {{upstreams …}}`) |
 | hinter einem Reverse Proxy **direkt auf dem Host** | nginx/Apache außerhalb von Docker (Programm mit dem Wurzelverzeichnis des Hosts, nicht in der cgroup eines Containers), das nicht nur auf Loopback lauscht: Konfiguration wie oben, Ziele über die Container-IP (z. B. `proxy_pass http://172.18.0.5:3000`). Ergebnis auf der Konsole als `Host: …`; gilt auch für den Einzelscan |
-| aufgerufen von einer erreichbaren Anwendung | z. B. API-Gateway in Java/Node oder eine App, die einen internen HTTP-Dienst aufruft: **Ziel-URLs** (`http(s)://`, `ws(s)://`, `grpc(s)://` auf einen anderen Container) in der Umgebung des Containers (`docker inspect`) oder der Kommandozeile – `mysql://`, `redis://` u. ä. zählen nicht – sowie zum Zeitpunkt des Scans **offene TCP-Verbindungen** zu einem Port eines anderen Containers. Gilt auch für Worker hinter einem Webserver im selben Container (php-fpm hinter nginx). Ausgenommen sind Datenbanken, Caches und Message Broker als Ziel (MySQL/MariaDB, PostgreSQL, Redis/Valkey, MongoDB, Memcached, RabbitMQ, Elasticsearch/OpenSearch, Solr, Kafka u. a.): die Anwendung ruft sie auf, leitet aber keine Anfragen von außen durch. Lauscht auf dem Ziel-Port nichts (z. B. URL für eine andere Umgebung), bleibt es ohne Folgen. Im Bericht der Anwendung als `Aufruf: Container …, Port … (Quelle)`; Werte der Umgebung erscheinen nicht (Zugangsdaten) |
+| aufgerufen von einer erreichbaren Anwendung | z. B. API-Gateway oder php-fpm hinter nginx im selben Container: Ziel-URLs (`http(s)://`, `ws(s)://`, `grpc(s)://`) auf andere Container in Umgebung oder Kommandozeile sowie beim Scan offene TCP-Verbindungen. Datenbanken, Caches und Message Broker als Ziel zählen nicht. Im Bericht als `Aufruf: Container …, Port … (Quelle)`, ohne Werte der Umgebung |
 | hinter einem Tunnel-Agenten | cloudflared, frpc, ngrok, chisel – im Container oder auf dem Host: leiten Verkehr von außen weiter, ohne zu lauschen; gelten immer als erreichbar und nicht auswertbar (siehe nächste Zeile). Container mit einem solchen Image bzw. Befehl werden vorgezogen |
 | **möglicherweise** erreichbar | Container im selben Docker-Netz wie ein erreichbarer Dienst, dessen Weiterleitungen nicht vollständig bekannt sind: Traefik, Caddy, HAProxy, Envoy, Varnish u. a. (Konfiguration wird nicht ausgewertet; Labels geben nur einen Teil der Ziele an), nginx-Ziel mit nicht auflösbarer Variable (`proxy_pass http://$host`), nicht lesbare nginx-Konfiguration, veröffentlichter Port ohne erkennbaren Prozess. Bei einem solchen Dienst auf dem Host oder im Host-Netzwerk: alle Container mit einem Docker-Netz (der Host erreicht sie über ihre IP). Mit Warnung je Dienst |
 
@@ -328,7 +288,9 @@ Konfiguration eines Proxys auf dem Host nicht lesbar, ist die Prüfung unvollst�
 - **Schweregrad:** Einstufung der Distribution (Debian, Ubuntu), sonst Angabe der Quelle, sonst CVSS. Hat
   der zutreffende Eintrag keinen (z. B. Go-Daten, Debian „not yet assigned“), wird die Bewertung derselben
   CVE aus den Bitnami- bzw. Alpine-Daten (CVSS der NVD) übernommen, bei mehreren die höchste. Solche Werte
-  sind im Bericht mit `*` markiert.
+  sind im Bericht mit `*` markiert. CVSS 4 wird angenähert (eher zu hoch), als Schadsoftware gemeldete
+  Pakete (`MAL-…`) gelten als CRITICAL. Ohne jede Bewertung („UNKNOWN“) zählt ein Fund nicht als relevant
+  (außer KEV), wird aber eigens ausgewiesen.
 - **KEV:** aktiv ausgenutzte Lücken sind im Bericht mit `KEV` markiert und immer relevant (siehe oben).
 - **Nur Windows:** Daten außerhalb der Distributionen (GitHub, Bitnami) führen auch Lücken, die nur unter
   Windows auftreten (z. B. „On Windows a directory returned by tempfile.mkdtemp() …“). Nennt der Titel das
@@ -399,10 +361,8 @@ CVE-2026-107814   mariadb       2027-03-31  betrifft nur die RPM-Pakete von Mari
 
 ## Aufruf und Optionen
 
-Für den Betrieb genügt der Wrapper ([Installation und Betrieb](#installation-und-betrieb)), auch für einen
-einzelnen Container (`container-security-scan-lauf <container>`). Direkter Aufruf für Spezialfälle, immer mit
-dem installierten Code, `python3 -I` und `--db`; er verwendet den vorhandenen Datenstand, ohne ihn zu
-aktualisieren:
+Für den Betrieb genügt der Wrapper. Direkter Aufruf für Spezialfälle (verwendet den vorhandenen
+Datenstand, ohne ihn zu aktualisieren):
 
 ```bash
 C=/opt/container-security-scan/container-security-scan.py
@@ -495,8 +455,7 @@ Je Ökosystem gilt das erste Verzeichnis, das es enthält, und `daten/` (bzw. da
 
 ### Sonderfall: Daten direkt von OSV statt über GitHub
 
-Nur nötig, wenn der Server `github.com` nicht erreichen darf oder GitHub auch als Datenquelle
-ausgeschlossen sein soll. Dann lädt `csscan` alle Ökosysteme direkt von OSV (`storage.googleapis.com`),
+Für Server, die `github.com` nicht erreichen dürfen oder GitHub nicht als Datenquelle nutzen sollen. Dann lädt `csscan` alle Ökosysteme direkt von OSV (`storage.googleapis.com`),
 die EOL-Daten von endoflife.date und den KEV-Katalog der CISA. Dafür in der eigenen Kopie des
 Installscripts im Wrapper die Zeilen mit `git pull` und `ARGS=` ersetzen (und das Holen der Daten mit
 `git clone` streichen):
@@ -522,20 +481,6 @@ holen und im Installscript statt `curl` nach `$TMP/scan.py` kopieren; die Prüfs
   Einträge (`<Ökosystem>.neu/`), nicht der gekürzte Auszug aus dem Repository. Die Ergebnisse sind
   gleich; das Einlesen dauert länger (Debian: ca. 3,5 s statt 1,9 s, Ubuntu: ca. 30 s statt 5 s je
   Container).
-
-| | über GitHub (Standard) | direkt (`--db DIR`) |
-|---|---|---|
-| Übertragung | erstmals ca. 25–35 MB, täglich nur die Änderungen | erstmals ca. 1,2 GB, täglich ca. 30–40 MB, mit Ubuntu oft ca. 800 MB |
-| Speicher | ca. 360 MB plus Git | ca. 1,2 GB |
-| Freigabe im Proxy/Firewall | `github.com` | `osv-vulnerabilities.storage.googleapis.com`, `endoflife.date`, `www.cisa.gov` |
-| Datenstand beim Scan | letzte Action (03:17 UTC) | Zeitpunkt der Aktualisierung |
-| Nachvollziehbarkeit | Git-Historie der Daten | nur `stand.json` |
-| Übernahme des GitHub-Repositorys | bei getrennten Daten: Daten fälschbar (falsche Ergebnisse), kein Code als root | ohne Folgen für die Daten |
-| bei Ausfall | von GitHub/Action: Daten veralten (nach 3 Tagen Rückgabewert 2) | von OSV: Aktualisierung schlägt fehl |
-
-Der Zeitgewinn beim direkten Abruf ist gering, wenn der Scan wie empfohlen einige Stunden nach der
-Action läuft. Der direkte Weg lohnt sich vor allem, wenn der Server `github.com` nicht erreichen darf
-oder GitHub auch als Datenquelle ausgeschlossen sein soll.
 
 ### Supportende (EOL)
 
@@ -599,11 +544,6 @@ die Lücke aktiv ausgenutzt.
 
 ## Grenzen
 
-- Schweregrad: Einstufung der Distribution (Debian, Ubuntu), sonst Angabe der Quelle, sonst CVSS 3 bzw.
-  eine Näherung für CVSS 4 (eher zu hoch), sonst die Bewertung derselben CVE aus Bitnami/Alpine (`*`). Als
-  Schadsoftware gemeldete Pakete (`MAL-…`) gelten als CRITICAL. Einträge, für die es nirgends eine Bewertung
-  gibt („UNKNOWN“), zählen nicht als relevant (außer KEV), werden aber eigens ausgewiesen.
-- Lücken nur unter Windows werden nur erkannt, wenn der Titel es eindeutig sagt; sonst Ausnahmeliste.
 - Nicht erfasst: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung, Bundles ohne Kopfkommentar,
   Programme direkt auf dem Host, UDP-Dienste nur bei offenem Socket.
 - Erreichbarkeit: Konfigurationen werden nur von nginx und Apache ausgewertet; andere Proxys machen alle
@@ -671,21 +611,7 @@ python3 -m unittest discover -s tests                                   # Unit-T
 CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit echten Containern
 ```
 
-| Datei | Prüft |
-|---|---|
-| `test_versionen.py` | Versionsvergleiche (dpkg, rpm, apk, SemVer, PEP 440, Maven, PHP) und OSV-Versionsbereiche |
-| `test_schweregrad.py` | CVSS 3/4, Vorrang von Quellen-Einstufung, Debian-Dringlichkeit, Ubuntu-Priorität, `MAL-…` |
-| `test_inventar.py` | dpkg (auch distroless), apk, rpm, npm/Composer/PyPI, JS-Bibliotheken, JARs, Go-Build-Info, tar-Strom |
-| `test_prozesse.py` | Prozesse, Ports und Dateien aus `/proc` (je Prozess-Benutzer bzw. über den Host, nie alle Host-Prozesse), Volumes, fester Suchpfad im Container, Benutzer der Versionsabfragen |
-| `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c` und dem Benutzer des Hauptprozesses (nie root für fremde Programme/Optionen), nginx-Variablen (`set`, `map`), veröffentlichte Ports, Backends, Docker-Netze (macvlan, geroutet, Host-Netzwerk, gemeinsamer Netzwerk-Namespace), Ziele aus Traefik-/Caddy-Labels, Proxys und Tunnel direkt auf dem Host (Erkennung, Benutzer der Abfrage, Ziele über Container-IP) |
-| `test_nutzung.py` | Zuordnung Komponente → Dienst, Erreichbarkeit (auch „möglicherweise“ über nicht auswertbare Proxys, Ziel-URLs und offene Verbindungen, Datenbanken als Ziel ausgenommen), Priorität P1–P4 |
-| `test_osv.py` | Abgleich je Ökosystem, Quellpakete, Fremdquellen über Bitnami, Datenformat, Kürzung der Ubuntu-Daten (gleiche Funde wie vollständig), inkrementelle Aktualisierung, ungültige Kennungen (kein Pfad) |
-| `test_bewertung.py` | widersprüchliche Versionsbereiche der Distribution, Kernel-Pakete, Schweregrad über die CVE, KEV (Daten erzeugen, laden, markieren), Ausnahmeliste (Format, Rechte, Ablauf), nur Windows, Relevanz, gefährliche Einstellungen (`CONF-…`), öffentliche Dienste als root (auch userns-remap/rootless) |
-| `test_eol.py` | EOL-Daten erzeugen, Supportende und Vorwarnung |
-| `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden, KEV macht P4 relevant, gefährliche Einstellungen ergeben 1 (auch ohne Schwachstellen, Ausnahme nach Containername), root-Dienst nur Warnung (auch über Proxy-Ziel, nicht bei Loopback), Ausnahme, Kernel-Pakete |
-| `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), Reihenfolge und Weitergabe der Erreichbarkeit mit `--alle-container`/`--oeffentliche`, `--db-aktualisieren` als root abgelehnt, holt bzw. aktualisiert nur den Branch `daten` (nie den Code), `daten/` ohne Git bricht ab, Berichte nur für den Aufrufer lesbar, docker nicht erreichbar, fehlerhafte Ausnahmeliste und unerwartete Fehler → 2 |
-| `test_docker.py` | mit den Daten aus dem Branch `daten` unter `daten/`, Lauf mit `--alle-container`: nginx (`-c`) als Proxy vor Node (direkt und über `set $backend`), Traefik mit Label-Ziel und Nachbar ohne Label, gemeinsamer Netzwerk-Namespace, interner Container, Gateway in Node mit Ziel-URL und offenen Verbindungen (zu Node und Redis), nginx direkt auf dem Host vor einer Container-IP (wenn nginx installiert ist); EOL-Warnungen, Berichte, `docker diff` unverändert |
-| `test_installation.py` | Installscript aus dem README: Syntax (auch des eingebetteten Wrappers), Beispiele der Ausnahmeliste gültig (auskommentiert und aktiviert, mit `CONF-…`), Link auf das Release; mit `CSS_RELEASE_TESTS=1` und voller Git-Historie, ob `VERSION` und `SHA256` zum Release passen (siehe [Releases](#releases)) |
+Was welche Testdatei prüft: [`tests/README.md`](tests/README.md).
 
 Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11, 3.13 und
 3.14 (Python des Runners, mit dem auch die Daten erzeugt werden), den Docker-Test und die Prüfung des
@@ -728,9 +654,7 @@ Damit das Token des Workflows nur die Daten ändern kann, in den Einstellungen d
 | Tags `v*` | *Restrict creations* (Ausnahme nur *Repository admin*), *Restrict updates*, *Restrict deletions* | Releases legt nur der Admin an; ein Tag lässt sich nicht verschieben oder löschen. Ein verschobener Tag fiele auch an der Prüfsumme auf. |
 | *Actions → General → Workflow permissions* | *Allow GitHub Actions to create and approve pull requests* aus (Standard) | Der Workflow kann sich nicht über einen eigenen Pull Request nach `main` schreiben. |
 
-Rulesets schützen gegen Versehen und gegen ein missbrauchtes Token des Workflows, **nicht** gegen eine
-Übernahme des Kontos: Wer Admin-Rechte hat, kann sie abschalten. Deshalb installieren Server nur die Datei
-mit der Prüfsumme aus dem Installscript, das der Admin geprüft hat, und aktualisieren nur nach Prüfung.
+Gegen eine Übernahme des Kontos schützen Rulesets nicht; dafür sorgt die Prüfsumme im Installscript.
 
 ## Verwandte Werkzeuge
 
