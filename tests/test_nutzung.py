@@ -98,11 +98,17 @@ class Dienste(unittest.TestCase):
         self.assertEqual(s["unresolved"], ["http://gone:1", "unix:/run/x.sock"])
 
     def test_nur_lokal_lauschend_nie_erreichbar(self):
+        # Docker-Portweiterleitung, Proxys in anderen Containern und der Host erreichen Loopback nicht
         for addr in ("localhost", "127.0.0.11"):
             p = proc(1, "/usr/sbin/nginx", ports={"80": addr})
             self.assertFalse(self.dienst(p, host_network=True)["exposed"], addr)
             self.assertFalse(self.dienst(p, lan=["macvlan-Netz mv"])["exposed"], addr)
             self.assertFalse(self.dienst(p, via_proxy={"*": ["traefik:443 in proxy"]})["exposed"], addr)
+            self.assertFalse(self.dienst(p, via_proxy={"80": ["nginx:443 in proxy"]})["exposed"], addr)
+            s = self.dienst(p, published={"80": ["0.0.0.0:8080"]})
+            self.assertFalse(s["exposed"], addr)
+            self.assertIn("lauscht nur auf Loopback – von außen nicht erreichbar (obwohl veröffentlicht als "
+                          "0.0.0.0:8080)", s["description"])
 
     def test_lan_netz_und_spender(self):
         p = proc(1, "/usr/local/bin/node", ports={"3000": "alle"})
@@ -156,6 +162,32 @@ class Dienste(unittest.TestCase):
         self.assertTrue(s["exposed"])
         self.assertEqual(s["backends"], [("shop", "*", "cloudflared")])
         self.assertIn("Tunnel-Agent", s["description"])
+        # seine Komponenten: P1, nicht P3 ("ohne Port")
+        gomod = C("go", "golang.org/x/net", "v0.1.0", "/usr/local/bin/cloudflared")
+        services = scanner.mark_usage([gomod], {"1": tunnel}, {}, web(nachbarn=["shop"]))
+        self.assertEqual(gomod["aktiv"], ["cloudflared"])
+        self.assertEqual(scanner.priority(gomod, {s["label"] for s in services if s["exposed"]}), 1)
+
+    def test_unbekannter_proxy_hinter_webserver_im_selben_container(self):
+        # nginx (erreichbar) -> HAProxy auf 127.0.0.1:8080 im selben Container: HAProxy-Ziele nicht bekannt
+        nginx = proc(1, "/usr/sbin/nginx", ports={"80": "alle"})
+        haproxy = proc(2, "/usr/sbin/haproxy", ports={"8080": "localhost"})
+        w = web(published={"80": ["0.0.0.0:80"]}, backends={"/usr/sbin/nginx": ["http://127.0.0.1:8080"]},
+                nachbarn=["shop"])
+        services = scanner.mark_usage([], {"1": nginx, "2": haproxy}, {}, w)
+        ha = [s for s in services if s["name"] == "haproxy"][0]
+        self.assertFalse(ha["exposed"])
+        self.assertEqual(ha["unklar"], ["haproxy: Konfiguration wird nicht ausgewertet"])
+        self.assertEqual(ha["backends"], [("shop", "*", "haproxy:8080")])
+
+    def test_php_fpm_ueber_unix_socket(self):
+        # php-fpm ohne TCP-Port hinter dem erreichbaren nginx: offene Verbindungen der Worker zählen
+        nginx = proc(1, "/usr/sbin/nginx", ports={"80": "alle"})
+        fpm = proc(2, "/usr/local/sbin/php-fpm", verbindungen=[("10.0.0.3", "8080")])
+        w = web(published={"80": ["0.0.0.0:80"]}, backends={"/usr/sbin/nginx": ["unix:/run/php/php-fpm.sock"]},
+                containers={"10.0.0.3": "intern"})
+        services = scanner.mark_usage([], {"1": nginx, "2": fpm}, {}, w)
+        self.assertEqual([b for s in services for b in s["backends"]], [("intern", "8080", "php-fpm (offene Verbindung)")])
 
     def test_ziel_urls_und_verbindungen_einer_erreichbaren_anwendung(self):
         # API-Gateway: Ziele in der Umgebung (nur HTTP/WS/gRPC, auch mit Zugangsdaten) und offene Verbindungen

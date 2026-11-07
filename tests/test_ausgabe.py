@@ -203,18 +203,34 @@ class Gesamtlauf(unittest.TestCase):
     def test_port_eines_mitnutzenden_containers(self):
         # vpn veröffentlicht 8080, darauf lauscht ein Prozess im Container "mit" (network_mode: service:vpn):
         # nicht "unbekannter Dienst", sondern dort bewertet
-        code, backends, base = self.lauf(fremd={"8080": "alle"}, netz_gruppe=["mit"],
-                                         published={"80": ["0.0.0.0:80"], "8080": ["127.0.0.1:8080"]})
+        with mock.patch.object(scanner, "socket_inodes", return_value={"999"}) as besitz:
+            code, backends, base = self.lauf(fremd={"8080": ("alle", "999")}, netz_gruppe=["mit"],
+                                             published={"80": ["0.0.0.0:80"], "8080": ["127.0.0.1:8080"]})
+        besitz.assert_called_with(["mit"])
         with open(base + ".md", encoding="utf-8") as f:
             bericht = f.read()
         self.assertIn("Port 8080/tcp (alle): Prozess in einem Container mit demselben Netzwerk (mit)", bericht)
         self.assertNotIn("unbekannter Dienst", bericht)
         self.assertNotIn("nicht ermittelbar", self.konsole)
+        # Besitzer in der Gruppe nicht nachweisbar (z.B. dort nicht lesbar): Rückfallregel, nicht "dort bewertet"
+        with mock.patch.object(scanner, "socket_inodes", return_value=set()):
+            self.lauf(fremd={"8080": ("alle", "999")}, netz_gruppe=["mit"],
+                      published={"80": ["0.0.0.0:80"], "8080": ["127.0.0.1:8080"]})
+        self.assertIn("WARNUNG: Prozess zu Port 8080 nicht ermittelbar", self.konsole)
+
+    def test_socket_inodes(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        os.makedirs(os.path.join(tmp, "42", "fd"))
+        os.symlink("socket:[999]", os.path.join(tmp, "42", "fd", "3"))
+        os.symlink("/dev/null", os.path.join(tmp, "42", "fd", "1"))
+        with mock.patch.object(scanner, "run", return_value=(0, "PID\n42\n4711\n")):
+            self.assertEqual(scanner.socket_inodes(["mit"], proc=tmp), {"999"})
 
     def test_unbekannter_dienst_macht_nachbarn_erreichbar(self):
         # auf 8443 lauscht ein Prozess, der nicht lesbar ist: könnte ein Proxy sein
         code, backends, base = self.lauf(published={"80": ["0.0.0.0:80"], "8443": ["0.0.0.0:8443"]},
-                                         nachbarn=["shop", "db"], fremd={"8443": "alle"})
+                                         nachbarn=["shop", "db"], fremd={"8443": ("alle", "7")})
         self.assertEqual(backends, [("shop", "*", "unbekannter Dienst:8443 in app"),
                                     ("db", "*", "unbekannter Dienst:8443 in app")])
         self.assertIn("WARNUNG: Prozess zu Port 8443 nicht ermittelbar", self.konsole)
@@ -229,7 +245,7 @@ class Gesamtlauf(unittest.TestCase):
         code, backends, base = self.lauf(via={"8080": ["node:3000 (Ziel-URL API_URL) in gw"]})
         self.assertNotIn("nicht ermittelbar", self.konsole)
         # lauscht dort ein nicht lesbarer Prozess, gilt die Rückfallregel
-        self.lauf(via={"8080": ["node:3000 (Ziel-URL API_URL) in gw"]}, fremd={"8080": "alle"})
+        self.lauf(via={"8080": ["node:3000 (Ziel-URL API_URL) in gw"]}, fremd={"8080": ("alle", "7")})
         self.assertIn("WARNUNG: Prozess zu Port 8080 nicht ermittelbar", self.konsole)
         # Proxy-Ziel ohne lauschenden Prozess: wie bisher vorsichtshalber alles öffentlich
         self.lauf(via={"8080": ["nginx:80 in proxy"]})

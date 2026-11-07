@@ -55,6 +55,7 @@ import concurrent.futures
 import datetime
 import hashlib
 import io
+import ipaddress
 import json
 import math
 import os
@@ -931,6 +932,17 @@ def decode_addr(hexaddr):
     return "IPv6"
 
 
+def decode_ip(hexaddr):
+    """Adresse aus /proc/net/tcp(6) vollständig (für Verbindungsziele): IPv4, IPv4 in IPv6, IPv6."""
+    try:
+        if len(hexaddr) == 8:
+            return ".".join(str(b) for b in reversed(bytes.fromhex(hexaddr)))
+        ip = ipaddress.IPv6Address(b"".join(bytes.fromhex(hexaddr[i:i + 8])[::-1] for i in range(0, 32, 8)))
+        return str(ip.ipv4_mapped or ip)
+    except ValueError:
+        return hexaddr
+
+
 def nur_lokal(addr):
     """Lauscht nur auf Loopback (127.0.0.1, ::1, Dockers DNS auf 127.0.0.11): von außen nicht erreichbar."""
     return addr == "localhost" or addr.startswith("127.")
@@ -938,7 +950,7 @@ def nur_lokal(addr):
 
 def collect_procs(c):
     """Prozesse des Containers. Liefert (Prozesse, Erfassungsweg, lauschende Ports ohne sichtbaren Prozess
-    {Port: Adresse}, z.B. eines Containers, der den Netzwerk-Namespace mitnutzt)."""
+    {Port: (Adresse, Socket-Inode)}, z.B. eines Containers, der den Netzwerk-Namespace mitnutzt)."""
     if c.has_sh and c.has_proc_tools:
         # /proc/<pid>/exe, maps und fd fremder Benutzer darf auch root im Container nicht lesen (Docker gewährt
         # kein CAP_SYS_PTRACE). Daher je Prozess-Benutzer (z.B. solr, mysql, www-data) als dieser Benutzer lesen.
@@ -963,7 +975,8 @@ def collect_procs(c):
 
 
 def procs_auswerten(out):
-    """Ausgabe von PROC_SH auswerten: (Prozesse, lauschende Ports ohne sichtbaren Prozess). Je Prozess auch die
+    """Ausgabe von PROC_SH auswerten: (Prozesse, lauschende Ports ohne sichtbaren Prozess {Port: (Adresse, Inode)}).
+    Je Prozess auch die
     ausgehenden TCP-Verbindungen (Ziel-Adresse, Ziel-Port), z.B. eines API-Gateways zu seinen Zielen."""
     procs, sockets, listen, conns = OrderedDict(), defaultdict(set), {}, []
     for line in out.splitlines():
@@ -995,7 +1008,7 @@ def procs_auswerten(out):
         for pid in owners:
             procs[pid]["ports"][port] = addr
         if not owners and not nur_lokal(addr):
-            fremd[port] = addr
+            fremd[port] = (addr, inode)
     # ausgehend: lokaler Port ist kein lauschender (sonst eingehende Verbindung eines Clients)
     tcp = {port for (_, port) in listen if "/" not in port}
     for inode, local, remote in conns:
@@ -1004,7 +1017,7 @@ def procs_auswerten(out):
         addr, port = remote.split(":")
         for pid in sockets.get(inode, ()):
             if pid in procs:
-                procs[pid]["verbindungen"][(decode_addr(addr), str(int(port, 16)))] = None
+                procs[pid]["verbindungen"][(decode_ip(addr), str(int(port, 16)))] = None
     for p in procs.values():
         p["base"] = posixpath.basename(p["exe"])
         p["label"] = p["base"] + (":" + ",".join(p["ports"]) if p["ports"] else "")
@@ -1166,7 +1179,7 @@ def parse_nginx(conf, web, exe):
     conf = re.sub(r"#[^\n]*", "", conf)
     stack, stmt, vhost = [], "", None
     targets, variables = [], defaultdict(list)
-    for tok in re.findall(r"[{};]|[^{};]+", conf):
+    for tok in re.findall(r"\$\{\w+\}|[{};]|(?:[^{};$]|\$(?!\{))+", conf):     # ${var} gehört zur Anweisung
         if tok == "{":
             words = stmt.split()
             stack.append(words)
@@ -1226,11 +1239,17 @@ def server_user(p):
 
 
 def parse_apache(c, exe, web, user=NOBODY):
+    fehler = []
+
     def ap(*args):   # Debian/Ubuntu brauchen /etc/apache2/envvars
         if c.has_sh:
-            return c.exec(["sh", "-c", '[ -r /etc/apache2/envvars ] && . /etc/apache2/envvars; exec "$0" "$@"', exe] +
-                          list(args), stderr=True, timeout=60, user=user)[1]
-        return c.exec([exe] + list(args), stderr=True, timeout=60, user=user)[1]
+            rc, out = c.exec(["sh", "-c", '[ -r /etc/apache2/envvars ] && . /etc/apache2/envvars; exec "$0" "$@"', exe] +
+                             list(args), stderr=True, timeout=60, user=user)
+        else:
+            rc, out = c.exec([exe] + list(args), stderr=True, timeout=60, user=user)
+        if rc != 0 and args[0] in ("-S", "-t"):
+            fehler.append(" ".join(args))
+        return out
     raw = "--- %s -S\n%s--- %s -M\n%s" % (exe, ap("-S"), exe, ap("-M"))
     web["raw"].append(raw)
     env = dict(e.split("=", 1) for e in c.info["Config"].get("Env") or [] if "=" in e)
@@ -1243,7 +1262,12 @@ def parse_apache(c, exe, web, user=NOBODY):
         web["docroots"][exe].append(m.group(1))
     if re.search(r"^\s*php\d*_module", raw, re.M):
         web["modphp"].add(exe)
-    for conf in sorted(set(re.findall(r"(/\S+)\s*$", ap("-t", "-D", "DUMP_INCLUDES"), re.M))):
+    includes = ap("-t", "-D", "DUMP_INCLUDES")
+    if fehler:
+        web["unlesbar"].add(exe)
+        web["problems"].append("%s %s fehlgeschlagen: Konfiguration (vHosts, Proxy-Backends) nicht lesbar"
+                               % (exe, " bzw. ".join(fehler)))
+    for conf in sorted(set(re.findall(r"(/\S+)\s*$", includes, re.M))):
         vhost = None
         for line in c.read_file(conf).splitlines():
             words = [w.strip('"') for w in line.split("#")[0].split()]
@@ -1324,15 +1348,24 @@ def docker_lage():
     rc, ids = run(["docker", "ps", "-q"])
     if rc != 0:
         raise ScanError("docker nicht erreichbar (läuft dockerd? Rechte/Gruppe docker?)")
-    rc, out = run(["docker", "inspect"] + ids.split()) if ids.split() else (0, "[]")
-    if rc != 0:
-        raise ScanError("docker inspect fehlgeschlagen")
-    infos = json.loads(out or "[]")
+    infos = inspect_liste(["docker", "inspect"], ids.split())
     names = sorted({n for d in infos for n in netze_von(d)})
-    rc, out = run(["docker", "network", "inspect"] + names) if names else (0, "[]")
-    if rc != 0:
-        raise ScanError("docker network inspect fehlgeschlagen")
-    return infos, {n.get("Name"): n for n in json.loads(out or "[]")}
+    return infos, {n.get("Name"): n for n in inspect_liste(["docker", "network", "inspect"], names)}
+
+
+def inspect_liste(cmd, refs):
+    """docker inspect mehrerer Objekte. Ist eines zwischenzeitlich entfernt (z.B. docker run --rm), liefert docker
+    die übrigen und Rückgabewert 1 – das ist kein Fehler; ohne gültige Ausgabe schon."""
+    if not refs:
+        return []
+    rc, out = run(cmd + refs)
+    try:
+        result = json.loads(out or "")
+    except ValueError:
+        result = None
+    if not isinstance(result, list):
+        raise ScanError("%s fehlgeschlagen" % " ".join(cmd))
+    return result
 
 
 def name_von(d):
@@ -1373,6 +1406,26 @@ def direkt_erreichbar(d, infos, netze):
             if mode in ("routed", "nat-unprotected"):
                 lan.append("Netz %s (IPv%s %s)" % (n, v, mode))
     return published, (d.get("HostConfig") or {}).get("NetworkMode") == "host", lan, name_von(spender) if spender else None
+
+
+def socket_inodes(names, proc="/proc"):
+    """Socket-Inodes, die Prozesse dieser Container geöffnet haben (über /proc des Hosts, als root)."""
+    inodes = set()
+    for name in names:
+        rc, out = run(["docker", "top", name, "-eo", "pid"])
+        for pid in (out.split()[1:] if rc == 0 else []):
+            try:
+                fds = os.listdir(os.path.join(proc, pid, "fd")) if pid.isdigit() else []
+            except OSError:
+                continue
+            for fd in fds:
+                try:
+                    m = re.match(r"socket:\[(\d+)\]$", os.readlink(os.path.join(proc, pid, "fd", fd)))
+                except OSError:
+                    continue
+                if m:
+                    inodes.add(m.group(1))
+    return inodes
 
 
 def netz_gruppe(d, infos):
@@ -1489,6 +1542,7 @@ def resolve_backend(target, web, self_name, depth=0):
     if target.startswith("unix:") or re.match(r"(localhost|127\.|\[::1\])", host):
         return target + " (gleicher Container)"
     host = re.sub(r":\d+$", "", host)
+    host = host[1:-1] if host.startswith("[") and host.endswith("]") else host
     if host in web["upstreams"] and depth < 3:
         return target + " = " + ", ".join(resolve_backend(t, web, self_name, depth + 1) for t in web["upstreams"][host])
     if "$" in host:
@@ -1503,7 +1557,8 @@ def resolve_backend(target, web, self_name, depth=0):
 # 7. Zuordnen: welcher laufende Prozess nutzt welche Komponente
 # ===========================================================================
 def use(c, p):
-    lst, lab = (c["aktiv"], p["label"]) if p["ports"] else (c["aktiv_ohne_port"], p["label"] + " (ohne Port)")
+    lst, lab = (c["aktiv"], p["label"]) if p["ports"] or p["base"] in TUNNEL \
+        else (c["aktiv_ohne_port"], p["label"] + " (ohne Port)")
     if lab not in lst:
         lst.append(lab)
     for front in p.get("frontends", ()):     # z.B. php-fpm hinter nginx im selben Container
@@ -1524,6 +1579,8 @@ def split_target(target):
         return "", ""
     hostport = m.group(2)
     host, _, port = hostport.rpartition(":") if re.search(r":\d+$", hostport) else (hostport, "", "")
+    if host.startswith("[") and host.endswith("]"):      # http://[fd00::2]:8080
+        host = host[1:-1]
     return host, port or STANDARDPORTS.get(m.group(1) or "", "80")
 
 
@@ -1539,7 +1596,7 @@ def backend_containers(target, web, depth=0):
         return [x for t in web["upstreams"][host] for x in backend_containers(t, web, depth + 1)]
     if host in web["containers"]:
         return [(web["containers"][host], port)]
-    if re.match(r"(localhost|127\.|\[::1\])", host):
+    if re.match(r"(localhost|127\.|::1$)", host):
         return [(web["self"], port)]
     return []
 
@@ -1661,12 +1718,18 @@ def mark_usage(comps, procs, owners, web):
     services = []   # ein Eintrag je Prozess mit offenen Ports (gleiches Etikett nur einmal)
     versions = {norm(c["ort"]): c["version"] for c in comps if c["typ"] in ("runtime", "server")}
     gruppen = OrderedDict()     # gleiches Etikett: Hauptprozess und Worker (erben den lauschenden Socket)
-    for p in procs.values():
-        if p["ports"] or p["base"] in TUNNEL:
+    for p in procs.values():   # auch ohne Port hinter einem Webserver (php-fpm über Unix-Socket)
+        if p["ports"] or p["base"] in TUNNEL or p.get("frontends"):
             gruppen.setdefault(p["label"], []).append(p)
     erreichbar = {label: ps[-1]["base"] in TUNNEL or any(port_erreichbar(ps[-1], port, addr, web)[1]
                                                          for port, addr in ps[-1]["ports"].items())
                   for label, ps in gruppen.items()}
+    # über einen erreichbaren Webserver im selben Container (auch mehrstufig): Weiterleitungen und Aufrufe zählen
+    fronten = {label: {f for p in ps for f in p.get("frontends", ())} for label, ps in gruppen.items()}
+    wirkt = dict(erreichbar)
+    for _ in gruppen:
+        for label in gruppen:
+            wirkt[label] = wirkt[label] or any(wirkt.get(f) for f in fronten[label])
     env_vergeben = False
     for label, ps in gruppen.items():
         p = ps[-1]
@@ -1697,7 +1760,7 @@ def mark_usage(comps, procs, owners, web):
             desc.append("Ziel aus Docker-Labels: Container %s, Port %s" % (ct, "alle" if port == "*" else port))
         # Weiterleitungen nicht vollständig bekannt: im Zweifel erreichbar -> alle Container in den Docker-Netzen
         unklar = []
-        if exposed:
+        if wirkt[label]:
             if p["base"] in PROXY_UNBEKANNT or p["base"] in TUNNEL:
                 unklar.append("%s: Konfiguration wird nicht ausgewertet" % p["base"])
             if p["exe"] in web.get("unlesbar", ()):
@@ -1710,7 +1773,7 @@ def mark_usage(comps, procs, owners, web):
         # Aufrufe der Anwendung (API-Gateway, App ruft internen HTTP-Dienst): auch über einen Webserver im selben
         # Container (php-fpm hinter nginx); die Umgebung des Containers nur einmal zuordnen
         aufrufe = []
-        if exposed or any(erreichbar.get(f) for f in p.get("frontends", ())):
+        if wirkt[label]:
             bekannt = set(ziele)
             aufrufe = [(ct, port, quelle) for ct, port, quelle in
                        aufruf_ziele(ps, web, [] if env_vergeben else web.get("env", [])) if (ct, port) not in bekannt]
@@ -1724,12 +1787,12 @@ def mark_usage(comps, procs, owners, web):
                          "exposed": exposed, "unklar": unklar,
                          # Backends eines öffentlichen Dienstes, die keinem Container zugeordnet werden können
                          # (variable Ziele: siehe unklar)
-                         "unresolved": [b for b in backends if exposed and not backend_containers(b, web)
+                         "unresolved": [b for b in backends if wirkt[label] and not backend_containers(b, web)
                                         and not ziel_variabel(b)
                                         and not (b.startswith("unix:") and "php" in b and php_servers)],
                          # öffentlich erreichbare Ziele in anderen Containern (für --oeffentliche/--alle-container)
                          "backends": ([(ct, port, label) for ct, port in OrderedDict.fromkeys(ziele)
-                                       if ct != web["self"]] if exposed else []) +
+                                       if ct != web["self"]] if wirkt[label] else []) +
                                      [(ct, port, "%s (%s)" % (label, quelle)) for ct, port, quelle in aufrufe]})
     return services
 
@@ -1738,6 +1801,9 @@ def port_erreichbar(p, port, addr, web):
     """(Beschreibung, erreichbar) für einen Port eines Prozesses. Aufrufe einer erreichbaren Anwendung (Ziel-URL,
     offene Verbindung) machen Datenbanken, Caches und Message Broker nicht erreichbar."""
     via = [r for r in web["via_proxy"].get(port, []) if not (datendienst(p) and aufruf_grund(r))]
+    if nur_lokal(addr):     # Docker-Portweiterleitung, Proxys und andere Container erreichen Loopback nicht
+        return "lauscht nur auf Loopback – von außen nicht erreichbar" + (
+            " (obwohl veröffentlicht als %s)" % ", ".join(web["published"][port]) if web["published"].get(port) else ""), False
     if web["published"].get(port):
         return "veröffentlicht als " + ", ".join(web["published"][port]) + (
             " (über Container %s)" % web["spender"] if web.get("spender") else ""), True
@@ -2777,13 +2843,14 @@ def scan_container(name, a, via_proxy=None):
     warnings = []
     listening = {port for p in procs.values() for port in p["ports"]}
     ohne_prozess = fremd       # lauschende Sockets ohne sichtbaren Prozess
-    fremd = OrderedDict((port, addr) for port, addr in fremd.items() if port not in listening) \
-        if web.get("netz_gruppe") else {}
+    # nur, wenn der Socket nachweislich einem Prozess eines anderen Containers der Gruppe gehört (sonst Rückfallregel)
+    besitz = socket_inodes(web["netz_gruppe"]) if web.get("netz_gruppe") and fremd else set()
+    fremd = OrderedDict((port, v) for port, v in fremd.items() if port not in listening and v[1] in besitz)
     for port in fremd:
         services.append({"label": "Port %s" % port, "name": "–", "version": "", "exe": "", "exposed": False,
                          "backends": [], "unresolved": [], "unklar": [], "endpoints": [],
                          "description": "Port %s (%s): Prozess in einem Container mit demselben Netzwerk (%s) – dort "
-                                        "bewertet" % (port if "/" in port else port + "/tcp", fremd[port],
+                                        "bewertet" % (port if "/" in port else port + "/tcp", fremd[port][0],
                                                       ", ".join(web["netz_gruppe"]))})
     # Veröffentlichte Ports ohne erkannten Prozess (Prozesse nicht lesbar, z.B. nach Benutzerwechsel, oder
     # Werkzeuge fehlen): Zuordnung unmöglich -> vorsichtshalber alles als öffentlich genutzt werten. Lauscht dort

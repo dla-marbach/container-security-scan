@@ -210,7 +210,7 @@ docker-Rechten ausführen.
 |---|---|
 | `0` | keine relevanten Schwachstellen |
 | `1` | relevante Schwachstellen gefunden |
-| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar, nginx-Konfiguration nicht lesbar (im Container oder eines Proxys auf dem Host), Distribution ohne aktuelle Sicherheitsdaten (EOL), Ausnahmeliste fehlerhaft. |
+| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar, nginx- bzw. Apache-Konfiguration nicht lesbar (im Container oder eines Proxys auf dem Host), Distribution ohne aktuelle Sicherheitsdaten (EOL), Ausnahmeliste fehlerhaft. |
 
 **Relevant** ist P1 CRITICAL/HIGH und P2 CRITICAL (anpassbar über `RELEVANT` am Anfang des Skripts), dazu
 **jede aktiv ausgenutzte Lücke** aus dem [KEV-Katalog der CISA](https://www.cisa.gov/known-exploited-vulnerabilities-catalog),
@@ -520,7 +520,8 @@ die Lücke aktiv ausgenutzt.
 - Ein Einzelscan (ohne `--alle-container`/`--oeffentliche`) kennt keine Proxys in *anderen* Containern;
   Backends erscheinen dann als P2.
 - nginx-Konfiguration: `nginx -T` wird mit `-p`/`-c` des laufenden Masterprozesses aufgerufen. Schlägt
-  die Abfrage fehl, ist die Prüfung unvollständig (Rückgabewert 2), da Proxy-Backends fehlen könnten.
+  die Abfrage fehl (ebenso `apache2 -S` bzw. `-t -D DUMP_INCLUDES`), ist die Prüfung unvollständig
+  (Rückgabewert 2), da Proxy-Backends fehlen könnten.
 
 ## Validierung
 

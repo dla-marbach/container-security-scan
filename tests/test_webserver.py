@@ -125,6 +125,7 @@ http {
         location /x/ { proxy_pass http://$api:8000$request_uri; }
         location /t/ { proxy_pass $tenant_backend; }
         location /h/ { proxy_pass $scheme://$host; }
+        location /k/ { proxy_pass http://${api}:9000; }
     }
 }
 """
@@ -136,7 +137,9 @@ class NginxVariablen(unittest.TestCase):
                 vhosts=scanner.defaultdict(list), upstreams=scanner.defaultdict(list))
         scanner.parse_nginx(NGINX_VARIABLEN, w, "/usr/sbin/nginx")
         self.assertEqual(w["backends"]["/usr/sbin/nginx"], [
-            "http://app:3000", "http://api:8000", "http://app-a:3000", "http://app-b:3000", "http://$host"])
+            "http://app:3000", "http://api:8000", "http://app-a:3000", "http://app-b:3000", "http://$host",
+            "http://api:9000"])
+        self.assertEqual(len(w["vhosts"]["/usr/sbin/nginx"]), 1)     # ${api} kein Block
 
     def test_nginx_ziele(self):
         v = {"b": ["http://app:3000"], "zwei": ["x:1", "y:2"]}
@@ -222,6 +225,18 @@ class DockerLage(unittest.TestCase):
     def test_docker_nicht_erreichbar(self):
         with mock.patch.object(scanner, "run", return_value=(1, "")):
             self.assertRaises(scanner.ScanError, scanner.docker_lage)
+
+    def test_zwischenzeitlich_entfernter_container(self):
+        # docker run --rm zwischen docker ps und docker inspect beendet: docker liefert die übrigen und 1
+        def run(cmd, *a, **kw):
+            if cmd[:2] == ["docker", "ps"]:
+                return 0, "a\nweg\n"
+            if cmd[:3] == ["docker", "network", "inspect"]:
+                return 0, scanner.json.dumps([dict(self.netze["back"], Name="back")])
+            return 1, scanner.json.dumps([self.app])
+        with mock.patch.object(scanner, "run", side_effect=run):
+            infos, netze = scanner.docker_lage()
+        self.assertEqual(([scanner.name_von(d) for d in infos], list(netze)), (["app"], ["back"]))
 
 
 class HostProxys(unittest.TestCase):
@@ -325,8 +340,17 @@ class Apache(unittest.TestCase):
         self.assertEqual(w["docroots"]["/usr/sbin/apache2"], ["/var/www/html", "/var/www/html/public", "/srv/static"])
         self.assertEqual(w["backends"]["/usr/sbin/apache2"], ["http://backend:8080/api", "fcgi://php-fpm:9000"])
         self.assertEqual(w["modphp"], {"/usr/sbin/apache2"})
+        self.assertEqual((w["problems"], w["unlesbar"]), ([], set()))
         self.assertEqual(w["vhosts"]["/usr/sbin/apache2"],
                          ["VirtualHost *:80 ServerName shop.example.org DocumentRoot /var/www/html/public"])
+
+    def test_apache_abfrage_fehlgeschlagen_ist_unvollstaendig(self):
+        c = mock.Mock(has_sh=False, info={"Config": {"Env": []}})
+        c.exec.side_effect = lambda cmd, **kw: (1, "AH00526: Syntax error") if cmd[1] in ("-S", "-t") else (0, "")
+        w = scanner.web_leer()
+        scanner.parse_apache(c, "/usr/sbin/apache2", w)
+        self.assertEqual(w["unlesbar"], {"/usr/sbin/apache2"})
+        self.assertIn("/usr/sbin/apache2 -S bzw. -t -D DUMP_INCLUDES fehlgeschlagen", w["problems"][0])
 
 
 class ApacheBenutzer(unittest.TestCase):
@@ -357,6 +381,15 @@ class Backends(unittest.TestCase):
         self.assertEqual(scanner.split_target("app"), ("app", "80"))
         self.assertEqual(scanner.split_target("ajp://tomcat"), ("tomcat", "8009"))
         self.assertEqual(scanner.split_target("grpcs://api"), ("api", "443"))
+        self.assertEqual(scanner.split_target("http://[fd00::2]:8080/x"), ("fd00::2", "8080"))
+        self.assertEqual(scanner.split_target("http://[fd00::2]"), ("fd00::2", "80"))
+
+    def test_ipv6_ziele(self):
+        w = web(containers={"fd00::2": "app6"}, self="proxy")
+        self.assertEqual(scanner.backend_containers("http://[fd00::2]:8080", w), [("app6", "8080")])
+        self.assertEqual(scanner.backend_containers("http://[::1]:9000", w), [("proxy", "9000")])
+        self.assertIn("-> Container app6", scanner.resolve_backend("http://[fd00::2]:8080", w, "proxy"))
+        self.assertIn("(gleicher Container)", scanner.resolve_backend("http://[::1]:9000", w, "proxy"))
 
     def test_upstream_ohne_port(self):
         w = web(upstreams={"b": ["app"]}, containers={"app": "app-c"})
