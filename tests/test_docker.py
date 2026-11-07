@@ -202,10 +202,16 @@ class Integration(unittest.TestCase):
         host = [l for l in self.ausgabe.splitlines() if l.startswith("Host: nginx:18099 auf dem Host – erreichbar")]
         self.assertEqual(len(host), 1, self.ausgabe)
         self.assertIn("Ziele in Containern: %s (3006)" % self.hinterhost, host[0])
-        # Ziele über 127.0.0.1: jeder Port nur bei dem Container, der dort lauscht bzw. ihn veröffentlicht
-        self.assertIn("%s (%d)," % (self.hostlo, LOOPBACK_PORT), host[0] + ",")
-        self.assertIn("%s (%d)," % (self.hostnetz, HOSTNETZ_PORT), host[0] + ",")
+        # Ziele über 127.0.0.1: veröffentlichter Port beim Container, der ihn veröffentlicht; im Host-Netzwerk als
+        # root (wie im Betrieb) jeder Port nur bei dem Container, der dort lauscht – ohne root sind die Sockets
+        # fremder Prozesse nicht lesbar, dann gilt die Rückfallregel (alle Container im Host-Netzwerk)
         self.assertIn("%s (3007)" % self.gw, host[0])
+        if os.geteuid() == 0:
+            self.assertIn("%s (%d)," % (self.hostlo, LOOPBACK_PORT), host[0] + ",")
+            self.assertIn("%s (%d)," % (self.hostnetz, HOSTNETZ_PORT), host[0] + ",")
+        else:
+            for ct in (self.hostlo, self.hostnetz):
+                self.assertIn("%s (%d, %d)" % (ct, LOOPBACK_PORT, HOSTNETZ_PORT), host[0])
         self.assertIn("Port 3007/tcp (alle) veröffentlicht als 127.0.0.1:", self.bericht(self.gw))
         self.assertIn("Port %d/tcp (alle) direkt im Host-Netzwerk erreichbar" % HOSTNETZ_PORT, self.bericht(self.hostnetz))
         self.assertIn("Port 3006/tcp (alle) öffentlich über nginx:18099 auf dem Host", self.bericht(self.hinterhost))
