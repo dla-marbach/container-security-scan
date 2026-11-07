@@ -12,7 +12,7 @@ container-security-scan.py   der gesamte Scanner (eine Datei), enthält VERSION
 installation/                Installscript, Wrapper, Vorlage der Ausnahmeliste
 beispiele/                   erzeugte Berichte; umgebung/ = Testumgebung, erzeugen.sh erzeugt sie neu
 tests/                       unittest, eine Datei je Bereich (Übersicht in tests/README.md)
-.github/workflows/           tests.yml (Tests, Beispiele, Installation), daten.yml (Daten, täglich)
+.github/workflows/           tests.yml (Unit- und Docker-Tests), daten.yml (Daten, täglich)
 ```
 
 Die Daten (OSV-Auszug, EOL, KEV) liegen im Branch `daten` und werden nur von `daten.yml` geschrieben. Lokal
@@ -37,7 +37,12 @@ Den Branch `daten` nie von Hand ändern.
 ```bash
 python3 -m unittest discover -s tests                                        # schnell, ohne Docker; vor jedem Commit
 CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit Docker und daten/
+sudo bash beispiele/erzeugen.sh                                              # Beispiele neu (Docker, daten/)
 ```
+
+Beispiele und Installscript laufen nicht in der Action, sondern lokal vor dem Pull Request; die Befehle für
+das Installscript (aus einem lokalen Tag, nur auf einem Testrechner) stehen im README unter „Entwicklung und
+Tests“.
 
 Neue Funktionen und Fehlerkorrekturen bekommen einen Test in der passenden Datei; `tests/README.md` nennt,
 was welche Datei prüft, und wird mitgepflegt. Tests nie abschalten oder überspringen, um grün zu werden.
@@ -47,8 +52,8 @@ was welche Datei prüft, und wird mitgepflegt. Tests nie abschalten oder übersp
 - **Version:** steht nur in `VERSION` in `container-security-scan.py`. Installscript, Wrapper und README
   nennen keine aktuelle Version; das soll so bleiben. `VERSION` nur im Release-PR ändern (README: Releases).
 - **Beispiele:** `test_installation.py` verlangt, dass `beispiele/` mit der aktuellen `VERSION` erzeugt ist.
-  Nie von Hand bearbeiten, sondern `sudo bash beispiele/erzeugen.sh` (Docker, `daten/`) oder das Artefakt
-  `beispiele` der Action übernehmen. Ändert sich das Berichtsformat, die Beispiele im selben PR neu erzeugen.
+  Nie von Hand bearbeiten, sondern mit `sudo bash beispiele/erzeugen.sh` neu erzeugen, und zwar im selben PR,
+  der `VERSION` oder das Format der Berichte ändert.
 - **Installation:** Wrapper und Vorlage der Ausnahmeliste nur unter `installation/` ändern; das Installscript
   installiert genau die Dateien, die es aus dem Tag holt. Ändert sich, was Admins tun müssen, gehört das in
   README und Release-Hinweise.

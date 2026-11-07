@@ -332,7 +332,7 @@ Beispiele: [`beispiele/`](beispiele/) – ein Lauf `--alle-container --nur-beheb
 [`beispiele/umgebung/compose.yml`](beispiele/umgebung/compose.yml) ([Konsolenausgabe](beispiele/ausgabe.txt)):
 nginx als öffentlicher Reverse Proxy vor Node.js 22.22.0 (Node2Shell) und PHP 8.3.30 als PHP-FPM
 (PHP2Shell) mit Anwendung, `vendor/` und eingebettetem jQuery 1.12.4 im Volume; Traefik mit Docker-Socket
-(gefährliche Einstellung) und Ziel per Label. Neu erzeugen: `sudo bash beispiele/erzeugen.sh` ([Releases](#releases)).
+(gefährliche Einstellung) und Ziel per Label.
 
 ## Was erfasst wird
 
@@ -539,21 +539,33 @@ python3 -m unittest discover -s tests                                   # Unit-T
 CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit echten Containern
 ```
 
-Was welche Testdatei prüft: [`tests/README.md`](tests/README.md).
+Was welche Testdatei prüft: [`tests/README.md`](tests/README.md). Die GitHub Action
+[`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11, 3.13 und 3.14 (Python des
+Runners, mit dem auch die Daten erzeugt werden) und den Docker-Test aus.
 
-Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11, 3.13 und
-3.14 (Python des Runners, mit dem auch die Daten erzeugt werden) und den Docker-Test aus, erzeugt die
-[Beispiele](beispiele/) (als Artefakt `beispiele` zum Herunterladen) und installiert mit dem Installscript
-aus einem lokalen Tag, samt einem Lauf des Wrappers.
+[Beispiele](beispiele/) neu erzeugen – nötig, wenn sich `VERSION` oder das Format der Berichte ändert, im
+selben Pull Request (ein Unit-Test prüft die Version). Startet die Testumgebung
+[`beispiele/umgebung/compose.yml`](beispiele/umgebung/compose.yml) (Ports 8080 und 8081) und scannt sie:
+
+```bash
+sudo bash beispiele/erzeugen.sh
+```
+
+Änderungen unter `installation/` auf einem Testrechner (oder in einer VM) aus einem lokalen Tag ausprobieren,
+den Tag danach wieder löschen:
+
+```bash
+V=v$(./container-security-scan.py --version | cut -d" " -f2) && git tag -f $V && git bundle create /tmp/css.bundle $V
+sudo env REPO=/tmp/css.bundle bash installation/installieren.sh $V && sudo /usr/local/sbin/container-security-scan-lauf
+git tag -d $V
+```
 
 ### Releases
 
 Server installieren nur Releases: Git-Tags `vX.Y.Z` auf `main`. Die Version steht nur in `VERSION` am Anfang
 von `container-security-scan.py`; Installscript, Wrapper und README nennen sie nicht. Ein Release:
 
-1. Per Pull Request nach `main`: `VERSION` erhöhen und die Beispiele neu erzeugen – mit Docker und den
-   Daten unter `daten/` per `sudo bash beispiele/erzeugen.sh` oder aus dem Artefakt `beispiele` der Action. Der
-   Test verlangt, dass die Beispiele mit der aktuellen Version erzeugt sind.
+1. Per Pull Request nach `main`: `VERSION` erhöhen und die [Beispiele neu erzeugen](#entwicklung-und-tests).
 2. Nach dem Merge den Merge-Commit taggen (signiert, wenn möglich) und den Tag pushen:
 
    ```bash
