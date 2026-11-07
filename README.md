@@ -95,6 +95,7 @@ LAUF=/usr/local/sbin/container-security-scan-lauf
 ETC=/etc/container-security-scan
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 umask 022
+[[ -z $DATEI || $DATEI = /* ]] || DATEI=$PWD/$DATEI
 cd /
 fehler() { echo "FEHLER: $*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || fehler "als root ausführen: sudo bash $0"
@@ -103,11 +104,12 @@ fehler() { echo "FEHLER: $*" >&2; exit 1; }
 for p in curl git python3 runuser flock sha256sum useradd; do
   command -v "$p" >/dev/null || fehler "$p fehlt"
 done
-exec 9>/run/container-security-scan.lock
+umask 077; exec 9>/run/container-security-scan.lock; umask 022
+chmod 600 /run/container-security-scan.lock   # sonst könnte jeder sie halten und Scans blockieren
 flock -n 9 || fehler "ein Scan läuft gerade; danach erneut ausführen"
 TMP=$(mktemp -d)
 NEU=""
-trap 'rm -rf "$TMP" ${NEU:+"$NEU"}' EXIT
+trap 'rm -rf "$TMP" "$LAUF.neu" ${NEU:+"$NEU"}' EXIT
 
 # 1. Code holen und prüfen (noch nichts installiert)
 if [ -n "$DATEI" ]; then
@@ -131,14 +133,7 @@ if [ "$QUELLE" = github ] && [ ! -e "$D/daten" ]; then
       || fehler "Daten nicht geholt (git clone als csscan)"
 fi
 
-# 3. Code: Verzeichnis vollständig ersetzen, danach liegt dort nur das Skript
-NEU=$(mktemp -d /opt/.container-security-scan.XXXXXX)
-install -o root -g root -m 755 "$TMP/scan.py" "$NEU/container-security-scan.py"
-chown root:root "$NEU" && chmod 755 "$NEU"
-rm -rf "$CODE"
-mv "$NEU" "$CODE"
-
-# 4. Wrapper
+# 3. Wrapper erzeugen und prüfen (noch nichts ersetzt)
 sed -e "s/@VERSION@/$VERSION/" -e "s/@SHA256@/$SHA256/" -e "s/@QUELLE@/$QUELLE/" > "$TMP/lauf" <<'LAUF'
 #!/bin/bash
 # Vom Installscript erzeugt – nicht von Hand ändern, sondern das Installscript erneut ausführen.
@@ -190,7 +185,16 @@ echo "ERGEBNIS: $e (Rückgabewert $rc) – $(hostname)" | tee -a "$LOG"
 exit $rc
 LAUF
 bash -n "$TMP/lauf"
-install -o root -g root -m 755 "$TMP/lauf" "$LAUF"
+
+# 4. Code und Wrapper ersetzen; das Code-Verzeichnis vollständig, danach liegt dort nur das Skript.
+#    Bricht es dazwischen ab, verweigert der Wrapper den Scan (Prüfsumme) bis zum nächsten Lauf hiervon.
+NEU=$(mktemp -d /opt/.container-security-scan.XXXXXX)
+install -o root -g root -m 755 "$TMP/scan.py" "$NEU/container-security-scan.py"
+chown root:root "$NEU" && chmod 755 "$NEU"
+install -o root -g root -m 755 "$TMP/lauf" "$LAUF.neu"
+rm -rf "$CODE"
+mv "$NEU" "$CODE"
+mv "$LAUF.neu" "$LAUF"
 
 # 5. Ausnahmeliste: nur anlegen, wenn sie fehlt – nie überschreiben
 install -d -o root -g root -m 755 "$ETC"
