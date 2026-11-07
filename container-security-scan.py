@@ -79,7 +79,7 @@ from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}

@@ -50,7 +50,13 @@ was welche Datei prüft, und wird mitgepflegt. Tests nie abschalten oder übersp
 ## Was synchron bleiben muss
 
 - **Version:** steht nur in `VERSION` in `container-security-scan.py`. Installscript, Wrapper und README
-  nennen keine aktuelle Version; das soll so bleiben. `VERSION` nur im Release-PR ändern (README: Releases).
+  nennen keine aktuelle Version; das soll so bleiben. Jeder PR, der `container-security-scan.py` oder
+  `installation/` ändert, erhöht `VERSION` im selben PR (jeder solche PR wird nach dem Merge ein Release):
+  `Z` bei Korrekturen ohne Einfluss auf Ergebnisse (Texte, Robustheit), `Y` bei neuen Funktionen oder anderer
+  Bewertung (Erreichbarkeit, Priorität, Relevanz), `X` bei inkompatiblen Änderungen der Schnittstelle
+  (Rückgabewerte, `ERGEBNIS: …`, Optionen, Schritte für Admins). Nur Tests oder Doku: keine neue Version.
+  Gibt es seit dem letzten Tag schon eine Erhöhung, die noch nicht veröffentlicht ist, nicht erneut erhöhen.
+  Bei jeder Änderung an Code oder Installation in der Antwort nennen, welche Version gesetzt wurde und warum.
 - **Beispiele:** `test_installation.py` verlangt, dass `beispiele/` mit der aktuellen `VERSION` erzeugt ist.
   Nie von Hand bearbeiten, sondern mit `sudo bash beispiele/erzeugen.sh` neu erzeugen, und zwar im selben PR,
   der `VERSION` oder das Format der Berichte ändert.

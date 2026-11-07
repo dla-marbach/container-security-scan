@@ -567,9 +567,12 @@ sudo env REPO=/tmp/css.bundle bash installation/installieren.sh $V && sudo /usr/
 ### Releases
 
 Server installieren nur Releases: Git-Tags `vX.Y.Z` auf `main`. Die Version steht nur in `VERSION` am Anfang
-von `container-security-scan.py`; Installscript, Wrapper und README nennen sie nicht. Ein Release:
+von `container-security-scan.py`; Installscript, Wrapper und README nennen sie nicht. Jeder Pull Request, der
+`container-security-scan.py` oder `installation/` ändert, erhöht `VERSION` und wird nach dem Merge ein
+Release: `Z` bei Korrekturen ohne Einfluss auf Ergebnisse, `Y` bei neuen Funktionen oder anderer Bewertung,
+`X` bei inkompatiblen Änderungen (Rückgabewerte, `ERGEBNIS: …`, Optionen, Schritte für Admins). Ein Release:
 
-1. Per Pull Request nach `main`: `VERSION` erhöhen und die [Beispiele neu erzeugen](#entwicklung-und-tests).
+1. Im Pull Request nach `main`: `VERSION` erhöhen und die [Beispiele neu erzeugen](#entwicklung-und-tests).
 2. Nach dem Merge den Merge-Commit taggen (signiert, wenn möglich) und den Tag pushen:
 
    ```bash

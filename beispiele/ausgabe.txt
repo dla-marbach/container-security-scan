@@ -1,4 +1,5 @@
-container-security-scan 0.1.0
+container-security-scan 0.2.0
+Host: WARNUNG: Prozesse auf dem Host nicht vollständig lesbar (1; Skript nicht als root?) – Reverse Proxys auf dem Host ggf. nicht erkannt
 Erfasse Container 'app-proxy' ...
 Abgleich mit OSV-Daten daten ...
 app-proxy: RELEVANTE SCHWACHSTELLEN – 2 Befunde, davon 1 relevant (1 neu); öffentlich: nginx:80 – Bericht: beispiele/scan_app-proxy.md
