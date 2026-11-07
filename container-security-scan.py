@@ -79,7 +79,7 @@ from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
@@ -162,7 +162,9 @@ OSV_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:+-]*")
 
 
 def log(msg):
+    # sofort ausgeben: Python < 3.9 puffert stderr in einer Pipe (Wrapper: 2>&1 | tee) bis zum Ende
     sys.stderr.write(msg + "\n")
+    sys.stderr.flush()
 
 
 def run(cmd, input=None, binary=False, stderr=False, timeout=None):
@@ -1551,6 +1553,8 @@ def collect_web(c, procs):
     # Container im selben Netzwerk-Namespace (network_mode: container:/service:): lauschen auf denselben Ports
     web["netz_gruppe"] = netz_gruppe(c.info, infos)
     web["loopback"] = loopback_gruppe(c.info, infos)
+    if web["host_network"]:
+        web["loopback_ziele"] = loopback_ziele(loopback_ports(web), infos, name_von(c.info))
     for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
         web["label_ziele"][proxy] = label_ziele(proxy, infos)
     web["containers"] = container_index(infos)
@@ -1606,6 +1610,12 @@ def webserver_lesen(c, procs, web):
 def resolve_backend(target, web, self_name, depth=0):
     """Backend-Ziel (http://app:3000, fcgi://php:9000, upstream-Name) einem Container zuordnen."""
     host = re.sub(r"^[a-z]+://", "", target).split("/")[0]
+    port = split_target(target)[1]
+    if not target.startswith("unix:") and re.match(r"(localhost|127\.|\[::1\])", host) \
+            and port in web.get("loopback_ziele", {}):
+        ziele = [x for x in web["loopback_ziele"][port] if x[0] != self_name]
+        return target + (" -> " + ", ".join("Container %s, Port %s" % x for x in ziele) if ziele else
+                         " (%s)" % ("Host" if self_name == "Host" else "Host bzw. gleicher Container"))
     if target.startswith("unix:") or re.match(r"(localhost|127\.|\[::1\])", host):
         mit = [] if target.startswith("unix:") else web.get("loopback", [])
         return target + " (%s%s)" % ("Host" if self_name == "Host" else "gleicher Container",
@@ -1667,9 +1677,93 @@ def backend_containers(target, web, depth=0, nur_loopback=False):
     if host in web["containers"]:
         return [] if nur_loopback else [(web["containers"][host], port)]
     if re.match(r"(localhost|127\.|::1$)", host):
+        if port in web.get("loopback_ziele", {}):     # zugeordnet: veröffentlichter Port bzw. lauschender Prozess
+            ziele = web["loopback_ziele"][port]
+            return [x for x in ziele if x[0] in web.get("loopback", [])] if nur_loopback else ziele
         mit = [(ct, port) for ct in web.get("loopback", [])]
         return mit if nur_loopback else [(web["self"], port)] + mit
     return []
+
+
+def loopback_ports(web):
+    """TCP-Ports der Backend-Ziele per 127.0.0.1/localhost (auch in upstream-Blöcken)."""
+    ports = set()
+
+    def walk(t, depth=0):
+        host, port = split_target(t)
+        if host in web["upstreams"] and depth < 3:
+            for u in web["upstreams"][host]:
+                walk(u, depth + 1)
+        elif re.match(r"(localhost|127\.|::1$)", host) and port.isdigit():
+            ports.add(port)
+    for targets in web["backends"].values():
+        for t in targets:
+            walk(t)
+    return ports
+
+
+def loopback_ziele(ports, infos, self_name, proc="/proc"):
+    """Ziele per 127.0.0.1/localhost im Netzwerk-Namespace des Hosts (Proxy auf dem Host oder in einem Container im
+    Host-Netzwerk) zuordnen: {Port: [(Container, Port im Container)]}. Zuerst ein auf Loopback oder allen Adressen
+    veröffentlichter Port eines Containers (Docker leitet weiter), sonst der Prozess, der auf dem Port lauscht
+    (Container nach cgroup, sonst self_name: Host bzw. der Container selbst). Nicht eindeutig zuordenbare Ports
+    fehlen; für sie gilt weiter: alle Container mit demselben Loopback."""
+    veroeffentlicht = defaultdict(list)
+    for d in infos:
+        for cport, bindings in ((d.get("NetworkSettings") or {}).get("Ports") or {}).items():
+            if not cport.endswith("/tcp"):
+                continue
+            for b in bindings or []:
+                if (b.get("HostIp") or "0.0.0.0") in ("0.0.0.0", "::", "127.0.0.1", "::1") and b.get("HostPort"):
+                    veroeffentlicht[b["HostPort"]].append((name_von(d), cport.split("/")[0]))
+    ziele = OrderedDict((port, list(OrderedDict.fromkeys(veroeffentlicht[port])))
+                        for port in sorted(ports, key=int) if veroeffentlicht.get(port))
+    besitzer = socket_besitzer([port for port in ports if port not in ziele], infos, proc)
+    for port in sorted(besitzer, key=int):
+        ziele[port] = [(besitzer[port] or self_name, port)]
+    return ziele
+
+
+def socket_besitzer(ports, infos, proc="/proc"):
+    """Wer lauscht im eigenen Netzwerk-Namespace (dem des Hosts) auf Loopback oder allen Adressen auf diesen
+    TCP-Ports? {Port: Containername oder None für den Host}; nur eindeutige, vollständig lesbare Zuordnungen."""
+    inodes = {}
+    for name in ("tcp", "tcp6"):
+        try:
+            with open(os.path.join(proc, "net", name)) as f:
+                lines = f.read().splitlines()[1:]
+        except OSError:
+            continue
+        for line in lines:
+            f = line.split()
+            if len(f) > 9 and f[3] == "0A" and ":" in f[1]:
+                addr, port = f[1].split(":")
+                port = str(int(port, 16))
+                if port in ports and decode_addr(addr) in ("alle", "localhost") and f[9] != "0":
+                    inodes[f[9]] = port
+    if not inodes:
+        return {}
+    ids = [(d["Id"], name_von(d)) for d in infos if d.get("Id")]
+    besitzer, gefunden = defaultdict(set), set()
+    for pid in (x for x in os.listdir(proc) if x.isdigit()):
+        try:
+            links = [os.readlink(os.path.join(proc, pid, "fd", fd)) for fd in os.listdir(os.path.join(proc, pid, "fd"))]
+        except OSError:          # nicht lesbar oder beendet
+            continue
+        treffer = {inodes[l[8:-1]] for l in links if l.startswith("socket:[") and l[8:-1] in inodes}
+        if not treffer:
+            continue
+        gefunden |= {i for i, port in inodes.items() if port in treffer}
+        try:
+            with open(os.path.join(proc, pid, "cgroup")) as f:
+                cgroup = f.read()
+        except OSError:
+            cgroup = None
+        for port in treffer:
+            besitzer[port].add("?" if cgroup is None else next((n for i, n in ids if i in cgroup), None))
+    # jeder lauschende Socket des Ports muss einem lesbaren Prozess gehören
+    offen = {port for i, port in inodes.items() if i not in gefunden}
+    return {port: next(iter(b)) for port, b in besitzer.items() if len(b) == 1 and "?" not in b and port not in offen}
 
 
 def npm_root(d):
@@ -3267,6 +3361,7 @@ def host_proxys(infos):
                nachbarn=sorted(name_von(d) for d in infos if netze_von(spender_von(d, infos) or d)),
                loopback=sorted(name_von(d) for d in infos if im_host_netz(d, infos)))
     webserver_lesen(Host(), procs, web)
+    web["loopback_ziele"] = loopback_ziele(loopback_ports(web), infos, "Host")
     for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
         web["label_ziele"][proxy] = label_ziele(proxy, infos)
     services = mark_usage([], procs, {}, web)

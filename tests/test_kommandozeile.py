@@ -36,6 +36,14 @@ class Kommandozeile(unittest.TestCase):
                            env=e, cwd=self.tmp, timeout=120)
         return p.returncode, p.stdout.decode("utf-8", "replace") + p.stderr.decode("utf-8", "replace")
 
+    def test_meldungen_sofort_auf_stderr(self):
+        # Python < 3.9 puffert stderr in einer Pipe (Wrapper: 2>&1 | tee) bis zum Ende: Fortschrittsmeldungen
+        # stünden sonst gesammelt hinter den Ergebnissen
+        err = mock.Mock()
+        with mock.patch.object(scanner.sys, "stderr", err):
+            scanner.log("Erfasse Container 'app' ...")
+        self.assertEqual(err.method_calls, [mock.call.write("Erfasse Container 'app' ...\n"), mock.call.flush()])
+
     def test_hilfe(self):
         rc, out = self.aufruf("--help")
         self.assertEqual(rc, 0)

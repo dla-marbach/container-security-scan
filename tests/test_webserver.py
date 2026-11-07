@@ -1,4 +1,5 @@
 """Webserver-Konfiguration (nginx, Apache), veröffentlichte Ports, Backends in anderen Containern."""
+import io
 import os
 import shutil
 import tempfile
@@ -294,8 +295,10 @@ class HostProxys(unittest.TestCase):
         # Ziel über Loopback: Container im Host-Netzwerk, die dort lauschen (nicht die übrigen)
         hostnetz = inspect("hostnetz", mode="host")
         conf_lo = "http { server { listen 443; location /gvp/ { proxy_pass http://127.0.0.1:7777; } } }"
+        # (lauschender Prozess nicht zuordenbar: alle Container im Host-Netzwerk)
         with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 0)), \
                 mock.patch.object(scanner, "run", return_value=(0, procs)), \
+                mock.patch.object(scanner, "socket_besitzer", return_value={}), \
                 mock.patch.object(scanner.Host, "exec", return_value=(0, conf_lo)):
             ziele, services, warnings, problems = scanner.host_proxys(infos + [hostnetz])
         self.assertEqual(ziele, [("hostnetz", "7777", "nginx:443 auf dem Host (über Loopback)")])
@@ -310,6 +313,78 @@ class HostProxys(unittest.TestCase):
         self.assertEqual(ziele, [("app", "*", "nginx:443 auf dem Host"), ("db", "*", "nginx:443 auf dem Host")])
         self.assertIn("nicht vollständig lesbar (2;", warnings[0])
         self.assertIn("Weiterleitungen von nginx:443 auf dem Host nicht vollständig auswertbar", warnings[1])
+
+    def test_host_proxys_loopback_zugeordnet(self):
+        # nginx auf dem Host vor mehreren Containern per 127.0.0.1: jeder Port nur bei dem Container, der dort
+        # lauscht bzw. ihn auf Loopback veröffentlicht – nicht alle Ports bei allen Containern im Host-Netzwerk
+        infos = [inspect("gvp", mode="host"), inspect("selfreg", mode="host"), inspect("leer", mode="host"),
+                 inspect("regdido", ["back"], ports={"7776/tcp": [{"HostIp": "127.0.0.1", "HostPort": "7776"}]}),
+                 inspect("extern", ["back"], ports={"3000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]})]
+        procs = ("P\t10\t/usr/sbin/nginx\t/\tnginx: master process /usr/sbin/nginx\t0:0\t1\nS\t10\t5\n"
+                 "T\t5\t00000000:01BB\ttcp\n")
+        conf = ("http { upstream reg { server 127.0.0.1:7776; } server { listen 443; "
+                "location /gvp/ { proxy_pass http://127.0.0.1:7777; } location /selfreg/ { proxy_pass http://localhost:7775; } "
+                "location /reg/ { proxy_pass http://reg; } location /x/ { proxy_pass http://127.0.0.1:8000; } "
+                "location /h/ { proxy_pass http://127.0.0.1:7443; } } }")
+        with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 0)), \
+                mock.patch.object(scanner, "run", return_value=(0, procs)), \
+                mock.patch.object(scanner, "socket_besitzer",
+                                  return_value={"7777": "gvp", "7775": "selfreg", "7443": None}) as sb, \
+                mock.patch.object(scanner.Host, "exec", return_value=(0, conf)):
+            ziele, services, warnings, problems = scanner.host_proxys(infos)
+        # veröffentlichte Ports werden nicht mehr nach dem lauschenden Prozess gesucht
+        self.assertEqual(sorted(sb.call_args[0][0]), ["7443", "7775", "7777"])
+        self.assertEqual(sorted(ziele), [("extern", "3000", "nginx:443 auf dem Host"),
+                                         ("gvp", "7777", "nginx:443 auf dem Host (über Loopback)"),
+                                         ("regdido", "7776", "nginx:443 auf dem Host"),
+                                         ("selfreg", "7775", "nginx:443 auf dem Host (über Loopback)")])
+        self.assertIn("Backend http://127.0.0.1:7777 -> Container gvp, Port 7777", services[0]["description"])
+        self.assertIn("Backend http://127.0.0.1:8000 -> Container extern, Port 3000", services[0]["description"])
+        self.assertIn("Backend http://127.0.0.1:7443 (Host)", services[0]["description"])
+        self.assertEqual((warnings, problems), ([], []))
+        ausgabe = io.StringIO()
+        with mock.patch.object(scanner.sys, "stdout", ausgabe):
+            scanner.host_ausgeben(services, warnings, problems)
+        self.assertIn("gvp (7777)", ausgabe.getvalue())
+        self.assertIn("regdido (7776)", ausgabe.getvalue())
+        self.assertNotIn("leer", ausgabe.getvalue())
+
+    def test_socket_besitzer(self):
+        # lauschende Sockets des Host-Netzwerks per Inode einem Prozess und dessen cgroup zuordnen
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        os.mkdir(os.path.join(tmp, "net"))
+        kopf = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+        zeile = "   0: %s 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 %s 1 0 100 0 0 10 0\n"
+        with open(os.path.join(tmp, "net", "tcp"), "w") as f:
+            f.write(kopf + zeile % ("0100007F:1E61", "101")      # 127.0.0.1:7777 – Container gvp
+                    + zeile % ("00000000:1D13", "102")             # *:7443 – Host
+                    + zeile % ("0100007F:1E5E", "103")             # 127.0.0.1:7774 – Prozess nicht lesbar
+                    + zeile % ("0100007F:1E5F", "104")             # 127.0.0.1:7775 – zwei Besitzer
+                    + zeile % ("0500000A:1E60", "105")             # 10.0.0.5:7776 – nicht über Loopback
+                    + zeile.replace(" 0A ", " 01 ") % ("0100007F:1E62", "106"))   # 7778: keine Verbindung
+        with open(os.path.join(tmp, "net", "tcp6"), "w") as f:
+            f.write(kopf + zeile % ("00000000000000000000000001000000:1E61", "107"))   # [::1]:7777 – gvp
+        ids = {"gvp": "a" * 64, "selfreg": "b" * 64}
+        for pid, cgroup, inodes in (("20", "0::/system.slice/docker-%s.scope\n" % ids["gvp"], ["101", "107"]),
+                                    ("21", "0::/system.slice/nginx.service\n", ["102"]),
+                                    ("22", "0::/system.slice/docker-%s.scope\n" % ids["selfreg"], ["104"]),
+                                    ("23", "0::/system.slice/other.service\n", ["104", "105", "106"])):
+            os.makedirs(os.path.join(tmp, pid, "fd"))
+            for n, inode in enumerate(inodes):
+                os.symlink("socket:[%s]" % inode, os.path.join(tmp, pid, "fd", str(n)))
+            with open(os.path.join(tmp, pid, "cgroup"), "w") as f:
+                f.write(cgroup)
+        infos = [inspect(n, mode="host", cid=i) for n, i in sorted(ids.items())]
+        self.assertEqual(scanner.socket_besitzer(["7777", "7443", "7774", "7775", "7776", "7778"], infos, proc=tmp),
+                         {"7777": "gvp", "7443": None})
+        # Ziele im Host-Netzwerk: veröffentlichter Port vor lauschendem Prozess; aus Sicht des Hosts bzw. eines
+        # Containers im Host-Netzwerk
+        infos.append(inspect("reg", ["back"], ports={"7776/tcp": [{"HostIp": "0.0.0.0", "HostPort": "7443"}],
+                                                     "53/udp": [{"HostIp": "127.0.0.1", "HostPort": "7777"}]}))
+        self.assertEqual(scanner.loopback_ziele({"7777", "7443", "7774"}, infos, "Host", proc=tmp),
+                         {"7443": [("reg", "7776")], "7777": [("gvp", "7777")]})
+        self.assertEqual(scanner.loopback_ziele({"7777"}, infos[:2], "gvp", proc=tmp), {"7777": [("gvp", "7777")]})
 
     def test_host_exec_mit_benutzer_des_masters(self):
         h = scanner.Host()

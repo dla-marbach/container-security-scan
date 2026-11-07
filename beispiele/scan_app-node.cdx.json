@@ -1,16 +1,16 @@
 {
  "bomFormat": "CycloneDX",
  "specVersion": "1.5",
- "serialNumber": "urn:uuid:5d56f098-24b5-49ee-90a0-9f67d6651705",
+ "serialNumber": "urn:uuid:cb68d00b-9e63-4674-a899-1585aeab63dd",
  "version": 1,
  "metadata": {
-  "timestamp": "2026-11-07T21:15:54Z",
+  "timestamp": "2026-11-07T22:08:00Z",
   "tools": {
    "components": [
     {
      "type": "application",
      "name": "container-security-scan.py",
-     "version": "0.2.0"
+     "version": "0.2.1"
     }
    ]
   },
@@ -26,7 +26,7 @@
     },
     {
      "name": "container-security-scan:container-id",
-     "value": "c50e26e09beab00ac7f7cdf11a7d1edde416ce6062096e76ba4d203e2265c32a"
+     "value": "75b762c33f8e174d706f031a94b591fc1293c51ca3545d92e8d6e8e2b83781a5"
     },
     {
      "name": "container-security-scan:repo-digest",
