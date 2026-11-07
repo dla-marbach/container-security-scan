@@ -3,7 +3,7 @@
 ```bash
 python3 -m unittest discover -s tests                                        # Unit-Tests, ohne Docker (ca. 1 s)
 CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit echten Containern (Daten unter daten/)
-CSS_RELEASE_TESTS=1 python3 -m unittest discover -s tests -p test_installation.py# Installscript gegen die Releases (volle Git-Historie)
+CSS_RELEASE_TESTS=1 python3 -m unittest discover -s tests -p test_installation.py   # Installscript gegen die Releases (volle Git-Historie)
 ```
 
 | Datei | Prüft |
