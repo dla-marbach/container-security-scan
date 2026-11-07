@@ -10,7 +10,8 @@ Szenario (Lauf mit --alle-container):
 - Gateway in Node.js (veröffentlichter Port): Ziel-URL in der Umgebung (API_URL), offene Verbindungen zu einem
   weiteren Dienst und zu Redis – die Ziele gelten als öffentlich, Redis nicht (Datenbank/Cache)
 - nur wenn nginx auf dem Host installiert ist: nginx direkt auf dem Host (eigene Konfiguration, ohne root)
-  vor Node.js über die Container-IP, ohne veröffentlichten Port
+  vor Node.js über die Container-IP, ohne veröffentlichten Port, und über 127.0.0.1 vor Node.js in einem
+  Container im Host-Netzwerk, das nur auf Loopback lauscht
 Geprüft werden Rückgabewert, Erreichbarkeit, Berichte, EOL-Warnungen und dass der Scan im Container nichts
 verändert (docker diff).
 """
@@ -39,6 +40,7 @@ GATEWAY = ("require('http').createServer((q, r) => r.end('ok')).listen(3007);"
            " s.on('error', () => {}); s.on('close', () => setTimeout(() => verbinde(port, host), 500)); };"
            "verbinde(3009, '%s'); verbinde(6379, '%s');")
 NODE_SERVER = "require('http').createServer((q, r) => r.end('ok')).listen(%d)"
+LOOPBACK_PORT = 18100       # Node im Host-Netzwerk, nur auf 127.0.0.1 (Port des Hosts, daher nicht < 10000)
 HOST_NGINX = shutil.which("nginx") or next((p for p in ("/usr/sbin/nginx", "/usr/local/sbin/nginx") if os.path.exists(p)), None)
 
 
@@ -59,6 +61,7 @@ class Integration(unittest.TestCase):
         cls.vpn, cls.mit = cls.id + "-vpn", cls.id + "-mit"
         cls.inet, cls.intern = cls.id + "-i", cls.id + "-intern"
         cls.hnet, cls.hinterhost = cls.id + "-h", cls.id + "-hinterhost"
+        cls.hostlo = cls.id + "-hostlo"
         cls.gnet, cls.gw, cls.api, cls.ziel, cls.redis = (cls.id + x for x in ("-g", "-gw", "-api", "-ziel", "-redis"))
         conf = os.path.join(cls.tmp, "proxy.conf")
         with open(conf, "w") as f:
@@ -94,7 +97,11 @@ class Integration(unittest.TestCase):
         cls.alle = (cls.node, cls.varnode, cls.proxy, cls.label, cls.nachbar, cls.traefik, cls.vpn, cls.mit, cls.intern,
                     cls.hinterhost, cls.api, cls.ziel, cls.redis, cls.gw)
         cls.host_nginx = None
-        if HOST_NGINX:      # nginx auf dem Host vor hinterhost, über dessen IP (wie ein Proxy außerhalb von Docker)
+        if HOST_NGINX:      # nginx auf dem Host vor hinterhost, über dessen IP (wie ein Proxy außerhalb von Docker),
+            # und vor hostlo (Host-Netzwerk, nur Loopback) über 127.0.0.1
+            docker("run", "-d", "--name", cls.hostlo, "--network", "host", NODE_IMAGE, "node", "-e",
+                   (NODE_SERVER % LOOPBACK_PORT)[:-1] + ", '127.0.0.1')")
+            cls.alle += (cls.hostlo,)
             ip = docker("inspect", "-f", "{{(index .NetworkSettings.Networks \"%s\").IPAddress}}" % cls.hnet,
                         cls.hinterhost).strip()
             hconf = os.path.join(cls.tmp, "host-nginx.conf")
@@ -102,8 +109,9 @@ class Integration(unittest.TestCase):
                 f.write("pid {t}/host-nginx.pid; error_log {t}/host-nginx.log; events {{}}\n"
                         "http {{ access_log off; client_body_temp_path {t}/cb; proxy_temp_path {t}/pt;\n"
                         "  fastcgi_temp_path {t}/ft; uwsgi_temp_path {t}/ut; scgi_temp_path {t}/st;\n"
-                        "  server {{ listen 18099; location / {{ proxy_pass http://{ip}:3006; }} }} }}\n"
-                        .format(t=cls.tmp, ip=ip))
+                        "  server {{ listen 18099; location / {{ proxy_pass http://{ip}:3006; }}\n"
+                        "    location /lo/ {{ proxy_pass http://127.0.0.1:{lo}; }} }} }}\n"
+                        .format(t=cls.tmp, ip=ip, lo=LOOPBACK_PORT))
             cls.host_nginx = subprocess.Popen([HOST_NGINX, "-c", hconf, "-e", os.path.join(cls.tmp, "host-nginx.log"),
                                                "-g", "daemon off;"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         cls.bereit()
@@ -131,7 +139,8 @@ class Integration(unittest.TestCase):
             antwort.append("ok" if all(re.search(r":%s 01 " % p, tcp) for p in ("0BC1", "18EB")) else tcp)
             if cls.host_nginx:
                 try:
-                    antwort.append(urllib.request.urlopen("http://127.0.0.1:18099/", timeout=5).read().decode())
+                    antwort += [urllib.request.urlopen("http://127.0.0.1:18099" + pfad, timeout=5).read().decode()
+                                for pfad in ("/", "/lo/")]
                 except OSError:
                     antwort.append("")
             diff = [cls.diff(c) for c in cls.alle]
@@ -185,6 +194,10 @@ class Integration(unittest.TestCase):
         self.assertIn("Host: nginx:18099 auf dem Host – erreichbar; Ziele in Containern: %s (3006)" % self.hinterhost,
                       self.ausgabe)
         self.assertIn("Port 3006/tcp (alle) öffentlich über nginx:18099 auf dem Host", self.bericht(self.hinterhost))
+        # Container im Host-Netzwerk, nur auf Loopback: über proxy_pass http://127.0.0.1:… trotzdem erreichbar
+        self.assertIn("%s (%d)" % (self.hostlo, LOOPBACK_PORT), self.ausgabe)
+        self.assertIn("Port %d/tcp (localhost) lauscht nur auf Loopback, öffentlich über nginx:18099 auf dem Host "
+                      "(über Loopback)" % LOOPBACK_PORT, self.bericht(self.hostlo))
 
     def test_aufrufe_eines_gateways(self):
         gw = self.bericht(self.gw)

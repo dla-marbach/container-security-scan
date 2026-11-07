@@ -257,6 +257,19 @@ class Gesamtlauf(unittest.TestCase):
         self.lauf(via={"8080": ["nginx:80 in proxy"]})
         self.assertIn("WARNUNG: Prozess zu Port 8080 nicht ermittelbar", self.konsole)
 
+    def test_loopback_ziel(self):
+        # nginx auf dem Host vor 127.0.0.1:7777, Container im Host-Netzwerk lauscht dort nur auf Loopback: P1
+        code, _, base = self.lauf(ports={"7777": "localhost"}, published={}, host_network=True,
+                                  via={"7777": ["nginx:443 auf dem Host (über Loopback)"]})
+        with open(base + ".md", encoding="utf-8") as f:
+            bericht = f.read()
+        self.assertIn("Port 7777/tcp (localhost) lauscht nur auf Loopback, öffentlich über nginx:443 auf dem Host", bericht)
+        self.assertEqual(code, 1)
+        # Ziel über Loopback, auf dem hier nichts lauscht (anderer Container im Host-Netzwerk, der Host selbst):
+        # kein "unbekannter Dienst"
+        self.lauf(via={"9000": ["nginx:443 auf dem Host (über Loopback)"]})
+        self.assertNotIn("nicht ermittelbar", self.konsole)
+
     def test_warnung_bei_unklaren_weiterleitungen(self):
         self.lauf(nachbarn=["shop"], backends={"/usr/sbin/nginx": ["http://$host"]})
         self.assertIn("app: WARNUNG: Weiterleitungen von nginx:80 nicht vollständig auswertbar (Ziel http://$host) – "

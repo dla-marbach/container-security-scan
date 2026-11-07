@@ -185,8 +185,10 @@ gewertet. Das Ergebnis hängt nur von der Docker-Konfiguration ab, nicht vom Net
 internen Netz mit derselben Konfiguration findet dieselben relevanten Funde wie die Produktion.
 
 Grundsatz: **im Zweifel erreichbar.** Als intern gilt ein Dienst nur, wenn der Weg dorthin vollständig
-bekannt ist. Ein Dienst, der nur auf Loopback lauscht (127.0.0.1, ::1), ist nie erreichbar. Sonst gilt er als
-erreichbar, wenn eine der folgenden Bedingungen zutrifft:
+bekannt ist. Ein Dienst, der nur auf Loopback lauscht (127.0.0.1, ::1), ist nur über einen Proxy mit demselben
+Loopback erreichbar: im Host-Netzwerk ein Proxy auf dem Host oder in einem anderen Container im Host-Netzwerk,
+sonst einer im selben Netzwerk-Namespace (`proxy_pass http://127.0.0.1:…`); im Bericht `öffentlich über … (über
+Loopback)`. Sonst gilt er als erreichbar, wenn eine der folgenden Bedingungen zutrifft:
 
 | Weg | Erkennung |
 |---|---|
@@ -196,7 +198,7 @@ erreichbar, wenn eine der folgenden Bedingungen zutrifft:
 | gemeinsamer Netzwerk-Namespace | `network_mode: container:…`/`service:…` (z. B. VPN- oder Sidecar-Container): es gelten die Ports des Spenders; ein Ziel des Spenders wird an alle Container dieses Namespace weitergegeben |
 | hinter einem erreichbaren nginx/Apache | Backends aus `nginx -T` bzw. der Apache-Konfiguration (`proxy_pass`, `fastcgi_pass`, `upstream`, `ProxyPass`, `SetHandler proxy:`), auch über mehrere Proxys und Variablen aus `set`/`map`; Ziele per Container-Name, Alias, Compose-Dienst oder IP |
 | hinter einem erreichbaren Traefik bzw. caddy-docker-proxy | Ziele aus Docker-Labels (`traefik.*.services.*.loadbalancer.server.port`, `caddy.reverse_proxy: {{upstreams …}}`) |
-| hinter einem Reverse Proxy **direkt auf dem Host** | nginx/Apache außerhalb von Docker (Programm mit dem Wurzelverzeichnis des Hosts, nicht in der cgroup eines Containers), das nicht nur auf Loopback lauscht: Konfiguration wie oben, Ziele über die Container-IP (z. B. `proxy_pass http://172.18.0.5:3000`). Ergebnis auf der Konsole als `Host: …`; gilt auch für den Einzelscan |
+| hinter einem Reverse Proxy **direkt auf dem Host** | nginx/Apache außerhalb von Docker (Programm mit dem Wurzelverzeichnis des Hosts, nicht in der cgroup eines Containers), das nicht nur auf Loopback lauscht: Konfiguration wie oben, Ziele über die Container-IP (z. B. `proxy_pass http://172.18.0.5:3000`), bei Containern im Host-Netzwerk über `127.0.0.1`. Ergebnis auf der Konsole als `Host: …`; gilt auch für den Einzelscan |
 | aufgerufen von einer erreichbaren Anwendung | z. B. API-Gateway oder php-fpm hinter nginx im selben Container: Ziel-URLs (`http(s)://`, `ws(s)://`, `grpc(s)://`) auf andere Container in Umgebung oder Kommandozeile sowie beim Scan offene TCP-Verbindungen. Datenbanken, Caches und Message Broker als Ziel zählen nicht. Im Bericht als `Aufruf: Container …, Port … (Quelle)`, ohne Werte der Umgebung |
 | hinter einem Tunnel-Agenten | cloudflared, frpc, ngrok, chisel – im Container oder auf dem Host: leiten Verkehr von außen weiter, ohne zu lauschen; gelten immer als erreichbar und nicht auswertbar (siehe nächste Zeile). Container mit einem solchen Image bzw. Befehl werden vorgezogen |
 | **möglicherweise** erreichbar | Container im selben Docker-Netz wie ein erreichbarer Dienst, dessen Weiterleitungen nicht vollständig bekannt sind: Traefik, Caddy, HAProxy, Envoy, Varnish u. a. (Konfiguration wird nicht ausgewertet; Labels geben nur einen Teil der Ziele an), nginx-Ziel mit nicht auflösbarer Variable (`proxy_pass http://$host`), nicht lesbare nginx-Konfiguration, veröffentlichter Port ohne erkennbaren Prozess. Bei einem solchen Dienst auf dem Host oder im Host-Netzwerk: alle Container mit einem Docker-Netz (der Host erreicht sie über ihre IP). Mit Warnung je Dienst |

@@ -97,8 +97,24 @@ class Dienste(unittest.TestCase):
         self.assertEqual(s["backends"], [("app-api", "8000", "nginx:80,53/udp")])
         self.assertEqual(s["unresolved"], ["http://gone:1", "unix:/run/x.sock"])
 
-    def test_nur_lokal_lauschend_nie_erreichbar(self):
-        # Docker-Portweiterleitung, Proxys in anderen Containern und der Host erreichen Loopback nicht
+    def test_nur_lokal_lauschend_nur_ueber_gemeinsames_loopback(self):
+        # Proxy mit demselben Loopback (z.B. nginx auf dem Host vor einem Container im Host-Netzwerk mit
+        # proxy_pass http://127.0.0.1:7777): erreichbar
+        p = proc(1, "/usr/local/bin/node", ports={"7777": "localhost"})
+        s = self.dienst(p, host_network=True, via_proxy={"7777": ["nginx:443 auf dem Host (über Loopback)"]})
+        self.assertTrue(s["exposed"])
+        self.assertIn("Port 7777/tcp (localhost) lauscht nur auf Loopback, öffentlich über nginx:443 auf dem Host "
+                      "(über Loopback)", s["description"])
+        s = self.dienst(p, via_proxy={"*": ["traefik:443 in proxy (über Loopback)"]})
+        self.assertTrue(s["exposed"])
+        self.assertIn("lauscht nur auf Loopback, möglicherweise öffentlich über", s["description"])
+        # Datenbank als Ziel eines Aufrufs zählt auch über Loopback nicht
+        db = proc(1, "/usr/sbin/mysqld", ports={"3306": "localhost"})
+        self.assertFalse(self.dienst(db, via_proxy={"3306": ["node:3000 (offene Verbindung) in app (über Loopback)"]})
+                         ["exposed"])
+
+    def test_nur_lokal_lauschend_sonst_nie_erreichbar(self):
+        # Docker-Portweiterleitung und Proxys ohne dasselbe Loopback erreichen Loopback nicht
         for addr in ("localhost", "127.0.0.11"):
             p = proc(1, "/usr/sbin/nginx", ports={"80": addr})
             self.assertFalse(self.dienst(p, host_network=True)["exposed"], addr)

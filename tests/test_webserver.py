@@ -189,6 +189,13 @@ class DockerLage(unittest.TestCase):
         self.assertEqual(scanner.netz_gruppe(self.vpn, self.infos), ["mit"])
         self.assertEqual(scanner.netz_gruppe(self.mit, self.infos), ["vpn"])
         self.assertEqual(scanner.netz_gruppe(self.app, self.infos), [])
+        # dasselbe Loopback: Host-Netzwerk (auch über einen Spender im Host-Netzwerk) bzw. gemeinsamer Namespace
+        hostmit = inspect("hostmit", [], mode="container:" + self.hostnetz["Id"])
+        infos = self.infos + [hostmit, inspect("host2", [], mode="host")]
+        self.assertEqual(scanner.loopback_gruppe(self.hostnetz, infos), ["host2", "hostmit"])
+        self.assertEqual(scanner.loopback_gruppe(hostmit, infos), ["host2", "hostnetz"])
+        self.assertEqual(scanner.loopback_gruppe(self.vpn, infos), ["mit"])
+        self.assertEqual(scanner.loopback_gruppe(self.app, infos), [])
         # Docker speichert die volle ID; ältere Angaben per Name
         self.assertIs(scanner.spender_von(inspect("x", mode="container:vpn"), self.infos), self.vpn)
 
@@ -284,6 +291,16 @@ class HostProxys(unittest.TestCase):
             ziele = scanner.host_proxys(infos)[0]
         self.assertEqual(ziele, [("app", "3000", "nginx:443 auf dem Host"),
                                  ("db", "8080", "nginx:443 auf dem Host (offene Verbindung)")])
+        # Ziel über Loopback: Container im Host-Netzwerk, die dort lauschen (nicht die übrigen)
+        hostnetz = inspect("hostnetz", mode="host")
+        conf_lo = "http { server { listen 443; location /gvp/ { proxy_pass http://127.0.0.1:7777; } } }"
+        with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 0)), \
+                mock.patch.object(scanner, "run", return_value=(0, procs)), \
+                mock.patch.object(scanner.Host, "exec", return_value=(0, conf_lo)):
+            ziele, services, warnings, problems = scanner.host_proxys(infos + [hostnetz])
+        self.assertEqual(ziele, [("hostnetz", "7777", "nginx:443 auf dem Host (über Loopback)")])
+        self.assertIn("Backend http://127.0.0.1:7777 (Host; Loopback gemeinsam mit hostnetz)", services[0]["description"])
+        self.assertEqual((warnings, problems), ([], []))
         # variables Ziel: alle Container mit Docker-Netz möglicherweise erreichbar
         conf = "http { server { listen 443; location / { proxy_pass http://$host; } } }"
         with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 2)), \
@@ -390,6 +407,26 @@ class Backends(unittest.TestCase):
         self.assertEqual(scanner.backend_containers("http://[::1]:9000", w), [("proxy", "9000")])
         self.assertIn("-> Container app6", scanner.resolve_backend("http://[fd00::2]:8080", w, "proxy"))
         self.assertIn("(gleicher Container)", scanner.resolve_backend("http://[::1]:9000", w, "proxy"))
+
+    def test_ziele_ueber_gemeinsames_loopback(self):
+        # Host-Netzwerk bzw. gemeinsamer Netzwerk-Namespace: localhost trifft auch die anderen Container dort
+        w = web(upstreams={"u": ["127.0.0.1:7777", "app-api:8000"]}, containers={"app-api": "app-api"},
+                self="proxy", loopback=["app"])
+        self.assertEqual(scanner.backend_containers("http://127.0.0.1:7777", w), [("proxy", "7777"), ("app", "7777")])
+        self.assertEqual(scanner.backend_containers("http://u", w, nur_loopback=True), [("app", "7777")])
+        self.assertEqual(scanner.backend_containers("http://app-api:8000", w, nur_loopback=True), [])
+        self.assertEqual(scanner.resolve_backend("http://localhost:7777", w, "proxy"),
+                         "http://localhost:7777 (gleicher Container; Loopback gemeinsam mit app)")
+        self.assertEqual(scanner.resolve_backend("http://localhost:7777", web(loopback=["app"]), "Host"),
+                         "http://localhost:7777 (Host; Loopback gemeinsam mit app)")
+        nginx = proc(1, "/usr/sbin/nginx", ports={"443": "alle"})
+        s = scanner.mark_usage([], {"1": nginx}, {}, dict(w, published={"443": ["0.0.0.0:443"]},
+                                                          backends={"/usr/sbin/nginx": ["http://u"]}))[0]
+        self.assertEqual(s["backends"], [("app", "7777", "nginx:443 (über Loopback)"), ("app-api", "8000", "nginx:443")])
+        # nicht auswertbares Ziel: auch die Container mit demselben Loopback möglicherweise erreichbar
+        s = scanner.mark_usage([], {"1": nginx}, {}, dict(w, published={"443": ["0.0.0.0:443"]}, nachbarn=["app-api"],
+                                                          backends={"/usr/sbin/nginx": ["http://$host"]}))[0]
+        self.assertEqual(s["backends"], [("app-api", "*", "nginx:443"), ("app", "*", "nginx:443 (über Loopback)")])
 
     def test_upstream_ohne_port(self):
         w = web(upstreams={"b": ["app"]}, containers={"app": "app-c"})
