@@ -361,5 +361,42 @@ class RootDienste(unittest.TestCase):
         self.assertEqual(len(self.warnungen(node, docker_info=(1, ""))), 1)
 
 
+class OffeneDatendienste(unittest.TestCase):
+    """Warnung: Datenbank, Cache oder Message Broker direkt von außerhalb des Hosts erreichbar."""
+    def warnungen(self, p, **kw):
+        return scanner.offene_datendienste({p["pid"]: p}, web(**kw))
+
+    def test_veroeffentlicht(self):
+        pg = proc(1, "/usr/lib/postgresql/17/bin/postgres", ports={"5432": "alle"}, user="999:999")
+        w = self.warnungen(pg, published={"5432": ["0.0.0.0:5432"]})
+        self.assertEqual(w, ["Datenbank/Cache/Message Broker postgres:5432 direkt von außerhalb des Hosts erreichbar "
+                             "(veröffentlicht als 0.0.0.0:5432) – Anwendungen erreichen ihn über das Docker-Netz: Port "
+                             "nicht veröffentlichen (ports: entfernen) oder nur an 127.0.0.1 binden"])
+        # nur an Loopback des Hosts veröffentlicht: nicht von außerhalb des Hosts
+        self.assertEqual(self.warnungen(pg, published={"5432": ["127.0.0.1:5432 (nur lokal – vermutlich hinter "
+                                                                "einem Reverse Proxy auf dem Host)"]}), [])
+        self.assertEqual(self.warnungen(pg, published={"5432": ["::1:5432 (nur lokal)"]}), [])
+
+    def test_host_netzwerk_und_lan(self):
+        redis = proc(1, "/usr/local/bin/redis-server", ports={"6379": "alle"})
+        self.assertIn("(Host-Netzwerk)", self.warnungen(redis, host_network=True)[0])
+        self.assertIn("(im macvlan-Netz mv)", self.warnungen(redis, lan=["macvlan-Netz mv"])[0])
+        # im Host-Netzwerk nur auf Loopback: nicht von außen
+        lokal = proc(1, "/usr/local/bin/redis-server", ports={"6379": "localhost"})
+        self.assertEqual(self.warnungen(lokal, host_network=True), [])
+
+    def test_nur_direkt_und_nur_datendienste(self):
+        pg = proc(1, "/usr/lib/postgresql/17/bin/postgres", ports={"5432": "alle"})
+        # intern, nur als Ziel einer Anwendung oder hinter einem Proxy: keine Warnung
+        self.assertEqual(self.warnungen(pg), [])
+        self.assertEqual(self.warnungen(pg, via_proxy={"5432": ["node:3000 (offene Verbindung) in app"]}), [])
+        self.assertEqual(self.warnungen(pg, via_proxy={"*": ["traefik:443 in proxy"]}), [])
+        node = proc(1, "/usr/local/bin/node", ports={"3000": "alle"})
+        self.assertEqual(self.warnungen(node, published={"3000": ["0.0.0.0:3000"]}), [])
+        es = proc(1, "/opt/java/bin/java", ["java", "-cp", "x", "org.elasticsearch.bootstrap.Elasticsearch"],
+                  ports={"9200": "alle"})
+        self.assertEqual(len(self.warnungen(es, published={"9200": ["0.0.0.0:9200"]})), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

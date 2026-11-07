@@ -2814,6 +2814,29 @@ def root_dienste(c, procs, web):
             for base, ports in found.items()]
 
 
+def offene_datendienste(procs, web):
+    """Warnungen (kein Rückgabewert): Datenbanken, Caches und Message Broker, die direkt von außerhalb des Hosts
+    erreichbar sind – Port an eine Adresse außer Loopback veröffentlicht, Host-Netzwerk oder LAN-Netz. Anwendungen
+    erreichen sie über das Docker-Netz; offen sind sie Ziel von Anmeldeversuchen und Lücken im Protokoll."""
+    found = OrderedDict()   # Programm:Port -> Wege
+    for p in procs.values():
+        if not datendienst(p):
+            continue
+        for port, addr in p["ports"].items():
+            if nur_lokal(addr):
+                continue
+            wege = ["veröffentlicht als " + e.split(" ")[0] for e in web["published"].get(port, [])
+                    if not (nur_lokal(e.split(" ")[0].rpartition(":")[0]) or e.startswith("::1:"))]
+            if web["host_network"]:
+                wege.append("Host-Netzwerk")
+            wege += ["im " + n for n in web.get("lan", [])]
+            if wege:
+                found.setdefault("%s:%s" % (p["base"], port), wege)
+    return ["Datenbank/Cache/Message Broker %s direkt von außerhalb des Hosts erreichbar (%s) – Anwendungen "
+            "erreichen ihn über das Docker-Netz: Port nicht veröffentlichen (ports: entfernen) oder nur an 127.0.0.1 "
+            "binden" % (label, ", ".join(wege)) for label, wege in found.items()]
+
+
 def konf_text(k, fett=""):
     return "%s%s%s: %s" % (fett, k["id"], fett, k["text"])
 
@@ -3076,6 +3099,7 @@ def scan_container(name, a, via_proxy=None):
                 "Container in denselben Docker-Netzen gelten als möglicherweise öffentlich: " + ", ".join(web["nachbarn"])
                 if web.get("nachbarn") else "keine Container in denselben Docker-Netzen"))
     warnings.extend(root_dienste(c, procs, web))
+    warnings.extend(offene_datendienste(procs, web))
     how["warnungen"] = warnings
     konf = konfiguration_pruefen(c)
     ausnahmen_anwenden(konf, getattr(a, "ausnahmen_liste", None) or [], warnings)

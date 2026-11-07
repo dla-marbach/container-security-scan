@@ -259,6 +259,13 @@ CONF-SOCKET       traefik       2027-03-31  liest nur Labels, Umstieg auf Socket
 und php-fpm (Master root, Worker unprivilegiert am selben Port) zählen nicht. Mit userns-remap oder rootless Docker ist root im
 Container nicht root auf dem Host; dann entfällt die Warnung (außer bei `--userns=host`).
 
+**Datenbank direkt erreichbar:** Ist eine Datenbank, ein Cache oder ein Message Broker (PostgreSQL, MySQL/MariaDB,
+Redis, MongoDB, Elasticsearch, RabbitMQ u. a.) direkt von außerhalb des Hosts erreichbar – Port an eine Adresse
+außer Loopback veröffentlicht (z. B. `ports: ["5432:5432"]`), Host-Netzwerk oder LAN-Netz –, erscheint eine
+**Warnung** (kein Rückgabewert). Anwendungen erreichen solche Dienste über das Docker-Netz; Docker öffnet
+veröffentlichte Ports an der Firewall des Hosts vorbei (ufw, oft auch firewalld). Abhilfe: `ports:` entfernen
+oder an `127.0.0.1` binden.
+
 Nicht geprüft werden allgemeine Härtung (no-new-privileges, `cap_drop: ALL`, read-only, Limits, Ports nur
 an bestimmte IPs) und der Docker-Daemon. Geprüft werden die gescannten (laufenden) Container, mit
 `--alle-container` (so im Wrapper) also alle, mit `--oeffentliche` nur die erreichbaren und deren Ziele.
