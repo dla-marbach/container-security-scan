@@ -165,11 +165,14 @@ class Gesamtlauf(unittest.TestCase):
                                               b"Version: 3.0.15-1~deb12u1\n",
                       "/var/lib/dpkg/info/libssl3.list": b"/usr/lib/x86_64-linux-gnu/libssl.so.3\n"}
         self.problems = []
+        self.info = {}
 
     def lauf(self, ports=None):
         nginx = proc(1, "/usr/sbin/nginx", ports=ports or {"80": "alle"}, maps={"/usr/lib/x86_64-linux-gnu/libssl.so.3"})
         w = web(published={"80": ["0.0.0.0:80"]})
-        patches = [mock.patch.object(scanner, "Container", return_value=FakeContainer()),
+        container = FakeContainer()
+        container.info = dict(container.info, **self.info)
+        patches = [mock.patch.object(scanner, "Container", return_value=container),
                    mock.patch.object(scanner, "collect_files", return_value=(dict(self.files), [], "test", list(self.problems))),
                    mock.patch.object(scanner, "collect_procs", return_value=({"1": nginx}, "test")),
                    mock.patch.object(scanner, "probe_runtimes", return_value=[]),
@@ -269,6 +272,51 @@ class Gesamtlauf(unittest.TestCase):
             text = f.read()
         self.assertIn("Nicht gezählt (wären sonst relevant):\n- CVE-2026-9 (HIGH) in libssl3", text)
         self.assertIn("[nicht gezählt: Ausnahme bis 2026-12-31: nicht erreichbar", text)
+
+    def test_gefaehrliche_einstellung_ergibt_1(self):
+        self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2")
+        self.info = {"HostConfig": {"Privileged": True},
+                     "Mounts": [{"Type": "bind", "Source": "/var/run/docker.sock", "Destination": "/var/run/docker.sock",
+                                 "RW": False}]}
+        code, _, base = self.lauf()
+        self.assertEqual(code, 1)
+        with open(base + ".md", encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("**0 relevante Schwachstellen**", text)
+        self.assertIn("**2 gefährliche Einstellungen des Containers**", text)
+        self.assertIn("- **CONF-PRIVILEGED**: --privileged", text)
+        self.assertIn("app: GEFÄHRLICHE EINSTELLUNGEN – 0 Befunde, davon 0 relevant (0 neu), 2 gefährliche Einstellungen;",
+                      self.konsole)
+        self.assertIn("app:   CONF-SOCKET: /var/run/docker.sock eingebunden", self.konsole)
+        self.assertEqual(scanner.json_datei(os.path.join(self.a.ausgabe, "bekannt_app.json")),
+                         [["app", "", "CONF-PRIVILEGED"], ["app", "/var/run/docker.sock", "CONF-SOCKET"]])
+        self.lauf()     # bekannt: nicht neu
+        self.assertNotIn("NEU:", self.konsole)
+        # weiterer Mount mit derselben Kennung ist neu
+        self.info["Mounts"].append({"Type": "bind", "Source": "/run/containerd/containerd.sock", "Destination": "/c",
+                                    "RW": False})
+        self.lauf()
+        self.assertIn("app:   NEU: CONF-SOCKET: /run/containerd/containerd.sock", self.konsole)
+        self.assertNotIn("NEU: CONF-SOCKET: /var/run/docker.sock", self.konsole)
+
+    def test_ausnahme_fuer_einstellung(self):
+        self.info = {"HostConfig": {"PidMode": "host"}, "Mounts": []}
+        self.a.ausnahmen_liste = [{"id": "CONF-PID-HOST", "paket": "app", "bis": scanner.datetime.date(2026, 12, 31),
+                                   "grund": "Monitoring-Agent", "zeile": 1}]
+        self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2")
+        code, _, base = self.lauf()
+        self.assertEqual(code, 0)
+        with open(base + ".md", encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("Gefährliche Einstellungen des Containers (privileged, Docker-Socket, pid=host …): keine gezählt.", text)
+        self.assertIn("Nicht gezählt (wären sonst relevant):\n- CONF-PID-HOST: pid=host: sieht und beeinflusst alle "
+                      "Prozesse des Hosts – Ausnahme bis 2026-12-31: Monitoring-Agent", text)
+
+    def test_root_dienst_ist_nur_warnung(self):
+        self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2")
+        code, _, base = self.lauf()     # nginx:80 als einziger Prozess mit UID 0
+        self.assertEqual(code, 0)
+        self.assertIn("app: WARNUNG: Öffentlicher Dienst nginx:80 läuft als root", self.konsole)
 
     def test_kernel_pakete_im_bericht(self):
         self.files["/var/lib/dpkg/status"] += b"\nPackage: linux-libc-dev\nStatus: install ok installed\nSource: linux\n" \
