@@ -27,6 +27,8 @@ jobs:
 
   docker:
     name: Integrationstest mit Docker
+    # nur bei Pull Requests, auf main und von Hand – nicht bei jedem Push auf einen Branch (ca. 3 Minuten)
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-26.04
     needs: unittest
     steps:

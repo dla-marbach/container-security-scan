@@ -12,7 +12,7 @@ container-security-scan.py   der gesamte Scanner (eine Datei), enthält VERSION
 installation/                Installscript, Wrapper, Vorlage der Ausnahmeliste
 beispiele/                   erzeugte Berichte; umgebung/ = Testumgebung, erzeugen.sh erzeugt sie neu
 tests/                       unittest, eine Datei je Bereich (Übersicht in tests/README.md)
-.github/workflows/           tests.yml (Unit- und Docker-Tests), daten.yml (Daten, täglich)
+.github/workflows/           tests.yml (Unit-Tests; Docker-Test bei PRs und auf main), daten.yml (Daten, täglich)
 ```
 
 Die Daten (OSV-Auszug, EOL, KEV) liegen im Branch `daten` und werden nur von `daten.yml` geschrieben. Lokal

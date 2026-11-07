@@ -541,7 +541,7 @@ CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # m
 
 Was welche Testdatei prüft: [`tests/README.md`](tests/README.md). Die GitHub Action
 [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11, 3.13 und 3.14 (Python des
-Runners, mit dem auch die Daten erzeugt werden) und den Docker-Test aus.
+Runners, mit dem auch die Daten erzeugt werden) aus, den Docker-Test nur bei Pull Requests und auf `main`.
 
 [Beispiele](beispiele/) neu erzeugen – nötig, wenn sich `VERSION` oder das Format der Berichte ändert, im
 selben Pull Request (ein Unit-Test prüft die Version). Startet die Testumgebung
