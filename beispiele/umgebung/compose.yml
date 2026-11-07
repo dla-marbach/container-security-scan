@@ -1,0 +1,41 @@
+# Testumgebung für die Beispiele (beispiele/erzeugen.sh). Öffentliche Images mit festen Versionen:
+# - app-proxy: nginx als öffentlicher Reverse Proxy (Port 8080) vor Node.js und PHP-FPM
+# - app-node: Node.js 22.22.0 (Node2Shell) mit veraltetem npm-Paket, nur über die Proxys erreichbar
+# - app-php: PHP 8.3.30 (PHP2Shell) als PHP-FPM, Anwendung samt vendor/ und jQuery in einem Volume
+# - app-traefik: Traefik (Port 8081) mit Docker-Socket (gefährliche Einstellung CONF-SOCKET), in einem eigenen
+#   Netz mit app-node als Ziel per Label
+# Die Anwendungen sind Platzhalter: nur die Dateien, aus denen der Scanner Name und Version liest.
+name: beispiele
+services:
+  proxy:
+    image: nginx:1.31-alpine
+    container_name: app-proxy
+    ports: ["8080:80"]
+    volumes: ["./nginx.conf:/etc/nginx/conf.d/default.conf:ro"]
+    depends_on: [node, php]     # nginx löst die Backends beim Start auf
+  node:
+    image: node:22.22.0-alpine
+    container_name: app-node
+    working_dir: /app
+    command: ["node", "server.js"]
+    volumes: ["./node:/app:ro"]
+    networks: [default, traefik]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: beispiele_traefik
+      traefik.http.routers.node.rule: "PathPrefix(`/`)"
+      traefik.http.services.node.loadbalancer.server.port: "3000"
+  php:
+    image: php:8.3.30-fpm-bookworm
+    container_name: app-php
+    volumes: ["./php:/srv/app:ro"]
+  traefik:
+    image: traefik:v3.6
+    container_name: app-traefik
+    command: ["--providers.docker=true", "--providers.docker.exposedbydefault=false", "--entrypoints.web.address=:80"]
+    ports: ["8081:80"]
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+    networks: [traefik]
+networks:
+  default:
+  traefik:

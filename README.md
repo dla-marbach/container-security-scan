@@ -30,7 +30,7 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 ## Installation und Betrieb
 
 Das Skript läuft als root, deshalb sind Code und Daten getrennt: Der **Code** ist eine Datei aus einem
-Release, geprüft per SHA-256 und nur von Hand aktualisiert. Die **Daten** (Branch `daten`, nur JSON) holt
+Release (Git-Tag) und wird nur von Hand aktualisiert. Die **Daten** (Branch `daten`, nur JSON) holt
 der Benutzer `csscan` ohne Rechte per `git pull`. Der Wrapper `container-security-scan-lauf` aktualisiert
 die Daten und scannt dann als root – von Hand, per cron oder per Rundeck.
 
@@ -47,107 +47,35 @@ die Daten und scannt dann als root – von Hand, per cron oder per Rundeck.
 Voraussetzungen: Linux mit Docker, Python ≥ 3.6 (SLES 15: `python3`), `git`, `curl`; optional `rpm` (nur für
 RPM-Container ohne eigenes `rpm`).
 
-Das Installscript (zum Einrichten und Aktualisieren) aus dem README **des Releases** kopieren
-(aktuell [v1.0.0](https://github.com/felixlohmeier/container-security-scan/blob/v1.0.0/README.md#1-einrichten)), als
-Datei speichern, lesen, bei Bedarf `PROXY` setzen und ausführen:
+Das Installscript [`installation/installieren.sh`](installation/installieren.sh) (zum Einrichten und
+Aktualisieren) aus dem [aktuellen Release](https://github.com/felixlohmeier/container-security-scan/releases/latest)
+holen, lesen und mit dessen Version ausführen:
 
 ```bash
-sudo bash container-security-scan-installieren.sh
+V=vX.Y.Z      # Version des Releases
+curl -fsSO https://raw.githubusercontent.com/felixlohmeier/container-security-scan/$V/installation/installieren.sh
+less installieren.sh
+sudo bash installieren.sh $V
 ```
 
-Passt die Prüfsumme nicht, bricht es ab, bevor etwas verändert ist. Code und Wrapper ersetzt es jedes Mal;
-Benutzer, Daten und Ausnahmeliste legt es nur an, wenn sie fehlen.
+Es holt den Tag per `git clone` und bricht ab, bevor etwas verändert ist, wenn es kein Tag ist oder die
+Version im Skript nicht passt. Code und [Wrapper](installation/container-security-scan-lauf) ersetzt es jedes
+Mal; Benutzer, Daten und Ausnahmeliste legt es nur an, wenn sie fehlen. Mit Proxy (gilt auch für das
+tägliche `git pull` der Daten): `sudo env https_proxy=http://proxy:3128 bash installieren.sh $V`.
+
+Den Code legt der Tag fest; Tags lassen sich nicht verschieben ([Rulesets](#repository-auf-github-rulesets)).
+Gegen eine Übernahme des GitHub-Kontos hilft keine Angabe aus demselben Repository, sondern nur der Blick auf
+die Änderungen vor jedem Update ([Schritt 5](#5-code-aktualisieren)) und die Signatur des Tags. Wer sie
+prüft, gibt den Commit mit; das Installscript bricht ab, wenn der Tag auf einen anderen zeigt:
 
 ```bash
-#!/bin/bash
-# container-security-scan installieren oder aktualisieren: sudo bash container-security-scan-installieren.sh
-# Ersetzt Code und Wrapper. Legt Benutzer csscan, Daten und Ausnahmeliste an, falls sie fehlen.
-set -euo pipefail
-VERSION=v1.0.0
-SHA256=e6d44db95bab6ce4ab0c881ebbba3cec2fa3aff9fce78c6161acddae81b13ee9
-PROXY=""            # nur mit Proxy, z. B. http://proxy:3128
-
-REPO=felixlohmeier/container-security-scan
-D=/var/lib/container-security-scan
-umask 022
-cd /
-TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
-[ -z "$PROXY" ] || export https_proxy=$PROXY
-
-# Code: nur mit passender Prüfsumme; das Verzeichnis enthält danach nur das Skript
-curl -fsS -o "$TMP/scan.py" "https://raw.githubusercontent.com/$REPO/refs/tags/$VERSION/container-security-scan.py"
-echo "$SHA256  $TMP/scan.py" | sha256sum -c --quiet
-rm -rf /opt/container-security-scan
-install -D -m 755 "$TMP/scan.py" /opt/container-security-scan/container-security-scan.py
-
-# Benutzer csscan und Daten (Branch daten), falls sie fehlen
-id csscan >/dev/null 2>&1 || useradd -r -U -m -d "$D" -s /sbin/nologin csscan
-[ -z "$PROXY" ] || runuser -u csscan -- git config --global http.proxy "$PROXY"
-[ -d "$D/daten" ] || runuser -u csscan -- git clone -q --single-branch --branch daten \
-    "https://github.com/$REPO.git" "$D/daten"
-
-# Wrapper
-sed "s/@VERSION@/$VERSION/" > "$TMP/lauf" <<'LAUF'
-#!/bin/bash
-# container-security-scan @VERSION@ – vom Installscript erzeugt, nicht von Hand ändern.
-# Daten als csscan aktualisieren, dann als root mit dem installierten Code scannen.
-# Aufruf von Hand, per cron (--mail) oder per Rundeck (sudo, ohne Argumente).
-# Von Hand optional genau ein Container (Name oder ID) statt aller: ... [--mail] [container]
-# Ausgabe auf die Konsole und ins Log; letzte Zeile "ERGEBNIS: …"; Rückgabewert 0/1/2 wie das Skript.
-set -u
-PATH=/usr/sbin:/usr/bin:/sbin:/bin
-CODE=/opt/container-security-scan/container-security-scan.py
-D=/var/lib/container-security-scan
-OUT=/var/log/container-security-scan
-AUSNAHMEN=/etc/container-security-scan/ausnahmen.txt   # wird verwendet, wenn vorhanden
-MAIL=nein; [ "${1:-}" = --mail ] && { MAIL=ja; shift; }
-ZIEL=(--alle-container)                 # Standard: alle laufenden Container
-if [ $# -gt 0 ]; then                   # Name/ID wie bei Docker, nie mit "-" am Anfang (sonst Option)
-  [[ $# -eq 1 && $1 =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] \
-      || { echo "FEHLER: Aufruf: $0 [--mail] [container]"; exit 2; }
-  ZIEL=("$1")
-fi
-
-cd / && umask 077                       # Berichte enthalten u. a. Prozess-Kommandozeilen
-exec 9>/run/container-security-scan.lock
-flock -n 9 || { echo "ERGEBNIS: UNVOLLSTAENDIG (Scan läuft bereits) – $(hostname)"; exit 2; }
-mkdir -p "$OUT/berichte"
-LOG=$OUT/$(date +%F_%H%M%S).txt
-ARGS=(--db "$D/daten")
-[ -f "$AUSNAHMEN" ] && ARGS+=(--ausnahmen "$AUSNAHMEN")
-{
-  runuser -u csscan -- git -C "$D/daten" pull --ff-only --quiet \
-      || { echo "FEHLER: Daten nicht aktualisiert (git pull als csscan)"; exit 2; }
-  python3 -I "$CODE" "${ARGS[@]}" --nur-behebbare "${ZIEL[@]}" "$OUT/berichte"
-} 2>&1 | tee "$LOG"
-rc=${PIPESTATUS[0]}
-case $rc in 0) e=OK ;; 1) e=FUNDE ;; *) e=UNVOLLSTAENDIG; rc=2 ;; esac
-echo "ERGEBNIS: $e (Rückgabewert $rc) – $(hostname)" | tee -a "$LOG"
-[ "$MAIL" = ja ] && [ $rc -ne 0 ] && mail -s "container-security-scan $(hostname): $e" root < "$LOG"
-exit $rc
-LAUF
-install -m 755 "$TMP/lauf" /usr/local/sbin/container-security-scan-lauf   # neue Datei: ein laufender Scan bleibt unberührt
-
-# Ausnahmeliste, falls sie fehlt: nur auskommentierte Beispiele
-mkdir -p /etc/container-security-scan
-if [ ! -e /etc/container-security-scan/ausnahmen.txt ]; then
-  cat > /etc/container-security-scan/ausnahmen.txt <<'AUSNAHMEN'
-# Ausnahmeliste für container-security-scan (README: Ausnahmen). Je Zeile: Kennung wie im Bericht,
-# Paket wie in der Spalte "Paket" (bei CONF-… der Containername) oder *, gültig bis, Begründung.
-# Beispiele: zum Verwenden "# " am Zeilenanfang entfernen und anpassen.
-#
-# Kennung         Paket oder *  gültig bis  Begründung
-# CVE-2024-8926   php           2027-06-30  betrifft nur PHP-CGI unter Windows (geprüft 2026-11-05)
-# CVE-2026-107814 mariadb       2027-03-31  betrifft nur die RPM-Pakete von MariaDB, hier Ubuntu-Image
-# CONF-SOCKET     traefik       2027-03-31  Docker-Provider liest Labels über den Socket; Socket-Proxy geplant
-AUSNAHMEN
-fi
-echo "container-security-scan $VERSION installiert. Testlauf: sudo /usr/local/sbin/container-security-scan-lauf"
+git clone -q https://github.com/felixlohmeier/container-security-scan.git /tmp/css && cd /tmp/css
+git verify-tag $V        # Schlüssel des Maintainers vorher importieren: https://github.com/felixlohmeier.gpg
+git checkout -q $V && sudo bash installation/installieren.sh $V "$(git rev-parse HEAD)"
 ```
 
 Die [Ausnahmeliste](#ausnahmen) `/etc/container-security-scan/ausnahmen.txt` enthält anfangs nur
-auskommentierte Beispiele. Sie muss root gehören und nur für root beschreibbar sein.
+auskommentierte [Beispiele](installation/ausnahmen.txt). Sie muss root gehören und nur für root beschreibbar sein.
 
 ### 2. Bei Bedarf von Hand prüfen
 
@@ -209,18 +137,11 @@ nicht Teil des Scans.
 
 ### 5. Code aktualisieren
 
-1. Änderungen ansehen, z. B. `…/compare/v1.0.0...v1.1.0` und die Hinweise im Release. Die installierte
-   Version steht in Zeile 2 des Wrappers (`sed -n 2p /usr/local/sbin/container-security-scan-lauf`).
-2. Das Installscript aus dem README des neuen Releases wie in [Schritt 1](#1-einrichten) ausführen
-   (ggf. `PROXY` wieder eintragen). Daten, Ausnahmeliste und Berichte bleiben.
-
-Prüfsumme unabhängig von GitHubs Weboberfläche nachrechnen:
-
-```bash
-git clone https://github.com/felixlohmeier/container-security-scan.git /tmp/css && cd /tmp/css
-git diff v1.0.0 v1.1.0 -- container-security-scan.py
-git show v1.1.0:container-security-scan.py | sha256sum        # = SHA256 im Installscript von v1.1.0
-```
+1. Änderungen ansehen, z. B. `…/compare/v0.1.0...v0.2.0` und die Hinweise im Release. Die installierte
+   Version nennen jedes Log und jeder Bericht, ebenso
+   `python3 /opt/container-security-scan/container-security-scan.py --version`.
+2. Das Installscript des neuen Releases wie in [Schritt 1](#1-einrichten) holen und ausführen (ggf. mit
+   Proxy). Daten, Ausnahmeliste und Berichte bleiben; eigene Änderungen am Wrapper sind danach ersetzt.
 
 ## Ergebnis verstehen
 
@@ -391,9 +312,9 @@ je Container Warnungen, eine Zusammenfassung mit dem Pfad des Berichts und darun
 neue zuerst:
 
 ```
-app-php830: RELEVANTE SCHWACHSTELLEN – 6963 Befunde, davon 92 relevant (3 neu); öffentlich: apache2:80 – Bericht: …
-app-php830:   NEU: CVE-2026-28780 (CRITICAL) in apache2-bin 2.4.66-1~deb12u1 – behoben in 2.4.67-1~deb12u2 – genutzt von apache2:80
-app-php830:   CVE-2025-14179 (CRITICAL) in php 8.3.30 – behoben in 8.3.31 – genutzt von apache2:80
+app-php: RELEVANTE SCHWACHSTELLEN – 1295 Befunde, davon 65 relevant (2 neu, 4 aktiv ausgenutzt); öffentlich: php-fpm:9000 – Bericht: …
+app-php:   NEU: CVE-2026-111497 (CRITICAL KEV) in libbrotli1 1.0.9-2+b6 – behoben in 1.0.9-2+deb12u1 – genutzt von php-fpm:9000 – aktiv ausgenutzt (KEV seit 2026-10-27)
+app-php:   CVE-2025-14179 (CRITICAL) in php 8.3.30 – behoben in 8.3.31 – genutzt von php-fpm:9000
 …
 ```
 
@@ -407,11 +328,11 @@ Je Container im Ausgabeverzeichnis:
 - `scan_<name>_<zeit>.sha256` – Prüfsummen
 - `bekannt_<name>.json` – relevante Funde des letzten Laufs (für die Markierung „neu“)
 
-Beispiele: [`beispiele/`](beispiele/) – ein Lauf `--oeffentliche --nur-behebbare` über eine Testumgebung
-([Konsolenausgabe](beispiele/ausgabe_oeffentliche.txt)): nginx als öffentlicher Reverse Proxy vor Node,
-Python und PHP-FPM in Nachbarcontainern, PHP 8.3.30 mit Apache (PHP2Shell), Node 22.22.0 nur über den Proxy
-erreichbar (Node2Shell), ein PHP-Container mit eingebettetem jQuery 1.10.2 und Java-Bibliotheken, Solr
-(Ubuntu-basiert, mit aktiv ausgenutzter Lücke in libbrotli1; Bericht vom 5.11. mit den Ubuntu-Daten).
+Beispiele: [`beispiele/`](beispiele/) – ein Lauf `--alle-container --nur-behebbare` über die Testumgebung
+[`beispiele/umgebung/compose.yml`](beispiele/umgebung/compose.yml) ([Konsolenausgabe](beispiele/ausgabe.txt)):
+nginx als öffentlicher Reverse Proxy vor Node.js 22.22.0 (Node2Shell) und PHP 8.3.30 als PHP-FPM
+(PHP2Shell) mit Anwendung, `vendor/` und eingebettetem jQuery 1.12.4 im Volume; Traefik mit Docker-Socket
+(gefährliche Einstellung) und Ziel per Label. Neu erzeugen: `sudo bash beispiele/erzeugen.sh` ([Releases](#releases)).
 
 ## Was erfasst wird
 
@@ -456,9 +377,10 @@ Je Ökosystem gilt das erste Verzeichnis, das es enthält, und `daten/` (bzw. da
 ### Sonderfall: Daten direkt von OSV statt über GitHub
 
 Für Server, die `github.com` nicht erreichen dürfen oder GitHub nicht als Datenquelle nutzen sollen. Dann lädt `csscan` alle Ökosysteme direkt von OSV (`storage.googleapis.com`),
-die EOL-Daten von endoflife.date und den KEV-Katalog der CISA. Dafür in der eigenen Kopie des
-Installscripts im Wrapper die Zeilen mit `git pull` und `ARGS=` ersetzen (und das Holen der Daten mit
-`git clone` streichen):
+die EOL-Daten von endoflife.date und den KEV-Katalog der CISA. Dafür das Installscript mit `DATEN=` aufrufen
+(es holt dann den Branch `daten` nicht: `sudo env DATEN= bash installieren.sh $V`) und nach jeder
+Installation im Wrapper `/usr/local/sbin/container-security-scan-lauf` die Zeilen mit `git pull` und `ARGS=`
+ersetzen:
 
 ```bash
   runuser -u csscan -- python3 -I "$CODE" --db "$D/osv-db" --db-aktualisieren \
@@ -466,8 +388,14 @@ Installscripts im Wrapper die Zeilen mit `git pull` und `ARGS=` ersetzen (und da
 ARGS=(--db "$D/osv-db")
 ```
 
-Darf der Server `github.com` gar nicht erreichen, `container-security-scan.py` aus dem Tag auf anderem Weg
-holen und im Installscript statt `curl` nach `$TMP/scan.py` kopieren; die Prüfsumme gilt genauso.
+Darf der Server `github.com` gar nicht erreichen, auf einem anderen Rechner den Tag als Bundle verpacken,
+übertragen und das Installscript daraus installieren lassen:
+
+```bash
+git clone -q https://github.com/felixlohmeier/container-security-scan.git css && git -C css bundle create ../css.bundle $V
+git -C css show $V:installation/installieren.sh > installieren.sh     # beides auf den Server kopieren, dort:
+sudo env REPO=$PWD/css.bundle DATEN= bash installieren.sh $V
+```
 
 - **Erster Lauf:** die Gesamtexporte, zusammen ca. 1,2 GB (Stand 11/2026: Ubuntu 800 MB, npm 220 MB,
   Debian 81 MB, PyPI 38 MB, die übrigen je ca. 10 MB; endoflife.date 3 MB, KEV-Katalog 2 MB).
@@ -514,9 +442,9 @@ auch für sie. Fehlende oder mindestens 7 Tage alte KEV-Daten sind eine Warnung,
 Die Bewertung nach Priorität und Schweregrad bleibt vollständig. Ohne Git-Checkout oder mit `--db DIR`
 lädt `--db-aktualisieren` den Katalog direkt nach `DIR/kev.json`.
 
-Ein Beispiel aus dem [Solr-Bericht](beispiele/scan_app-solr_20261105_085231.md): libbrotli1
-CVE-2026-111497 (HIGH laut Ubuntu, Paket nicht geladen, also P4). Ohne KEV nie gemeldet; laut CISA wird
-die Lücke aktiv ausgenutzt.
+Ein Beispiel aus dem [PHP-Bericht](beispiele/scan_app-php.md): das eingebettete jQuery 1.12.4 mit
+CVE-2020-11023 (MEDIUM, keinem Prozess zugeordnet, also P4). Ohne KEV nie gemeldet; laut CISA wird die
+Lücke aktiv ausgenutzt.
 
 ## Rein lesend und ohne Datenabfluss
 
@@ -614,33 +542,33 @@ CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # m
 Was welche Testdatei prüft: [`tests/README.md`](tests/README.md).
 
 Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11, 3.13 und
-3.14 (Python des Runners, mit dem auch die Daten erzeugt werden), den Docker-Test und die Prüfung des
-Installscripts gegen die Releases aus.
+3.14 (Python des Runners, mit dem auch die Daten erzeugt werden) und den Docker-Test aus, erzeugt die
+[Beispiele](beispiele/) (als Artefakt `beispiele` zum Herunterladen) und installiert mit dem Installscript
+aus einem lokalen Tag, samt einem Lauf des Wrappers.
 
 ### Releases
 
-Server installieren nur Releases: Git-Tags `vX.Y.Z` auf `main`, deren Prüfsumme im Installscript steht
-([Schritt 1](#1-einrichten)). Ein Release:
+Server installieren nur Releases: Git-Tags `vX.Y.Z` auf `main`. Die Version steht nur in `VERSION` am Anfang
+von `container-security-scan.py`; Installscript, Wrapper und README nennen sie nicht. Ein Release:
 
-1. Im Installscript `VERSION` und `SHA256` (`sha256sum container-security-scan.py`) eintragen, ebenso die
-   Version im Link „aktuell …“ darüber; per Pull Request nach `main`.
+1. Per Pull Request nach `main`: `VERSION` erhöhen und die Beispiele neu erzeugen – mit Docker und den
+   Daten unter `daten/` per `sudo bash beispiele/erzeugen.sh` oder aus dem Artefakt `beispiele` der Action. Der
+   Test verlangt, dass die Beispiele mit der aktuellen Version erzeugt sind.
 2. Nach dem Merge den Merge-Commit taggen (signiert, wenn möglich) und den Tag pushen:
 
    ```bash
-   git tag -s v1.1.0 -m v1.1.0 <commit>
+   git tag -s v0.2.0 -m v0.2.0 <commit>
    ```
 
    ```bash
-   git push origin v1.1.0
+   git push origin v0.2.0
    ```
 
 3. Auf GitHub ein Release zum Tag anlegen und darin die Änderungen nennen, vor allem alles, was Admins
-   wissen müssen (neue Voraussetzungen, geänderte Rückgabewerte, neue Einstellungen im Installscript).
+   wissen müssen (neue Voraussetzungen, geänderte Rückgabewerte, Änderungen am Wrapper).
 
-`test_installation.py` stellt in der Action sicher, dass README und Releases zusammenpassen: Gibt es den Tag
-`VERSION` schon, müssen Prüfsumme und Installscript genau dem Stand des Tags entsprechen – eine Änderung am
-Installscript braucht also eine neue Version. Gibt es ihn noch nicht (Release in Vorbereitung), muss die
-Prüfsumme zum aktuellen Skript passen. Beim Push eines Tags muss `VERSION` dem Tag entsprechen.
+Beim Push eines Tags prüft die Action, dass er `v` + `VERSION` entspricht; das Installscript bricht ebenso ab,
+wenn die Version im Skript nicht zum Tag passt.
 
 ### Repository auf GitHub (Rulesets)
 
@@ -651,10 +579,11 @@ Damit das Token des Workflows nur die Daten ändern kann, in den Einstellungen d
 |---|---|---|
 | Branch `main` (Default branch) | *Restrict deletions*, *Block force pushes*, *Require a pull request before merging*, optional *Require status checks to pass* (Unit-Tests) und *Require signed commits*; keine Ausnahme (*Bypass list*) für GitHub Actions | Code ändert sich nur über einen Pull Request; das Token des Workflows kann `main` nicht beschreiben. |
 | Branch `daten` | *Restrict deletions*, *Block force pushes* | Die Action committet weiter direkt; die Historie der Daten lässt sich nicht umschreiben. |
-| Tags `v*` | *Restrict creations* (Ausnahme nur *Repository admin*), *Restrict updates*, *Restrict deletions* | Releases legt nur der Admin an; ein Tag lässt sich nicht verschieben oder löschen. Ein verschobener Tag fiele auch an der Prüfsumme auf. |
+| Tags `v*` | *Restrict creations* (Ausnahme nur *Repository admin*), *Restrict updates*, *Restrict deletions* | Releases legt nur der Admin an; ein Tag lässt sich nicht verschieben oder löschen. Ein verschobener Tag fiele mit Commit beim Installscript auf. |
 | *Actions → General → Workflow permissions* | *Allow GitHub Actions to create and approve pull requests* aus (Standard) | Der Workflow kann sich nicht über einen eigenen Pull Request nach `main` schreiben. |
 
-Gegen eine Übernahme des Kontos schützen Rulesets nicht; dafür sorgt die Prüfsumme im Installscript.
+Gegen eine Übernahme des Kontos schützen Rulesets nicht; dagegen hilft nur der Blick auf die Änderungen vor
+jedem Update und die Signatur des Tags ([Schritt 1](#1-einrichten)).
 
 ## Verwandte Werkzeuge
 

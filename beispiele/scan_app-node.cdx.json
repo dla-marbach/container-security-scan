@@ -1,0 +1,4890 @@
+{
+ "bomFormat": "CycloneDX",
+ "specVersion": "1.5",
+ "serialNumber": "urn:uuid:d9f3de0c-6c3d-4ea9-bf57-f0f3f784650b",
+ "version": 1,
+ "metadata": {
+  "timestamp": "2026-11-07T19:54:36Z",
+  "tools": {
+   "components": [
+    {
+     "type": "application",
+     "name": "container-security-scan.py",
+     "version": "0.1.0"
+    }
+   ]
+  },
+  "component": {
+   "bom-ref": "container",
+   "type": "container",
+   "name": "node:22.22.0-alpine",
+   "version": "sha256:e4bf2a82ad0a4037d28035ae71529873c069b13eb0455466ae0bc13363826e34",
+   "properties": [
+    {
+     "name": "container-security-scan:container-name",
+     "value": "app-node"
+    },
+    {
+     "name": "container-security-scan:container-id",
+     "value": "882d935b756b56942c2f85c508fa2db78d7f78c16ce72eb31f1a3f8b73d86e35"
+    },
+    {
+     "name": "container-security-scan:repo-digest",
+     "value": "node@sha256:e4bf2a82ad0a4037d28035ae71529873c069b13eb0455466ae0bc13363826e34"
+    },
+    {
+     "name": "container-security-scan:repo-digest",
+     "value": "mirror.gcr.io/library/node@sha256:e4bf2a82ad0a4037d28035ae71529873c069b13eb0455466ae0bc13363826e34"
+    }
+   ]
+  }
+ },
+ "components": [
+  {
+   "bom-ref": "os",
+   "type": "operating-system",
+   "name": "alpine",
+   "version": "3.23.3",
+   "description": "Alpine Linux v3.23"
+  },
+  {
+   "bom-ref": "c1",
+   "type": "library",
+   "name": "alpine-baselayout",
+   "version": "3.7.1-r8",
+   "purl": "pkg:apk/alpine/alpine-baselayout@3.7.1-r8?arch=x86_64&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "alpine-baselayout"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.7.1-r8"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c2",
+   "type": "library",
+   "name": "alpine-baselayout-data",
+   "version": "3.7.1-r8",
+   "purl": "pkg:apk/alpine/alpine-baselayout-data@3.7.1-r8?arch=x86_64&upstream=alpine-baselayout&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "alpine-baselayout"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.7.1-r8"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64; src=alpine-baselayout"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c3",
+   "type": "library",
+   "name": "alpine-keys",
+   "version": "2.6-r0",
+   "purl": "pkg:apk/alpine/alpine-keys@2.6-r0?arch=x86_64&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "alpine-keys"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "2.6-r0"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c4",
+   "type": "library",
+   "name": "alpine-release",
+   "version": "3.23.3-r0",
+   "purl": "pkg:apk/alpine/alpine-release@3.23.3-r0?arch=x86_64&upstream=alpine-base&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "alpine-base"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.23.3-r0"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64; src=alpine-base"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c5",
+   "type": "library",
+   "name": "apk-tools",
+   "version": "3.0.3-r1",
+   "purl": "pkg:apk/alpine/apk-tools@3.0.3-r1?arch=x86_64&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "apk-tools"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.0.3-r1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c6",
+   "type": "library",
+   "name": "busybox",
+   "version": "1.37.0-r30",
+   "purl": "pkg:apk/alpine/busybox@1.37.0-r30?arch=x86_64&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "busybox"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.37.0-r30"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c7",
+   "type": "library",
+   "name": "busybox-binsh",
+   "version": "1.37.0-r30",
+   "purl": "pkg:apk/alpine/busybox-binsh@1.37.0-r30?arch=x86_64&upstream=busybox&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "busybox"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.37.0-r30"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64; src=busybox"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c8",
+   "type": "library",
+   "name": "ca-certificates-bundle",
+   "version": "20251003-r0",
+   "purl": "pkg:apk/alpine/ca-certificates-bundle@20251003-r0?arch=x86_64&upstream=ca-certificates&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "ca-certificates"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "20251003-r0"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64; src=ca-certificates"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c9",
+   "type": "library",
+   "name": "libapk",
+   "version": "3.0.3-r1",
+   "purl": "pkg:apk/alpine/libapk@3.0.3-r1?arch=x86_64&upstream=apk-tools&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "apk-tools"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.0.3-r1"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64; src=apk-tools"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c10",
+   "type": "library",
+   "name": "libcrypto3",
+   "version": "3.5.5-r0",
+   "purl": "pkg:apk/alpine/libcrypto3@3.5.5-r0?arch=x86_64&upstream=openssl&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "openssl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.5.5-r0"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64; src=openssl"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c11",
+   "type": "library",
+   "name": "libgcc",
+   "version": "15.2.0-r2",
+   "purl": "pkg:apk/alpine/libgcc@15.2.0-r2?arch=x86_64&upstream=gcc&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "15.2.0-r2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64; src=gcc"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c12",
+   "type": "library",
+   "name": "libssl3",
+   "version": "3.5.5-r0",
+   "purl": "pkg:apk/alpine/libssl3@3.5.5-r0?arch=x86_64&upstream=openssl&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "openssl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "3.5.5-r0"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64; src=openssl"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c13",
+   "type": "library",
+   "name": "libstdc++",
+   "version": "15.2.0-r2",
+   "purl": "pkg:apk/alpine/libstdc%2B%2B@15.2.0-r2?arch=x86_64&upstream=gcc&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "gcc"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "15.2.0-r2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64; src=gcc"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c14",
+   "type": "library",
+   "name": "musl",
+   "version": "1.2.5-r21",
+   "purl": "pkg:apk/alpine/musl@1.2.5-r21?arch=x86_64&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "musl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.2.5-r21"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c15",
+   "type": "library",
+   "name": "musl-utils",
+   "version": "1.2.5-r21",
+   "purl": "pkg:apk/alpine/musl-utils@1.2.5-r21?arch=x86_64&upstream=musl&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "musl"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.2.5-r21"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64; src=musl"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c16",
+   "type": "library",
+   "name": "scanelf",
+   "version": "1.3.8-r2",
+   "purl": "pkg:apk/alpine/scanelf@1.3.8-r2?arch=x86_64&upstream=pax-utils&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "pax-utils"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.3.8-r2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64; src=pax-utils"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c17",
+   "type": "library",
+   "name": "ssl_client",
+   "version": "1.37.0-r30",
+   "purl": "pkg:apk/alpine/ssl_client@1.37.0-r30?arch=x86_64&upstream=busybox&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "busybox"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.37.0-r30"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64; src=busybox"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c18",
+   "type": "library",
+   "name": "zlib",
+   "version": "1.3.1-r2",
+   "purl": "pkg:apk/alpine/zlib@1.3.1-r2?arch=x86_64&distro=alpine-3.23.3",
+   "properties": [
+    {
+     "name": "aquasecurity:trivy:SrcName",
+     "value": "zlib"
+    },
+    {
+     "name": "aquasecurity:trivy:SrcVersion",
+     "value": "1.3.1-r2"
+    },
+    {
+     "name": "container-security-scan:typ",
+     "value": "os-paket"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "arch=x86_64"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c19",
+   "type": "library",
+   "name": "lodash",
+   "version": "4.17.20",
+   "purl": "pkg:npm/lodash@4.17.20",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/app/node_modules/lodash"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c20",
+   "type": "library",
+   "name": "beispiel-node",
+   "version": "1.0.0",
+   "purl": "pkg:npm/beispiel-node@1.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/app"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c21",
+   "type": "library",
+   "name": "yarn",
+   "version": "1.22.22",
+   "purl": "pkg:npm/yarn@1.22.22",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/opt/yarn-v1.22.22"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c22",
+   "type": "library",
+   "name": "corepack",
+   "version": "0.34.0",
+   "purl": "pkg:npm/corepack@0.34.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/corepack"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c23",
+   "type": "library",
+   "name": "ansi-regex",
+   "version": "6.1.0",
+   "purl": "pkg:npm/ansi-regex@6.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/node_modules/ansi-regex"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c24",
+   "type": "library",
+   "name": "emoji-regex",
+   "version": "9.2.2",
+   "purl": "pkg:npm/emoji-regex@9.2.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/node_modules/emoji-regex"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c25",
+   "type": "library",
+   "name": "string-width",
+   "version": "5.1.2",
+   "purl": "pkg:npm/string-width@5.1.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/node_modules/string-width"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c26",
+   "type": "library",
+   "name": "strip-ansi",
+   "version": "7.1.0",
+   "purl": "pkg:npm/strip-ansi@7.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui/node_modules/strip-ansi"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c27",
+   "type": "library",
+   "name": "@isaacs/cliui",
+   "version": "8.0.2",
+   "purl": "pkg:npm/%40isaacs/cliui@8.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/cliui"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c28",
+   "type": "library",
+   "name": "@isaacs/fs-minipass",
+   "version": "4.0.1",
+   "purl": "pkg:npm/%40isaacs/fs-minipass@4.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/fs-minipass"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c29",
+   "type": "library",
+   "name": "@isaacs/string-locale-compare",
+   "version": "1.1.0",
+   "purl": "pkg:npm/%40isaacs/string-locale-compare@1.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@isaacs/string-locale-compare"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c30",
+   "type": "library",
+   "name": "@npmcli/agent",
+   "version": "3.0.0",
+   "purl": "pkg:npm/%40npmcli/agent@3.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/agent"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c31",
+   "type": "library",
+   "name": "@npmcli/arborist",
+   "version": "8.0.1",
+   "purl": "pkg:npm/%40npmcli/arborist@8.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/arborist"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c32",
+   "type": "library",
+   "name": "@npmcli/config",
+   "version": "9.0.0",
+   "purl": "pkg:npm/%40npmcli/config@9.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/config"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c33",
+   "type": "library",
+   "name": "@npmcli/fs",
+   "version": "4.0.0",
+   "purl": "pkg:npm/%40npmcli/fs@4.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/fs"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c34",
+   "type": "library",
+   "name": "@npmcli/git",
+   "version": "6.0.3",
+   "purl": "pkg:npm/%40npmcli/git@6.0.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/git"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c35",
+   "type": "library",
+   "name": "@npmcli/installed-package-contents",
+   "version": "3.0.0",
+   "purl": "pkg:npm/%40npmcli/installed-package-contents@3.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/installed-package-contents"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c36",
+   "type": "library",
+   "name": "@npmcli/map-workspaces",
+   "version": "4.0.2",
+   "purl": "pkg:npm/%40npmcli/map-workspaces@4.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/map-workspaces"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c37",
+   "type": "library",
+   "name": "pacote",
+   "version": "20.0.0",
+   "purl": "pkg:npm/pacote@20.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/metavuln-calculator/node_modules/pacote"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c38",
+   "type": "library",
+   "name": "@npmcli/metavuln-calculator",
+   "version": "8.0.1",
+   "purl": "pkg:npm/%40npmcli/metavuln-calculator@8.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/metavuln-calculator"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c39",
+   "type": "library",
+   "name": "@npmcli/name-from-folder",
+   "version": "3.0.0",
+   "purl": "pkg:npm/%40npmcli/name-from-folder@3.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/name-from-folder"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c40",
+   "type": "library",
+   "name": "@npmcli/node-gyp",
+   "version": "4.0.0",
+   "purl": "pkg:npm/%40npmcli/node-gyp@4.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/node-gyp"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c41",
+   "type": "library",
+   "name": "@npmcli/package-json",
+   "version": "6.2.0",
+   "purl": "pkg:npm/%40npmcli/package-json@6.2.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/package-json"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c42",
+   "type": "library",
+   "name": "@npmcli/promise-spawn",
+   "version": "8.0.2",
+   "purl": "pkg:npm/%40npmcli/promise-spawn@8.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/promise-spawn"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c43",
+   "type": "library",
+   "name": "@npmcli/query",
+   "version": "4.0.1",
+   "purl": "pkg:npm/%40npmcli/query@4.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/query"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c44",
+   "type": "library",
+   "name": "@npmcli/redact",
+   "version": "3.2.2",
+   "purl": "pkg:npm/%40npmcli/redact@3.2.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/redact"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c45",
+   "type": "library",
+   "name": "@npmcli/run-script",
+   "version": "9.1.0",
+   "purl": "pkg:npm/%40npmcli/run-script@9.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@npmcli/run-script"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c46",
+   "type": "library",
+   "name": "@pkgjs/parseargs",
+   "version": "0.11.0",
+   "purl": "pkg:npm/%40pkgjs/parseargs@0.11.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@pkgjs/parseargs"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c47",
+   "type": "library",
+   "name": "@sigstore/protobuf-specs",
+   "version": "0.4.3",
+   "purl": "pkg:npm/%40sigstore/protobuf-specs@0.4.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/protobuf-specs"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c48",
+   "type": "library",
+   "name": "@sigstore/tuf",
+   "version": "3.1.1",
+   "purl": "pkg:npm/%40sigstore/tuf@3.1.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@sigstore/tuf"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c49",
+   "type": "library",
+   "name": "@tufjs/canonical-json",
+   "version": "2.0.0",
+   "purl": "pkg:npm/%40tufjs/canonical-json@2.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/@tufjs/canonical-json"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c50",
+   "type": "library",
+   "name": "abbrev",
+   "version": "3.0.1",
+   "purl": "pkg:npm/abbrev@3.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/abbrev"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c51",
+   "type": "library",
+   "name": "agent-base",
+   "version": "7.1.3",
+   "purl": "pkg:npm/agent-base@7.1.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/agent-base"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c52",
+   "type": "library",
+   "name": "ansi-regex",
+   "version": "5.0.1",
+   "purl": "pkg:npm/ansi-regex@5.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/ansi-regex"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c53",
+   "type": "library",
+   "name": "ansi-styles",
+   "version": "6.2.1",
+   "purl": "pkg:npm/ansi-styles@6.2.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/ansi-styles"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c54",
+   "type": "library",
+   "name": "aproba",
+   "version": "2.0.0",
+   "purl": "pkg:npm/aproba@2.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/aproba"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c55",
+   "type": "library",
+   "name": "archy",
+   "version": "1.0.0",
+   "purl": "pkg:npm/archy@1.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/archy"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c56",
+   "type": "library",
+   "name": "balanced-match",
+   "version": "1.0.2",
+   "purl": "pkg:npm/balanced-match@1.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/balanced-match"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c57",
+   "type": "library",
+   "name": "bin-links",
+   "version": "5.0.0",
+   "purl": "pkg:npm/bin-links@5.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/bin-links"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c58",
+   "type": "library",
+   "name": "binary-extensions",
+   "version": "2.3.0",
+   "purl": "pkg:npm/binary-extensions@2.3.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/binary-extensions"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c59",
+   "type": "library",
+   "name": "brace-expansion",
+   "version": "2.0.2",
+   "purl": "pkg:npm/brace-expansion@2.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/brace-expansion"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c60",
+   "type": "library",
+   "name": "chownr",
+   "version": "3.0.0",
+   "purl": "pkg:npm/chownr@3.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/cacache/node_modules/chownr"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c61",
+   "type": "library",
+   "name": "mkdirp",
+   "version": "3.0.1",
+   "purl": "pkg:npm/mkdirp@3.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/cacache/node_modules/mkdirp/dist/cjs"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c62",
+   "type": "library",
+   "name": "mkdirp",
+   "version": "3.0.1",
+   "purl": "pkg:npm/mkdirp@3.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/cacache/node_modules/mkdirp"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c63",
+   "type": "library",
+   "name": "tar",
+   "version": "7.4.3",
+   "purl": "pkg:npm/tar@7.4.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/cacache/node_modules/tar"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c64",
+   "type": "library",
+   "name": "yallist",
+   "version": "5.0.0",
+   "purl": "pkg:npm/yallist@5.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/cacache/node_modules/yallist"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c65",
+   "type": "library",
+   "name": "cacache",
+   "version": "19.0.1",
+   "purl": "pkg:npm/cacache@19.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/cacache"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c66",
+   "type": "library",
+   "name": "chalk",
+   "version": "5.4.1",
+   "purl": "pkg:npm/chalk@5.4.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/chalk"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c67",
+   "type": "library",
+   "name": "chownr",
+   "version": "2.0.0",
+   "purl": "pkg:npm/chownr@2.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/chownr"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c68",
+   "type": "library",
+   "name": "ci-info",
+   "version": "4.2.0",
+   "purl": "pkg:npm/ci-info@4.2.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/ci-info"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c69",
+   "type": "library",
+   "name": "cidr-regex",
+   "version": "4.1.3",
+   "purl": "pkg:npm/cidr-regex@4.1.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/cidr-regex"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c70",
+   "type": "library",
+   "name": "cli-columns",
+   "version": "4.0.0",
+   "purl": "pkg:npm/cli-columns@4.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/cli-columns"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c71",
+   "type": "library",
+   "name": "cmd-shim",
+   "version": "7.0.0",
+   "purl": "pkg:npm/cmd-shim@7.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/cmd-shim"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c72",
+   "type": "library",
+   "name": "color-convert",
+   "version": "2.0.1",
+   "purl": "pkg:npm/color-convert@2.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/color-convert"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c73",
+   "type": "library",
+   "name": "color-name",
+   "version": "1.1.4",
+   "purl": "pkg:npm/color-name@1.1.4",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/color-name"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c74",
+   "type": "library",
+   "name": "common-ancestor-path",
+   "version": "1.0.1",
+   "purl": "pkg:npm/common-ancestor-path@1.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/common-ancestor-path"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c75",
+   "type": "library",
+   "name": "which",
+   "version": "2.0.2",
+   "purl": "pkg:npm/which@2.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/cross-spawn/node_modules/which"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c76",
+   "type": "library",
+   "name": "cross-spawn",
+   "version": "7.0.6",
+   "purl": "pkg:npm/cross-spawn@7.0.6",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/cross-spawn"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c77",
+   "type": "library",
+   "name": "cssesc",
+   "version": "3.0.0",
+   "purl": "pkg:npm/cssesc@3.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/cssesc"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c78",
+   "type": "library",
+   "name": "debug",
+   "version": "4.4.1",
+   "purl": "pkg:npm/debug@4.4.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/debug"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c79",
+   "type": "library",
+   "name": "diff",
+   "version": "5.2.0",
+   "purl": "pkg:npm/diff@5.2.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/diff"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c80",
+   "type": "library",
+   "name": "eastasianwidth",
+   "version": "0.2.0",
+   "purl": "pkg:npm/eastasianwidth@0.2.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/eastasianwidth"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c81",
+   "type": "library",
+   "name": "emoji-regex",
+   "version": "8.0.0",
+   "purl": "pkg:npm/emoji-regex@8.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/emoji-regex"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c82",
+   "type": "library",
+   "name": "encoding",
+   "version": "0.1.13",
+   "purl": "pkg:npm/encoding@0.1.13",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/encoding"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c83",
+   "type": "library",
+   "name": "env-paths",
+   "version": "2.2.1",
+   "purl": "pkg:npm/env-paths@2.2.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/env-paths"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c84",
+   "type": "library",
+   "name": "err-code",
+   "version": "2.0.3",
+   "purl": "pkg:npm/err-code@2.0.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/err-code"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c85",
+   "type": "library",
+   "name": "exponential-backoff",
+   "version": "3.1.2",
+   "purl": "pkg:npm/exponential-backoff@3.1.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/exponential-backoff"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c86",
+   "type": "library",
+   "name": "fastest-levenshtein",
+   "version": "1.0.16",
+   "purl": "pkg:npm/fastest-levenshtein@1.0.16",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/fastest-levenshtein"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c87",
+   "type": "library",
+   "name": "foreground-child",
+   "version": "3.3.1",
+   "purl": "pkg:npm/foreground-child@3.3.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/foreground-child"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c88",
+   "type": "library",
+   "name": "fs-minipass",
+   "version": "3.0.3",
+   "purl": "pkg:npm/fs-minipass@3.0.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/fs-minipass"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c89",
+   "type": "library",
+   "name": "glob",
+   "version": "10.4.5",
+   "purl": "pkg:npm/glob@10.4.5",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/glob"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c90",
+   "type": "library",
+   "name": "graceful-fs",
+   "version": "4.2.11",
+   "purl": "pkg:npm/graceful-fs@4.2.11",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/graceful-fs"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c91",
+   "type": "library",
+   "name": "hosted-git-info",
+   "version": "8.1.0",
+   "purl": "pkg:npm/hosted-git-info@8.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/hosted-git-info"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c92",
+   "type": "library",
+   "name": "http-cache-semantics",
+   "version": "4.2.0",
+   "purl": "pkg:npm/http-cache-semantics@4.2.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/http-cache-semantics"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c93",
+   "type": "library",
+   "name": "http-proxy-agent",
+   "version": "7.0.2",
+   "purl": "pkg:npm/http-proxy-agent@7.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/http-proxy-agent"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c94",
+   "type": "library",
+   "name": "https-proxy-agent",
+   "version": "7.0.6",
+   "purl": "pkg:npm/https-proxy-agent@7.0.6",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/https-proxy-agent"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c95",
+   "type": "library",
+   "name": "iconv-lite",
+   "version": "0.6.3",
+   "purl": "pkg:npm/iconv-lite@0.6.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/iconv-lite"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c96",
+   "type": "library",
+   "name": "ignore-walk",
+   "version": "7.0.0",
+   "purl": "pkg:npm/ignore-walk@7.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/ignore-walk"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c97",
+   "type": "library",
+   "name": "imurmurhash",
+   "version": "0.1.4",
+   "purl": "pkg:npm/imurmurhash@0.1.4",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/imurmurhash"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c98",
+   "type": "library",
+   "name": "ini",
+   "version": "5.0.0",
+   "purl": "pkg:npm/ini@5.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/ini"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c99",
+   "type": "library",
+   "name": "init-package-json",
+   "version": "7.0.2",
+   "purl": "pkg:npm/init-package-json@7.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/init-package-json"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c100",
+   "type": "library",
+   "name": "ip-address",
+   "version": "9.0.5",
+   "purl": "pkg:npm/ip-address@9.0.5",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/ip-address"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c101",
+   "type": "library",
+   "name": "ip-regex",
+   "version": "5.0.0",
+   "purl": "pkg:npm/ip-regex@5.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/ip-regex"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c102",
+   "type": "library",
+   "name": "is-cidr",
+   "version": "5.1.1",
+   "purl": "pkg:npm/is-cidr@5.1.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/is-cidr"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c103",
+   "type": "library",
+   "name": "is-fullwidth-code-point",
+   "version": "3.0.0",
+   "purl": "pkg:npm/is-fullwidth-code-point@3.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/is-fullwidth-code-point"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c104",
+   "type": "library",
+   "name": "isexe",
+   "version": "2.0.0",
+   "purl": "pkg:npm/isexe@2.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/isexe"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c105",
+   "type": "library",
+   "name": "jackspeak",
+   "version": "3.4.3",
+   "purl": "pkg:npm/jackspeak@3.4.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/jackspeak"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c106",
+   "type": "library",
+   "name": "jsbn",
+   "version": "1.1.0",
+   "purl": "pkg:npm/jsbn@1.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/jsbn"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c107",
+   "type": "library",
+   "name": "json-parse-even-better-errors",
+   "version": "4.0.0",
+   "purl": "pkg:npm/json-parse-even-better-errors@4.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/json-parse-even-better-errors"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c108",
+   "type": "library",
+   "name": "json-stringify-nice",
+   "version": "1.1.4",
+   "purl": "pkg:npm/json-stringify-nice@1.1.4",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/json-stringify-nice"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c109",
+   "type": "library",
+   "name": "jsonparse",
+   "version": "1.3.1",
+   "purl": "pkg:npm/jsonparse@1.3.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/jsonparse"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c110",
+   "type": "library",
+   "name": "just-diff-apply",
+   "version": "5.5.0",
+   "purl": "pkg:npm/just-diff-apply@5.5.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/just-diff-apply"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c111",
+   "type": "library",
+   "name": "just-diff",
+   "version": "6.0.2",
+   "purl": "pkg:npm/just-diff@6.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/just-diff"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c112",
+   "type": "library",
+   "name": "libnpmaccess",
+   "version": "9.0.0",
+   "purl": "pkg:npm/libnpmaccess@9.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/libnpmaccess"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c113",
+   "type": "library",
+   "name": "libnpmdiff",
+   "version": "7.0.1",
+   "purl": "pkg:npm/libnpmdiff@7.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/libnpmdiff"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c114",
+   "type": "library",
+   "name": "libnpmexec",
+   "version": "9.0.1",
+   "purl": "pkg:npm/libnpmexec@9.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/libnpmexec"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c115",
+   "type": "library",
+   "name": "libnpmfund",
+   "version": "6.0.1",
+   "purl": "pkg:npm/libnpmfund@6.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/libnpmfund"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c116",
+   "type": "library",
+   "name": "libnpmhook",
+   "version": "11.0.0",
+   "purl": "pkg:npm/libnpmhook@11.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/libnpmhook"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c117",
+   "type": "library",
+   "name": "libnpmorg",
+   "version": "7.0.0",
+   "purl": "pkg:npm/libnpmorg@7.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/libnpmorg"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c118",
+   "type": "library",
+   "name": "libnpmpack",
+   "version": "8.0.1",
+   "purl": "pkg:npm/libnpmpack@8.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/libnpmpack"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c119",
+   "type": "library",
+   "name": "libnpmpublish",
+   "version": "10.0.1",
+   "purl": "pkg:npm/libnpmpublish@10.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/libnpmpublish"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c120",
+   "type": "library",
+   "name": "libnpmsearch",
+   "version": "8.0.0",
+   "purl": "pkg:npm/libnpmsearch@8.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/libnpmsearch"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c121",
+   "type": "library",
+   "name": "libnpmteam",
+   "version": "7.0.0",
+   "purl": "pkg:npm/libnpmteam@7.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/libnpmteam"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c122",
+   "type": "library",
+   "name": "libnpmversion",
+   "version": "7.0.0",
+   "purl": "pkg:npm/libnpmversion@7.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/libnpmversion"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c123",
+   "type": "library",
+   "name": "lru-cache",
+   "version": "10.4.3",
+   "purl": "pkg:npm/lru-cache@10.4.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/lru-cache"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c124",
+   "type": "library",
+   "name": "negotiator",
+   "version": "1.0.0",
+   "purl": "pkg:npm/negotiator@1.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/make-fetch-happen/node_modules/negotiator"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c125",
+   "type": "library",
+   "name": "make-fetch-happen",
+   "version": "14.0.3",
+   "purl": "pkg:npm/make-fetch-happen@14.0.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/make-fetch-happen"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c126",
+   "type": "library",
+   "name": "minimatch",
+   "version": "9.0.5",
+   "purl": "pkg:npm/minimatch@9.0.5",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/minimatch"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c127",
+   "type": "library",
+   "name": "minipass-collect",
+   "version": "2.0.1",
+   "purl": "pkg:npm/minipass-collect@2.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/minipass-collect"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c128",
+   "type": "library",
+   "name": "minipass-fetch",
+   "version": "4.0.1",
+   "purl": "pkg:npm/minipass-fetch@4.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/minipass-fetch"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c129",
+   "type": "library",
+   "name": "minipass",
+   "version": "3.3.6",
+   "purl": "pkg:npm/minipass@3.3.6",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/minipass-flush/node_modules/minipass"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c130",
+   "type": "library",
+   "name": "minipass-flush",
+   "version": "1.0.5",
+   "purl": "pkg:npm/minipass-flush@1.0.5",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/minipass-flush"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c131",
+   "type": "library",
+   "name": "minipass",
+   "version": "3.3.6",
+   "purl": "pkg:npm/minipass@3.3.6",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/minipass-pipeline/node_modules/minipass"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c132",
+   "type": "library",
+   "name": "minipass-pipeline",
+   "version": "1.2.4",
+   "purl": "pkg:npm/minipass-pipeline@1.2.4",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/minipass-pipeline"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c133",
+   "type": "library",
+   "name": "minipass",
+   "version": "3.3.6",
+   "purl": "pkg:npm/minipass@3.3.6",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/minipass-sized/node_modules/minipass"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c134",
+   "type": "library",
+   "name": "minipass-sized",
+   "version": "1.0.3",
+   "purl": "pkg:npm/minipass-sized@1.0.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/minipass-sized"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c135",
+   "type": "library",
+   "name": "minipass",
+   "version": "7.1.2",
+   "purl": "pkg:npm/minipass@7.1.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/minipass"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c136",
+   "type": "library",
+   "name": "minizlib",
+   "version": "3.0.2",
+   "purl": "pkg:npm/minizlib@3.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/minizlib"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c137",
+   "type": "library",
+   "name": "mkdirp",
+   "version": "1.0.4",
+   "purl": "pkg:npm/mkdirp@1.0.4",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/mkdirp"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c138",
+   "type": "library",
+   "name": "ms",
+   "version": "2.1.3",
+   "purl": "pkg:npm/ms@2.1.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/ms"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c139",
+   "type": "library",
+   "name": "mute-stream",
+   "version": "2.0.0",
+   "purl": "pkg:npm/mute-stream@2.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/mute-stream"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c140",
+   "type": "library",
+   "name": "chownr",
+   "version": "3.0.0",
+   "purl": "pkg:npm/chownr@3.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/node-gyp/node_modules/chownr"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c141",
+   "type": "library",
+   "name": "mkdirp",
+   "version": "3.0.1",
+   "purl": "pkg:npm/mkdirp@3.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/node-gyp/node_modules/mkdirp/dist/cjs"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c142",
+   "type": "library",
+   "name": "mkdirp",
+   "version": "3.0.1",
+   "purl": "pkg:npm/mkdirp@3.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/node-gyp/node_modules/mkdirp"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c143",
+   "type": "library",
+   "name": "tar",
+   "version": "7.4.3",
+   "purl": "pkg:npm/tar@7.4.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/node-gyp/node_modules/tar"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c144",
+   "type": "library",
+   "name": "yallist",
+   "version": "5.0.0",
+   "purl": "pkg:npm/yallist@5.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/node-gyp/node_modules/yallist"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c145",
+   "type": "library",
+   "name": "node-gyp",
+   "version": "11.2.0",
+   "purl": "pkg:npm/node-gyp@11.2.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/node-gyp"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c146",
+   "type": "library",
+   "name": "nopt",
+   "version": "8.1.0",
+   "purl": "pkg:npm/nopt@8.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/nopt"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c147",
+   "type": "library",
+   "name": "normalize-package-data",
+   "version": "7.0.0",
+   "purl": "pkg:npm/normalize-package-data@7.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/normalize-package-data"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c148",
+   "type": "library",
+   "name": "npm-audit-report",
+   "version": "6.0.0",
+   "purl": "pkg:npm/npm-audit-report@6.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/npm-audit-report"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c149",
+   "type": "library",
+   "name": "npm-bundled",
+   "version": "4.0.0",
+   "purl": "pkg:npm/npm-bundled@4.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/npm-bundled"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c150",
+   "type": "library",
+   "name": "npm-install-checks",
+   "version": "7.1.1",
+   "purl": "pkg:npm/npm-install-checks@7.1.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/npm-install-checks"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c151",
+   "type": "library",
+   "name": "npm-normalize-package-bin",
+   "version": "4.0.0",
+   "purl": "pkg:npm/npm-normalize-package-bin@4.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/npm-normalize-package-bin"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c152",
+   "type": "library",
+   "name": "npm-package-arg",
+   "version": "12.0.2",
+   "purl": "pkg:npm/npm-package-arg@12.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/npm-package-arg"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c153",
+   "type": "library",
+   "name": "npm-packlist",
+   "version": "9.0.0",
+   "purl": "pkg:npm/npm-packlist@9.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/npm-packlist"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c154",
+   "type": "library",
+   "name": "npm-pick-manifest",
+   "version": "10.0.0",
+   "purl": "pkg:npm/npm-pick-manifest@10.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/npm-pick-manifest"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c155",
+   "type": "library",
+   "name": "npm-profile",
+   "version": "11.0.1",
+   "purl": "pkg:npm/npm-profile@11.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/npm-profile"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c156",
+   "type": "library",
+   "name": "npm-registry-fetch",
+   "version": "18.0.2",
+   "purl": "pkg:npm/npm-registry-fetch@18.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/npm-registry-fetch"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c157",
+   "type": "library",
+   "name": "npm-user-validate",
+   "version": "3.0.0",
+   "purl": "pkg:npm/npm-user-validate@3.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/npm-user-validate"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c158",
+   "type": "library",
+   "name": "p-map",
+   "version": "7.0.3",
+   "purl": "pkg:npm/p-map@7.0.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/p-map"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c159",
+   "type": "library",
+   "name": "package-json-from-dist",
+   "version": "1.0.1",
+   "purl": "pkg:npm/package-json-from-dist@1.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/package-json-from-dist"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c160",
+   "type": "library",
+   "name": "pacote",
+   "version": "19.0.1",
+   "purl": "pkg:npm/pacote@19.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/pacote"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c161",
+   "type": "library",
+   "name": "parse-conflict-json",
+   "version": "4.0.0",
+   "purl": "pkg:npm/parse-conflict-json@4.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/parse-conflict-json"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c162",
+   "type": "library",
+   "name": "path-key",
+   "version": "3.1.1",
+   "purl": "pkg:npm/path-key@3.1.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/path-key"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c163",
+   "type": "library",
+   "name": "path-scurry",
+   "version": "1.11.1",
+   "purl": "pkg:npm/path-scurry@1.11.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/path-scurry"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c164",
+   "type": "library",
+   "name": "postcss-selector-parser",
+   "version": "7.1.0",
+   "purl": "pkg:npm/postcss-selector-parser@7.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/postcss-selector-parser"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c165",
+   "type": "library",
+   "name": "proc-log",
+   "version": "5.0.0",
+   "purl": "pkg:npm/proc-log@5.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/proc-log"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c166",
+   "type": "library",
+   "name": "proggy",
+   "version": "3.0.0",
+   "purl": "pkg:npm/proggy@3.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/proggy"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c167",
+   "type": "library",
+   "name": "promise-all-reject-late",
+   "version": "1.0.1",
+   "purl": "pkg:npm/promise-all-reject-late@1.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/promise-all-reject-late"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c168",
+   "type": "library",
+   "name": "promise-call-limit",
+   "version": "3.0.2",
+   "purl": "pkg:npm/promise-call-limit@3.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/promise-call-limit"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c169",
+   "type": "library",
+   "name": "promise-retry",
+   "version": "2.0.1",
+   "purl": "pkg:npm/promise-retry@2.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/promise-retry"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c170",
+   "type": "library",
+   "name": "promzard",
+   "version": "2.0.0",
+   "purl": "pkg:npm/promzard@2.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/promzard"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c171",
+   "type": "library",
+   "name": "qrcode-terminal",
+   "version": "0.12.0",
+   "purl": "pkg:npm/qrcode-terminal@0.12.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/qrcode-terminal"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c172",
+   "type": "library",
+   "name": "read-cmd-shim",
+   "version": "5.0.0",
+   "purl": "pkg:npm/read-cmd-shim@5.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/read-cmd-shim"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c173",
+   "type": "library",
+   "name": "read-package-json-fast",
+   "version": "4.0.0",
+   "purl": "pkg:npm/read-package-json-fast@4.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/read-package-json-fast"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c174",
+   "type": "library",
+   "name": "read",
+   "version": "4.1.0",
+   "purl": "pkg:npm/read@4.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/read"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c175",
+   "type": "library",
+   "name": "retry",
+   "version": "0.12.0",
+   "purl": "pkg:npm/retry@0.12.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/retry"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c176",
+   "type": "library",
+   "name": "safer-buffer",
+   "version": "2.1.2",
+   "purl": "pkg:npm/safer-buffer@2.1.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/safer-buffer"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c177",
+   "type": "library",
+   "name": "semver",
+   "version": "7.7.2",
+   "purl": "pkg:npm/semver@7.7.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/semver"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c178",
+   "type": "library",
+   "name": "shebang-command",
+   "version": "2.0.0",
+   "purl": "pkg:npm/shebang-command@2.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/shebang-command"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c179",
+   "type": "library",
+   "name": "shebang-regex",
+   "version": "3.0.0",
+   "purl": "pkg:npm/shebang-regex@3.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/shebang-regex"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c180",
+   "type": "library",
+   "name": "signal-exit",
+   "version": "4.1.0",
+   "purl": "pkg:npm/signal-exit@4.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/signal-exit"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c181",
+   "type": "library",
+   "name": "@sigstore/bundle",
+   "version": "3.1.0",
+   "purl": "pkg:npm/%40sigstore/bundle@3.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/sigstore/node_modules/@sigstore/bundle"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c182",
+   "type": "library",
+   "name": "@sigstore/core",
+   "version": "2.0.0",
+   "purl": "pkg:npm/%40sigstore/core@2.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/sigstore/node_modules/@sigstore/core"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c183",
+   "type": "library",
+   "name": "@sigstore/sign",
+   "version": "3.1.0",
+   "purl": "pkg:npm/%40sigstore/sign@3.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/sigstore/node_modules/@sigstore/sign"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c184",
+   "type": "library",
+   "name": "@sigstore/verify",
+   "version": "2.1.1",
+   "purl": "pkg:npm/%40sigstore/verify@2.1.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/sigstore/node_modules/@sigstore/verify"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c185",
+   "type": "library",
+   "name": "sigstore",
+   "version": "3.1.0",
+   "purl": "pkg:npm/sigstore@3.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/sigstore"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c186",
+   "type": "library",
+   "name": "smart-buffer",
+   "version": "4.2.0",
+   "purl": "pkg:npm/smart-buffer@4.2.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/smart-buffer"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c187",
+   "type": "library",
+   "name": "socks-proxy-agent",
+   "version": "8.0.5",
+   "purl": "pkg:npm/socks-proxy-agent@8.0.5",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/socks-proxy-agent"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c188",
+   "type": "library",
+   "name": "socks",
+   "version": "2.8.5",
+   "purl": "pkg:npm/socks@2.8.5",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/socks"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c189",
+   "type": "library",
+   "name": "spdx-expression-parse",
+   "version": "3.0.1",
+   "purl": "pkg:npm/spdx-expression-parse@3.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/spdx-correct/node_modules/spdx-expression-parse"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c190",
+   "type": "library",
+   "name": "spdx-correct",
+   "version": "3.2.0",
+   "purl": "pkg:npm/spdx-correct@3.2.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/spdx-correct"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c191",
+   "type": "library",
+   "name": "spdx-exceptions",
+   "version": "2.5.0",
+   "purl": "pkg:npm/spdx-exceptions@2.5.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/spdx-exceptions"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c192",
+   "type": "library",
+   "name": "spdx-expression-parse",
+   "version": "4.0.0",
+   "purl": "pkg:npm/spdx-expression-parse@4.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/spdx-expression-parse"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c193",
+   "type": "library",
+   "name": "spdx-license-ids",
+   "version": "3.0.21",
+   "purl": "pkg:npm/spdx-license-ids@3.0.21",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/spdx-license-ids"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c194",
+   "type": "library",
+   "name": "sprintf-js",
+   "version": "1.1.3",
+   "purl": "pkg:npm/sprintf-js@1.1.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/sprintf-js"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c195",
+   "type": "library",
+   "name": "ssri",
+   "version": "12.0.0",
+   "purl": "pkg:npm/ssri@12.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/ssri"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c196",
+   "type": "library",
+   "name": "string-width",
+   "version": "4.2.3",
+   "purl": "pkg:npm/string-width@4.2.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/string-width-cjs"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c197",
+   "type": "library",
+   "name": "string-width",
+   "version": "4.2.3",
+   "purl": "pkg:npm/string-width@4.2.3",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/string-width"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c198",
+   "type": "library",
+   "name": "strip-ansi",
+   "version": "6.0.1",
+   "purl": "pkg:npm/strip-ansi@6.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/strip-ansi-cjs"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c199",
+   "type": "library",
+   "name": "strip-ansi",
+   "version": "6.0.1",
+   "purl": "pkg:npm/strip-ansi@6.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/strip-ansi"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c200",
+   "type": "library",
+   "name": "supports-color",
+   "version": "9.4.0",
+   "purl": "pkg:npm/supports-color@9.4.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/supports-color"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c201",
+   "type": "library",
+   "name": "minipass",
+   "version": "3.3.6",
+   "purl": "pkg:npm/minipass@3.3.6",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/tar/node_modules/fs-minipass/node_modules/minipass"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c202",
+   "type": "library",
+   "name": "fs-minipass",
+   "version": "2.1.0",
+   "purl": "pkg:npm/fs-minipass@2.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/tar/node_modules/fs-minipass"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c203",
+   "type": "library",
+   "name": "minipass",
+   "version": "5.0.0",
+   "purl": "pkg:npm/minipass@5.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/tar/node_modules/minipass"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c204",
+   "type": "library",
+   "name": "minipass",
+   "version": "3.3.6",
+   "purl": "pkg:npm/minipass@3.3.6",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/tar/node_modules/minizlib/node_modules/minipass"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c205",
+   "type": "library",
+   "name": "minizlib",
+   "version": "2.1.2",
+   "purl": "pkg:npm/minizlib@2.1.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/tar/node_modules/minizlib"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c206",
+   "type": "library",
+   "name": "tar",
+   "version": "6.2.1",
+   "purl": "pkg:npm/tar@6.2.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/tar"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c207",
+   "type": "library",
+   "name": "text-table",
+   "version": "0.2.0",
+   "purl": "pkg:npm/text-table@0.2.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/text-table"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c208",
+   "type": "library",
+   "name": "tiny-relative-date",
+   "version": "1.3.0",
+   "purl": "pkg:npm/tiny-relative-date@1.3.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/tiny-relative-date"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c209",
+   "type": "library",
+   "name": "fdir",
+   "version": "6.4.6",
+   "purl": "pkg:npm/fdir@6.4.6",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/tinyglobby/node_modules/fdir"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c210",
+   "type": "library",
+   "name": "picomatch",
+   "version": "4.0.2",
+   "purl": "pkg:npm/picomatch@4.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/tinyglobby/node_modules/picomatch"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c211",
+   "type": "library",
+   "name": "tinyglobby",
+   "version": "0.2.14",
+   "purl": "pkg:npm/tinyglobby@0.2.14",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/tinyglobby"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c212",
+   "type": "library",
+   "name": "treeverse",
+   "version": "3.0.0",
+   "purl": "pkg:npm/treeverse@3.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/treeverse"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c213",
+   "type": "library",
+   "name": "@tufjs/models",
+   "version": "3.0.1",
+   "purl": "pkg:npm/%40tufjs/models@3.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/tuf-js/node_modules/@tufjs/models"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c214",
+   "type": "library",
+   "name": "tuf-js",
+   "version": "3.0.1",
+   "purl": "pkg:npm/tuf-js@3.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/tuf-js"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c215",
+   "type": "library",
+   "name": "unique-filename",
+   "version": "4.0.0",
+   "purl": "pkg:npm/unique-filename@4.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/unique-filename"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c216",
+   "type": "library",
+   "name": "unique-slug",
+   "version": "5.0.0",
+   "purl": "pkg:npm/unique-slug@5.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/unique-slug"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c217",
+   "type": "library",
+   "name": "util-deprecate",
+   "version": "1.0.2",
+   "purl": "pkg:npm/util-deprecate@1.0.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/util-deprecate"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c218",
+   "type": "library",
+   "name": "spdx-expression-parse",
+   "version": "3.0.1",
+   "purl": "pkg:npm/spdx-expression-parse@3.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/validate-npm-package-license/node_modules/spdx-expression-parse"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c219",
+   "type": "library",
+   "name": "validate-npm-package-license",
+   "version": "3.0.4",
+   "purl": "pkg:npm/validate-npm-package-license@3.0.4",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/validate-npm-package-license"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c220",
+   "type": "library",
+   "name": "validate-npm-package-name",
+   "version": "6.0.1",
+   "purl": "pkg:npm/validate-npm-package-name@6.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/validate-npm-package-name"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c221",
+   "type": "library",
+   "name": "walk-up-path",
+   "version": "3.0.1",
+   "purl": "pkg:npm/walk-up-path@3.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/walk-up-path"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c222",
+   "type": "library",
+   "name": "isexe",
+   "version": "3.1.1",
+   "purl": "pkg:npm/isexe@3.1.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/which/node_modules/isexe"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c223",
+   "type": "library",
+   "name": "which",
+   "version": "5.0.0",
+   "purl": "pkg:npm/which@5.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/which"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c224",
+   "type": "library",
+   "name": "ansi-styles",
+   "version": "4.3.0",
+   "purl": "pkg:npm/ansi-styles@4.3.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi-cjs/node_modules/ansi-styles"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c225",
+   "type": "library",
+   "name": "wrap-ansi",
+   "version": "7.0.0",
+   "purl": "pkg:npm/wrap-ansi@7.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi-cjs"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c226",
+   "type": "library",
+   "name": "ansi-regex",
+   "version": "6.1.0",
+   "purl": "pkg:npm/ansi-regex@6.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/node_modules/ansi-regex"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c227",
+   "type": "library",
+   "name": "emoji-regex",
+   "version": "9.2.2",
+   "purl": "pkg:npm/emoji-regex@9.2.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/node_modules/emoji-regex"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c228",
+   "type": "library",
+   "name": "string-width",
+   "version": "5.1.2",
+   "purl": "pkg:npm/string-width@5.1.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/node_modules/string-width"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c229",
+   "type": "library",
+   "name": "strip-ansi",
+   "version": "7.1.0",
+   "purl": "pkg:npm/strip-ansi@7.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi/node_modules/strip-ansi"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c230",
+   "type": "library",
+   "name": "wrap-ansi",
+   "version": "8.1.0",
+   "purl": "pkg:npm/wrap-ansi@8.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/wrap-ansi"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c231",
+   "type": "library",
+   "name": "write-file-atomic",
+   "version": "6.0.0",
+   "purl": "pkg:npm/write-file-atomic@6.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/write-file-atomic"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c232",
+   "type": "library",
+   "name": "yallist",
+   "version": "4.0.0",
+   "purl": "pkg:npm/yallist@4.0.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm/node_modules/yallist"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c233",
+   "type": "library",
+   "name": "npm",
+   "version": "10.9.4",
+   "purl": "pkg:npm/npm@10.9.4",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "npm"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/lib/node_modules/npm"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c234",
+   "type": "application",
+   "name": "node",
+   "version": "22.22.0",
+   "purl": "pkg:generic/node@22.22.0",
+   "cpe": "cpe:2.3:a:nodejs:node.js:22.22.0:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c235",
+   "type": "library",
+   "name": "acorn",
+   "version": "8.15.0",
+   "purl": "pkg:generic/acorn@8.15.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c236",
+   "type": "library",
+   "name": "ada",
+   "version": "2.9.2",
+   "purl": "pkg:generic/ada@2.9.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c237",
+   "type": "library",
+   "name": "amaro",
+   "version": "1.1.4",
+   "purl": "pkg:generic/amaro@1.1.4",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c238",
+   "type": "library",
+   "name": "ares",
+   "version": "1.34.6",
+   "purl": "pkg:generic/ares@1.34.6",
+   "cpe": "cpe:2.3:a:c-ares:c-ares:1.34.6:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c239",
+   "type": "library",
+   "name": "brotli",
+   "version": "1.1.0",
+   "purl": "pkg:generic/brotli@1.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c240",
+   "type": "library",
+   "name": "cjs_module_lexer",
+   "version": "2.1.0",
+   "purl": "pkg:generic/cjs_module_lexer@2.1.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c241",
+   "type": "library",
+   "name": "icu",
+   "version": "77.1",
+   "purl": "pkg:generic/icu@77.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c242",
+   "type": "library",
+   "name": "llhttp",
+   "version": "9.3.0",
+   "purl": "pkg:generic/llhttp@9.3.0",
+   "cpe": "cpe:2.3:a:llhttp:llhttp:9.3.0:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c243",
+   "type": "library",
+   "name": "nbytes",
+   "version": "0.1.1",
+   "purl": "pkg:generic/nbytes@0.1.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c244",
+   "type": "library",
+   "name": "ncrypto",
+   "version": "0.0.1",
+   "purl": "pkg:generic/ncrypto@0.0.1",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c245",
+   "type": "library",
+   "name": "nghttp2",
+   "version": "1.64.0",
+   "purl": "pkg:generic/nghttp2@1.64.0",
+   "cpe": "cpe:2.3:a:nghttp2:nghttp2:1.64.0:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c246",
+   "type": "library",
+   "name": "openssl",
+   "version": "3.5.4",
+   "purl": "pkg:generic/openssl@3.5.4",
+   "cpe": "cpe:2.3:a:openssl:openssl:3.5.4:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c247",
+   "type": "library",
+   "name": "simdjson",
+   "version": "3.13.0",
+   "purl": "pkg:generic/simdjson@3.13.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c248",
+   "type": "library",
+   "name": "simdutf",
+   "version": "6.4.2",
+   "purl": "pkg:generic/simdutf@6.4.2",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c249",
+   "type": "library",
+   "name": "sqlite",
+   "version": "3.50.4",
+   "purl": "pkg:generic/sqlite@3.50.4",
+   "cpe": "cpe:2.3:a:sqlite:sqlite:3.50.4:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c250",
+   "type": "library",
+   "name": "undici",
+   "version": "6.23.0",
+   "purl": "pkg:generic/undici@6.23.0",
+   "cpe": "cpe:2.3:a:nodejs:undici:6.23.0:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c251",
+   "type": "library",
+   "name": "uv",
+   "version": "1.51.0",
+   "purl": "pkg:generic/uv@1.51.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c252",
+   "type": "library",
+   "name": "uvwasi",
+   "version": "0.0.23",
+   "purl": "pkg:generic/uvwasi@0.0.23",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c253",
+   "type": "library",
+   "name": "v8",
+   "version": "12.4.254.21-node.33",
+   "purl": "pkg:generic/v8@12.4.254.21-node.33",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c254",
+   "type": "library",
+   "name": "zlib",
+   "version": "1.3.1-470d3a2",
+   "purl": "pkg:generic/zlib@1.3.1-470d3a2",
+   "cpe": "cpe:2.3:a:zlib:zlib:1.3.1-470d3a2:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c255",
+   "type": "library",
+   "name": "zstd",
+   "version": "1.5.7",
+   "purl": "pkg:generic/zstd@1.5.7",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "runtime-lib"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "/usr/local/bin/node"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "in node enthalten/gelinkt"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c256",
+   "type": "platform",
+   "name": "linux-kernel",
+   "version": "6.18.44-fc-v310",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "host"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "Host"
+    },
+    {
+     "name": "container-security-scan:hinweis",
+     "value": "Ubuntu 24.04.5 LTS"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "Host"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c257",
+   "type": "library",
+   "name": "docker-engine",
+   "version": "29.9.2",
+   "purl": "pkg:generic/docker-engine@29.9.2",
+   "cpe": "cpe:2.3:a:docker:docker:29.9.2:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "host"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "Host"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "Host"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c258",
+   "type": "library",
+   "name": "containerd",
+   "version": "v2.4.2",
+   "purl": "pkg:generic/containerd@v2.4.2",
+   "cpe": "cpe:2.3:a:linuxfoundation:containerd:2.4.2:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "host"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "Host"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "Host"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c259",
+   "type": "library",
+   "name": "runc",
+   "version": "1.5.2",
+   "purl": "pkg:generic/runc@1.5.2",
+   "cpe": "cpe:2.3:a:linuxfoundation:runc:1.5.2:*:*:*:*:*:*:*",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "host"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "Host"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "Host"
+    }
+   ]
+  },
+  {
+   "bom-ref": "c260",
+   "type": "library",
+   "name": "docker-init",
+   "version": "0.19.0",
+   "purl": "pkg:generic/docker-init@0.19.0",
+   "properties": [
+    {
+     "name": "container-security-scan:typ",
+     "value": "host"
+    },
+    {
+     "name": "container-security-scan:fundort",
+     "value": "Host"
+    },
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "Host"
+    }
+   ]
+  }
+ ],
+ "services": [
+  {
+   "bom-ref": "dienst:node:3000",
+   "name": "node",
+   "version": "22.22.0",
+   "description": "Port 3000/tcp (alle) öffentlich über nginx:80 in app-proxy, traefik:80 in app-traefik; Anwendung: server.js; Arbeitsverzeichnis: /app",
+   "properties": [
+    {
+     "name": "container-security-scan:aktiv",
+     "value": "node:3000"
+    },
+    {
+     "name": "container-security-scan:programm",
+     "value": "/usr/local/bin/node"
+    }
+   ]
+  }
+ ],
+ "dependencies": [
+  {
+   "ref": "container",
+   "dependsOn": [
+    "os"
+   ]
+  },
+  {
+   "ref": "os",
+   "dependsOn": [
+    "c1",
+    "c2",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c7",
+    "c8",
+    "c9",
+    "c10",
+    "c11",
+    "c12",
+    "c13",
+    "c14",
+    "c15",
+    "c16",
+    "c17",
+    "c18"
+   ]
+  }
+ ]
+}

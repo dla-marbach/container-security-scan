@@ -3,7 +3,6 @@
 ```bash
 python3 -m unittest discover -s tests                                        # Unit-Tests, ohne Docker (ca. 1 s)
 CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit echten Containern (Daten unter daten/)
-CSS_RELEASE_TESTS=1 python3 -m unittest discover -s tests -p test_installation.py   # Installscript gegen die Releases (volle Git-Historie)
 ```
 
 | Datei | Prüft |
@@ -20,4 +19,4 @@ CSS_RELEASE_TESTS=1 python3 -m unittest discover -s tests -p test_installation.p
 | `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden, KEV macht P4 relevant, gefährliche Einstellungen ergeben 1 (auch ohne Schwachstellen, Ausnahme nach Containername), root-Dienst nur Warnung (auch über Proxy-Ziel, nicht bei Loopback), Ausnahme, Kernel-Pakete |
 | `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), Reihenfolge und Weitergabe der Erreichbarkeit mit `--alle-container`/`--oeffentliche`, `--db-aktualisieren` als root abgelehnt, holt bzw. aktualisiert nur den Branch `daten` (nie den Code), `daten/` ohne Git bricht ab, Berichte nur für den Aufrufer lesbar, docker nicht erreichbar, fehlerhafte Ausnahmeliste und unerwartete Fehler → 2 |
 | `test_docker.py` | mit den Daten aus dem Branch `daten` unter `daten/`, Lauf mit `--alle-container`: nginx (`-c`) als Proxy vor Node (direkt und über `set $backend`), Traefik mit Label-Ziel und Nachbar ohne Label, gemeinsamer Netzwerk-Namespace, interner Container, Gateway in Node mit Ziel-URL und offenen Verbindungen (zu Node und Redis), nginx direkt auf dem Host vor einer Container-IP (wenn nginx installiert ist); EOL-Warnungen, Berichte, `docker diff` unverändert |
-| `test_installation.py` | Installscript aus dem README: Syntax (auch des eingebetteten Wrappers), Beispiele der Ausnahmeliste gültig (auskommentiert und aktiviert, mit `CONF-…`), Link auf das Release; mit `CSS_RELEASE_TESTS=1` und voller Git-Historie, ob `VERSION` und `SHA256` zum Release passen (siehe [Releases](#releases)) |
+| `test_installation.py` | `VERSION` (Format, `--version`, beim Push eines Tags gleich dem Tag), Installscript und Wrapper unter `installation/` (Syntax, nur vorhandene Dateien, Code nur über `python3 -I`), Beispiele der Ausnahmeliste gültig (auskommentiert und aktiviert, mit `CONF-…`), Beispiele mit der aktuellen Version erzeugt, Links auf `beispiele/` und `installation/` gültig. Die Installation selbst prüft die Action (Job „Installscript und Wrapper“) |

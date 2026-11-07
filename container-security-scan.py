@@ -78,6 +78,9 @@ import zlib
 from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
+# Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
+VERSION = "0.1.0"
+
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
 # Gefährliche Einstellungen des Containers (-> Rückgabewert 1, Kennung CONF-… für die Ausnahmeliste): Mit ihnen
@@ -1973,7 +1976,7 @@ def write_cdx(path, c, osinfo, comps, services):
         ("bomFormat", "CycloneDX"), ("specVersion", "1.5"), ("serialNumber", "urn:uuid:%s" % uuid.uuid4()), ("version", 1),
         ("metadata", {
             "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "tools": {"components": [{"type": "application", "name": "container-security-scan.py"}]},
+            "tools": {"components": [{"type": "application", "name": "container-security-scan.py", "version": VERSION}]},
             "component": {"bom-ref": "container", "type": "container", "name": c.info["Config"]["Image"], "version": img,
                           "properties": [{"name": "container-security-scan:container-name", "value": c.name},
                                          {"name": "container-security-scan:container-id", "value": c.id}] +
@@ -2855,9 +2858,9 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
     i = c.info
     w("# Container-Scan: %s\n" % c.name)
     kernel = sum(1 for x in comps if kernel_paket(x))
-    w("- Image: %s (%s)  \n- OS: %s  \n- Zeitpunkt: %s  \n- Datenbank: %s  \n- Erfassung: OS-Pakete %s; Dateien %s; Prozesse %s%s%s\n" % (
+    w("- Image: %s (%s)  \n- OS: %s  \n- Zeitpunkt: %s  \n- Scanner: container-security-scan %s  \n- Datenbank: %s  \n- Erfassung: OS-Pakete %s; Dateien %s; Prozesse %s%s%s\n" % (
         i["Config"]["Image"], i["Image"][:19], osinfo["pretty"], datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-        db_info["text"], how["pkgdb"], how["files"], how["procs"],
+        VERSION, db_info["text"], how["pkgdb"], how["files"], how["procs"],
         "; %d Sprach-Komponenten aus OS-Paketen (über das OS-Paket geprüft)" % how["os_owned"] if how["os_owned"] else "",
         "; %d Kernel-Pakete nicht geprüft (Container nutzen den Kernel des Hosts)" % kernel if kernel else ""))
 
@@ -3253,6 +3256,7 @@ def main():
                     help="für den Rückgabewert nur Funde zählen, für die es einen Fix gibt")
     ap.add_argument("--alle", action="store_true", help="alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH)")
     ap.add_argument("--user", default="0", help="Benutzer für docker exec (Standard 0 = root, nötig für /proc)")
+    ap.add_argument("--version", action="version", version="container-security-scan " + VERSION)
     a = ap.parse_args()
     mehrere = a.oeffentliche or a.alle_container
     if mehrere and a.container:      # mit --oeffentliche/--alle-container ist das erste Argument das Ausgabeverzeichnis
@@ -3320,6 +3324,7 @@ def main():
     if not a.dbdirs or not all(os.path.isdir(d) for d in a.dbdirs):
         raise ScanError("keine OSV-Daten gefunden (%s) – zuerst: %s --db-aktualisieren" % (", ".join(a.db or [data_dir]), sys.argv[0]))
     a.ausnahmen_liste = ausnahmen_laden(a.ausnahmen) if a.ausnahmen else []
+    print("container-security-scan %s" % VERSION)
     if not mehrere:
         # auch ein Einzelscan kennt Proxys auf dem Host (ohne die in anderen Containern)
         try:
