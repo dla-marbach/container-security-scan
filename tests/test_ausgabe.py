@@ -166,12 +166,12 @@ class Gesamtlauf(unittest.TestCase):
                       "/var/lib/dpkg/info/libssl3.list": b"/usr/lib/x86_64-linux-gnu/libssl.so.3\n"}
         self.problems = []
 
-    def lauf(self, ports=None):
+    def lauf(self, ports=None, fremd=None, **web_kw):
         nginx = proc(1, "/usr/sbin/nginx", ports=ports or {"80": "alle"}, maps={"/usr/lib/x86_64-linux-gnu/libssl.so.3"})
-        w = web(published={"80": ["0.0.0.0:80"]})
+        w = web(**dict({"published": {"80": ["0.0.0.0:80"]}}, **web_kw))
         patches = [mock.patch.object(scanner, "Container", return_value=FakeContainer()),
                    mock.patch.object(scanner, "collect_files", return_value=(dict(self.files), [], "test", list(self.problems))),
-                   mock.patch.object(scanner, "collect_procs", return_value=({"1": nginx}, "test")),
+                   mock.patch.object(scanner, "collect_procs", return_value=({"1": nginx}, "test", fremd or {})),
                    mock.patch.object(scanner, "probe_runtimes", return_value=[]),
                    mock.patch.object(scanner, "host_components", return_value=[]),
                    mock.patch.object(scanner, "collect_web", return_value=w),
@@ -199,6 +199,35 @@ class Gesamtlauf(unittest.TestCase):
             self.assertEqual(f.read().split()[0], scanner.datei_sha256(base + ".md"))
         self.assertEqual(scanner.json_datei(os.path.join(self.a.ausgabe, "bekannt_app.json")),
                          [["libssl3", "3.0.15-1~deb12u1", "CVE-2026-9"]])
+
+    def test_port_eines_mitnutzenden_containers(self):
+        # vpn veröffentlicht 8080, darauf lauscht ein Prozess im Container "mit" (network_mode: service:vpn):
+        # nicht "unbekannter Dienst", sondern dort bewertet
+        code, backends, base = self.lauf(fremd={"8080": "alle"}, netz_gruppe=["mit"],
+                                         published={"80": ["0.0.0.0:80"], "8080": ["127.0.0.1:8080"]})
+        with open(base + ".md", encoding="utf-8") as f:
+            bericht = f.read()
+        self.assertIn("Port 8080/tcp (alle): Prozess in einem Container mit demselben Netzwerk (mit)", bericht)
+        self.assertNotIn("unbekannter Dienst", bericht)
+        self.assertNotIn("nicht ermittelbar", self.konsole)
+
+    def test_unbekannter_dienst_macht_nachbarn_erreichbar(self):
+        # auf 8443 lauscht ein Prozess, der nicht lesbar ist: könnte ein Proxy sein
+        code, backends, base = self.lauf(published={"80": ["0.0.0.0:80"], "8443": ["0.0.0.0:8443"]},
+                                         nachbarn=["shop", "db"], fremd={"8443": "alle"})
+        self.assertEqual(backends, [("shop", "*", "unbekannter Dienst:8443 in app"),
+                                    ("db", "*", "unbekannter Dienst:8443 in app")])
+        self.assertIn("WARNUNG: Prozess zu Port 8443 nicht ermittelbar", self.konsole)
+        # auf 8443 lauscht nichts: alle Komponenten vorsichtshalber öffentlich, aber kein Proxy denkbar
+        code, backends, base = self.lauf(published={"80": ["0.0.0.0:80"], "8443": ["0.0.0.0:8443"]},
+                                         nachbarn=["shop", "db"])
+        self.assertEqual(backends, [])
+        self.assertIn("WARNUNG: Prozess zu Port 8443 nicht ermittelbar", self.konsole)
+
+    def test_warnung_bei_unklaren_weiterleitungen(self):
+        self.lauf(nachbarn=["shop"], backends={"/usr/sbin/nginx": ["http://$host"]})
+        self.assertIn("app: WARNUNG: Weiterleitungen von nginx:80 nicht vollständig auswertbar (Ziel http://$host) – "
+                      "Container in denselben Docker-Netzen gelten als möglicherweise öffentlich: shop", self.konsole)
 
     def test_relevante_funde_auf_der_konsole(self):
         # für Rundeck/Mail: nicht nur die Zusammenfassung, sondern jeder relevante Fund

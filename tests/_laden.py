@@ -24,7 +24,8 @@ def web(**kw):
     """Webserver-Kontext wie von collect_web geliefert (ohne Docker)."""
     w = {"docroots": {}, "backends": {}, "vhosts": {}, "upstreams": {}, "modphp": set(), "raw": [],
          "published": {}, "containers": {}, "via_proxy": {}, "problems": [], "host_network": False,
-         "self": "app", "venvs": set()}
+         "self": "app", "venvs": set(), "lan": [], "spender": None, "nachbarn": [], "netz_gruppe": [],
+         "label_ziele": {}, "unlesbar": set()}
     w.update(kw)
     return w
 

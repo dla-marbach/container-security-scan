@@ -97,6 +97,59 @@ class Dienste(unittest.TestCase):
         self.assertEqual(s["backends"], [("app-api", "8000", "nginx:80,53/udp")])
         self.assertEqual(s["unresolved"], ["http://gone:1", "unix:/run/x.sock"])
 
+    def test_nur_lokal_lauschend_nie_erreichbar(self):
+        for addr in ("localhost", "127.0.0.11"):
+            p = proc(1, "/usr/sbin/nginx", ports={"80": addr})
+            self.assertFalse(self.dienst(p, host_network=True)["exposed"], addr)
+            self.assertFalse(self.dienst(p, lan=["macvlan-Netz mv"])["exposed"], addr)
+            self.assertFalse(self.dienst(p, via_proxy={"*": ["traefik:443 in proxy"]})["exposed"], addr)
+
+    def test_lan_netz_und_spender(self):
+        p = proc(1, "/usr/local/bin/node", ports={"3000": "alle"})
+        s = self.dienst(p, lan=["macvlan-Netz mv"])
+        self.assertTrue(s["exposed"])
+        self.assertIn("direkt erreichbar im macvlan-Netz mv", s["description"])
+        s = self.dienst(p, published={"3000": ["0.0.0.0:3000"]}, spender="vpn")
+        self.assertIn("veröffentlicht als 0.0.0.0:3000 (über Container vpn)", s["description"])
+
+    def test_moeglicherweise_erreichbar_ueber_unklaren_proxy(self):
+        p = proc(1, "/usr/local/bin/node", ports={"3000": "alle"})
+        s = self.dienst(p, via_proxy={"*": ["traefik:443 in proxy"]})
+        self.assertTrue(s["exposed"])
+        self.assertIn("möglicherweise öffentlich über traefik:443 in proxy", s["description"])
+        # genaue Zuordnung hat Vorrang
+        s = self.dienst(p, via_proxy={"*": ["traefik:443 in proxy"], "3000": ["traefik:443 in proxy"]})
+        self.assertIn("Port 3000/tcp (alle) öffentlich über", s["description"])
+
+    def test_unbekannter_proxy_macht_nachbarn_erreichbar(self):
+        traefik = proc(1, "/usr/local/bin/traefik", ports={"443": "alle"})
+        s = self.dienst(traefik, published={"443": ["0.0.0.0:443"]}, nachbarn=["shop", "db"],
+                        label_ziele={"traefik": [("shop", "8080")]})
+        self.assertEqual(s["unklar"], ["traefik: Konfiguration wird nicht ausgewertet"])
+        self.assertEqual(s["backends"], [("shop", "8080", "traefik:443"), ("shop", "*", "traefik:443"),
+                                         ("db", "*", "traefik:443")])
+        self.assertIn("Ziel aus Docker-Labels: Container shop, Port 8080", s["description"])
+        # nicht erreichbar: keine Weitergabe
+        s = self.dienst(traefik, nachbarn=["shop", "db"])
+        self.assertEqual((s["unklar"], s["backends"]), ([], []))
+
+    def test_variables_ziel_macht_nachbarn_erreichbar(self):
+        nginx = proc(1, "/usr/sbin/nginx", ports={"80": "alle"})
+        s = self.dienst(nginx, published={"80": ["0.0.0.0:80"]}, nachbarn=["shop"], containers={"api": "api"},
+                        backends={"/usr/sbin/nginx": ["http://api:8000", "http://$host"]})
+        self.assertEqual(s["unklar"], ["Ziel http://$host"])
+        self.assertEqual(s["unresolved"], [])          # nicht zusätzlich als "keinem Container zuordenbar"
+        self.assertEqual(s["backends"], [("api", "8000", "nginx:80"), ("shop", "*", "nginx:80")])
+        # vollständig ausgewertet: nur die genauen Ziele
+        s = self.dienst(nginx, published={"80": ["0.0.0.0:80"]}, nachbarn=["shop"], containers={"api": "api"},
+                        backends={"/usr/sbin/nginx": ["http://api:8000"]})
+        self.assertEqual((s["unklar"], s["backends"]), ([], [("api", "8000", "nginx:80")]))
+
+    def test_nginx_konfiguration_unlesbar_macht_nachbarn_erreichbar(self):
+        nginx = proc(1, "/usr/sbin/nginx", ports={"80": "alle"})
+        s = self.dienst(nginx, published={"80": ["0.0.0.0:80"]}, nachbarn=["shop"], unlesbar={"/usr/sbin/nginx"})
+        self.assertEqual(s["backends"], [("shop", "*", "nginx:80")])
+
     def test_beschreibung(self):
         p = proc(1, "/usr/local/bin/node", ["node", "/app/server.js"], cwd="/app", ports={"3000": "alle"})
         s = self.dienst(p)

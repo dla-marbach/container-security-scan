@@ -89,7 +89,7 @@ ARGS=(--db "$D/daten")
 {
   runuser -u csscan -- git -C "$D/daten" pull --ff-only --quiet \
       || { echo "FEHLER: Daten nicht aktualisiert (git pull als csscan)"; exit 2; }
-  "$CODE" "${ARGS[@]}" --oeffentliche "$OUT/berichte" --nur-behebbare
+  "$CODE" "${ARGS[@]}" --alle-container "$OUT/berichte" --nur-behebbare
 } 2>&1 | tee "$LOG"
 rc=${PIPESTATUS[0]}
 case $rc in 0) e=OK ;; 1) e=FUNDE ;; *) e=UNVOLLSTAENDIG; rc=2 ;; esac
@@ -119,10 +119,11 @@ Format und Wirkung: [Ausnahmen](#ausnahmen). Neue Einträge kommen später aus d
 sudo /usr/local/sbin/container-security-scan-lauf
 ```
 
-Geprüft werden alle öffentlich erreichbaren Container (veröffentlichte Ports, Host-Netzwerk) und die
-Backends hinter ihren Reverse Proxys, auch in anderen Containern. Einen einzelnen Container – z. B. einen
-internen ohne veröffentlichten Port – mit denselben Daten (vorher einmal den Wrapper laufen lassen, damit
-die Daten aktuell sind):
+Geprüft werden alle laufenden Container: zuerst die erreichbaren (siehe [Erreichbarkeit](#erreichbarkeit))
+samt den Backends hinter ihren Reverse Proxys, dann alle übrigen. Was nicht als erreichbar erkannt wird,
+fehlt so nicht, sondern erscheint mindestens als P2. Einen einzelnen Container mit denselben Daten (vorher
+einmal den Wrapper laufen lassen, damit die Daten aktuell sind; ohne Erreichbarkeit über Proxys in anderen
+Containern):
 
 ```bash
 sudo /opt/container-security-scan/container-security-scan.py --db /var/lib/container-security-scan/daten \
@@ -213,7 +214,8 @@ docker-Rechten ausführen.
 
 **Relevant** ist P1 CRITICAL/HIGH und P2 CRITICAL (anpassbar über `RELEVANT` am Anfang des Skripts), dazu
 **jede aktiv ausgenutzte Lücke** aus dem [KEV-Katalog der CISA](https://www.cisa.gov/known-exploited-vulnerabilities-catalog),
-unabhängig von Priorität und Schweregrad. Grund: „Genutzt von“ ist eine Momentaufnahme. Programme, die eine
+unabhängig von Priorität und Schweregrad. Mit `--nur-behebbare` (so im Wrapper) gilt für alle, auch für
+KEV-Funde: nur mit verfügbarem Fix. Grund für KEV: „Genutzt von“ ist eine Momentaufnahme. Programme, die eine
 Anwendung nur bei Bedarf startet (ImageMagick, Ghostscript, ffmpeg beim Hochladen), erscheinen als P4; ist
 eine solche Lücke aktiv ausgenutzt, soll sie trotzdem melden. Nicht relevant sind Funde aus der
 Ausnahmeliste und Funde, die laut Titel nur Windows betreffen (siehe [Bewertung](#bewertung-der-funde)).
@@ -222,7 +224,7 @@ Ausnahmeliste und Funde, die laut Titel nur Windows betreffen (siehe [Bewertung]
 
 | | Bedeutung |
 |---|---|
-| **P1** | genutzt von einem öffentlich erreichbaren Dienst: Port veröffentlicht, Host-Netzwerk oder hinter einem öffentlichen Reverse Proxy |
+| **P1** | genutzt von einem erreichbaren Dienst (Intranet oder Internet, siehe [Erreichbarkeit](#erreichbarkeit)) |
 | **P2** | genutzt von einem Dienst mit internem Port |
 | **P3** | genutzt nur von einem Prozess ohne offenen Port |
 | **P4** | installiert, aber nicht in Benutzung erkannt; oder Entwicklungsabhängigkeit (dev) |
@@ -232,6 +234,30 @@ offene TCP/UDP-Ports; für npm/Composer/PyPI über das Projektverzeichnis (Arbei
 venv, Docroot aus der nginx-/Apache-Konfiguration). Welche Pakete eine Anwendung tatsächlich importiert,
 ist von außen nicht sichtbar. Lässt sich ein veröffentlichter Port keinem Prozess zuordnen, werden
 vorsichtshalber alle Komponenten des Containers als öffentlich genutzt gewertet (mit Warnung).
+
+### Erreichbarkeit
+
+„Öffentlich“ heißt im Bericht: von außerhalb des Docker-Hosts erreichbar. Ob aus dem Internet oder nur aus
+dem Intranet, ist auf dem Server nicht erkennbar (Firewall, NAT, vorgelagerte Load Balancer) und wird gleich
+gewertet. Das Ergebnis hängt nur von der Docker-Konfiguration ab, nicht vom Netz: Eine Testumgebung im
+internen Netz mit derselben Konfiguration findet dieselben relevanten Funde wie die Produktion.
+
+Grundsatz: **im Zweifel erreichbar.** Als intern gilt ein Dienst nur, wenn der Weg dorthin vollständig
+bekannt ist. Ein Dienst, der nur auf Loopback lauscht (127.0.0.1, ::1), ist nie erreichbar. Sonst gilt er als
+erreichbar, wenn eine der folgenden Bedingungen zutrifft:
+
+| Weg | Erkennung |
+|---|---|
+| Port veröffentlicht | `docker inspect`, auch an `127.0.0.1` (dann meist hinter einem Reverse Proxy auf dem Host) |
+| Host-Netzwerk | `network_mode: host` |
+| eigene Adresse im LAN | Docker-Netz mit Treiber macvlan/ipvlan oder `gateway_mode_ipv4/6` `routed` bzw. `nat-unprotected` |
+| gemeinsamer Netzwerk-Namespace | `network_mode: container:…`/`service:…` (z. B. VPN- oder Sidecar-Container): es gelten die Ports des Spenders; ein Ziel des Spenders wird an alle Container dieses Namespace weitergegeben |
+| hinter einem erreichbaren nginx/Apache | Backends aus `nginx -T` bzw. der Apache-Konfiguration (`proxy_pass`, `fastcgi_pass`, `upstream`, `ProxyPass`, `SetHandler proxy:`), auch über mehrere Proxys hintereinander. Variablen aus `set` und `map` (`proxy_pass $backend` mit `resolver`) werden aufgelöst; Ziele per Container-Name, Alias, Compose-Dienst, IP oder `<name>.<netz>` |
+| hinter einem erreichbaren Traefik bzw. caddy-docker-proxy | Ziele aus Docker-Labels (`traefik.*.services.*.loadbalancer.server.port`, `caddy.reverse_proxy: {{upstreams …}}`) |
+| **möglicherweise** erreichbar | Container im selben Docker-Netz wie ein erreichbarer Dienst, dessen Weiterleitungen nicht vollständig bekannt sind: Traefik, Caddy, HAProxy, Envoy, Varnish u. a. (Konfiguration wird nicht ausgewertet; Labels geben nur einen Teil der Ziele an), nginx-Ziel mit nicht auflösbarer Variable (`proxy_pass http://$host`), nicht lesbare nginx-Konfiguration, veröffentlichter Port ohne erkennbaren Prozess. Bei einem solchen Dienst im Host-Netzwerk: alle Container mit einem Docker-Netz. Mit Warnung je Dienst |
+
+Nicht erkennbar ist ein Reverse Proxy direkt auf dem Host, der eine Container-IP ohne veröffentlichten Port
+anspricht. Solche Container prüft `--alle-container` trotzdem mit, ihre Funde erscheinen als P2.
 
 ### Bewertung der Funde
 
@@ -281,14 +307,15 @@ für Spezialfälle, immer mit dem festgehaltenen Code und `--db`:
 ```bash
 C=/opt/container-security-scan/container-security-scan.py
 DB=/var/lib/container-security-scan/daten
-sudo $C --db $DB --oeffentliche <ausgabeverzeichnis>          # wie der Wrapper, ohne Datenaktualisierung
+sudo $C --db $DB --alle-container <ausgabeverzeichnis>        # wie der Wrapper, ohne Datenaktualisierung
 sudo $C --db $DB <container> <ausgabeverzeichnis>             # einzelner Container
 sudo $C --db $DB --alle <container> <ausgabeverzeichnis>      # alle Befunde in die Tabelle
 ```
 
 | Option | Bedeutung |
 |---|---|
-| `--oeffentliche` | alle öffentlich erreichbaren Container; Backends hinter einem öffentlichen Proxy (auch in anderen Containern) werden mitgeprüft und zählen als öffentlich |
+| `--alle-container` | alle laufenden Container: zuerst die erreichbaren und die Backends hinter ihren Proxys (zählen als öffentlich, siehe [Erreichbarkeit](#erreichbarkeit)), dann alle übrigen – **empfohlen**, so im Wrapper. Ein Container, der zwischen Auflistung und Scan entfernt wurde (z. B. `docker run --rm`), wird übersprungen |
+| `--oeffentliche` | wie `--alle-container`, aber ohne die übrigen Container |
 | `--nur-behebbare` | für den Rückgabewert nur Funde zählen, für die es einen Fix gibt – **empfohlen** für die Alarmierung, sonst melden Container mit offenen, noch unbehobenen CVEs dauerhaft `1` |
 | `--alle` | alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV) |
 | `--ausnahmen DATEI` | Ausnahmeliste: passende Funde zählen nicht als relevant, jede Ausnahme mit Begründung und Ablaufdatum (siehe [Ausnahmen](#ausnahmen)) |
@@ -471,14 +498,18 @@ die Lücke aktiv ausgenutzt.
   gibt („UNKNOWN“), zählen nicht als relevant (außer KEV), werden aber eigens ausgewiesen.
 - Lücken nur unter Windows werden nur erkannt, wenn der Titel es eindeutig sagt; sonst Ausnahmeliste.
 - Nicht erfasst: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung, Bundles ohne Kopfkommentar,
-  Programme direkt auf dem Host, UDP-Dienste nur bei offenem Socket, Proxys außer nginx/Apache
-  (Traefik, Caddy, HAProxy: Backends dann einzeln scannen).
+  Programme direkt auf dem Host, UDP-Dienste nur bei offenem Socket.
+- Erreichbarkeit: Konfigurationen werden nur von nginx und Apache ausgewertet; andere Proxys machen alle
+  Container in ihren Docker-Netzen „möglicherweise“ erreichbar (eher zu viel). Anwendungen, die selbst
+  weiterleiten (z. B. ein API-Gateway in Java oder Node), werden nicht als Proxy erkannt; ihre Ziele erscheinen
+  als P2. Ein Reverse Proxy direkt auf dem Host ist nur über veröffentlichte Ports sichtbar.
 - EOL-Abgleich nur für Produkte mit Paketkennung bzw. die genannten Laufzeiten/Server und nur für
   numerische Versionszweige; einzelne OS-Pakete, Java-Laufzeiten (herstellerabhängig) und Anwendungen
   ohne Paketkennung (z. B. WordPress, Nextcloud) werden nicht auf Supportende geprüft.
 - Herstellerpaketquellen werden über typische Versionskennungen und Paketbetreuer erkannt
   (nginx.org, NodeSource, Sury, mariadb.org, PostgreSQL); andere Fremdquellen können unerkannt bleiben.
-- Ohne `--oeffentliche` kennt ein Einzelscan keine Proxys in *anderen* Containern; Backends erscheinen dann als P2.
+- Ein Einzelscan (ohne `--alle-container`/`--oeffentliche`) kennt keine Proxys in *anderen* Containern;
+  Backends erscheinen dann als P2.
 - nginx-Konfiguration: `nginx -T` wird mit `-p`/`-c` des laufenden Masterprozesses aufgerufen. Schlägt
   die Abfrage fehl, ist die Prüfung unvollständig (Rückgabewert 2), da Proxy-Backends fehlen könnten.
 
@@ -521,7 +552,7 @@ Zum Ausprobieren und Entwickeln, **nur auf einem eigenen Testrechner** – auf S
 ```bash
 git clone https://github.com/felixlohmeier/container-security-scan.git && cd container-security-scan
 ./container-security-scan.py --db-aktualisieren        # Branch daten nach daten/ holen (nicht als root)
-sudo ./container-security-scan.py --oeffentliche berichte/ --nur-behebbare
+sudo ./container-security-scan.py --alle-container berichte/ --nur-behebbare
 ```
 
 ```bash
@@ -536,14 +567,14 @@ CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # m
 | `test_schweregrad.py` | CVSS 3/4, Vorrang von Quellen-Einstufung, Debian-Dringlichkeit, Ubuntu-Priorität, `MAL-…` |
 | `test_inventar.py` | dpkg (auch distroless), apk, rpm, npm/Composer/PyPI, JS-Bibliotheken, JARs, Go-Build-Info, tar-Strom |
 | `test_prozesse.py` | Prozesse, Ports und Dateien aus `/proc` (je Prozess-Benutzer bzw. über den Host, nie alle Host-Prozesse), Volumes, fester Suchpfad im Container, Benutzer der Versionsabfragen |
-| `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c` und dem Benutzer des Hauptprozesses (nie root für fremde Programme/Optionen), veröffentlichte Ports, Backends |
-| `test_nutzung.py` | Zuordnung Komponente → Dienst, Erreichbarkeit, Priorität P1–P4 |
+| `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c` und dem Benutzer des Hauptprozesses (nie root für fremde Programme/Optionen), nginx-Variablen (`set`, `map`), veröffentlichte Ports, Backends, Docker-Netze (macvlan, geroutet, Host-Netzwerk, gemeinsamer Netzwerk-Namespace), Ziele aus Traefik-/Caddy-Labels |
+| `test_nutzung.py` | Zuordnung Komponente → Dienst, Erreichbarkeit (auch „möglicherweise“ über nicht auswertbare Proxys), Priorität P1–P4 |
 | `test_osv.py` | Abgleich je Ökosystem, Quellpakete, Fremdquellen über Bitnami, Datenformat, Kürzung der Ubuntu-Daten (gleiche Funde wie vollständig), inkrementelle Aktualisierung, ungültige Kennungen (kein Pfad) |
 | `test_bewertung.py` | widersprüchliche Versionsbereiche der Distribution, Kernel-Pakete, Schweregrad über die CVE, KEV (Daten erzeugen, laden, markieren), Ausnahmeliste (Format, Rechte, Ablauf), nur Windows, Relevanz |
 | `test_eol.py` | EOL-Daten erzeugen, Supportende und Vorwarnung |
 | `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden, KEV macht P4 relevant, Ausnahme, Kernel-Pakete |
-| `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), `--db-aktualisieren` als root abgelehnt, holt bzw. aktualisiert nur den Branch `daten` (nie den Code), `daten/` ohne Git bricht ab, Berichte nur für den Aufrufer lesbar, docker nicht erreichbar, fehlerhafte Ausnahmeliste und unerwartete Fehler → 2 |
-| `test_docker.py` | mit den Daten aus dem Branch `daten` unter `daten/`: nginx (`-c`) als Proxy vor Node: Proxy-Erkennung, EOL-Warnungen, Berichte, `docker diff` unverändert |
+| `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), Reihenfolge und Weitergabe der Erreichbarkeit mit `--alle-container`/`--oeffentliche`, `--db-aktualisieren` als root abgelehnt, holt bzw. aktualisiert nur den Branch `daten` (nie den Code), `daten/` ohne Git bricht ab, Berichte nur für den Aufrufer lesbar, docker nicht erreichbar, fehlerhafte Ausnahmeliste und unerwartete Fehler → 2 |
+| `test_docker.py` | mit den Daten aus dem Branch `daten` unter `daten/`, Lauf mit `--alle-container`: nginx (`-c`) als Proxy vor Node (direkt und über `set $backend`), Traefik mit Label-Ziel und Nachbar ohne Label, gemeinsamer Netzwerk-Namespace, interner Container; EOL-Warnungen, Berichte, `docker diff` unverändert |
 
 Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11, 3.13 und
 3.14 (Python des Runners, mit dem auch die Daten erzeugt werden) sowie den Docker-Test aus.
