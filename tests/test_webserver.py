@@ -329,11 +329,13 @@ class HostProxys(unittest.TestCase):
         with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 0)), \
                 mock.patch.object(scanner, "run", return_value=(0, procs)), \
                 mock.patch.object(scanner, "socket_besitzer",
-                                  return_value={"7777": "gvp", "7775": "selfreg", "7443": None}) as sb, \
+                                  return_value={("127.0.0.1", "7777"): ["gvp"], ("127.0.0.1", "7775"): ["selfreg"],
+                                                ("::1", "7775"): ["selfreg"], ("127.0.0.1", "7443"): [None]}) as sb, \
                 mock.patch.object(scanner.Host, "exec", return_value=(0, conf)):
             ziele, services, warnings, problems = scanner.host_proxys(infos)
-        # veröffentlichte Ports werden nicht mehr nach dem lauschenden Prozess gesucht
-        self.assertEqual(sorted(sb.call_args[0][0]), ["7443", "7775", "7777"])
+        # veröffentlichte Ports werden nicht mehr nach dem lauschenden Prozess gesucht; localhost: IPv4 und IPv6
+        self.assertEqual(sb.call_args[0][0], [("127.0.0.1", "7443"), ("127.0.0.1", "7775"), ("127.0.0.1", "7777"),
+                                              ("::1", "7775")])
         self.assertEqual(sorted(ziele), [("extern", "3000", "nginx:443 auf dem Host"),
                                          ("gvp", "7777", "nginx:443 auf dem Host (über Loopback)"),
                                          ("regdido", "7776", "nginx:443 auf dem Host"),
@@ -350,23 +352,28 @@ class HostProxys(unittest.TestCase):
         self.assertNotIn("leer", ausgabe.getvalue())
 
     def test_socket_besitzer(self):
-        # lauschende Sockets des Host-Netzwerks per Inode einem Prozess und dessen cgroup zuordnen
+        # lauschende Sockets des Host-Netzwerks per Inode einem Prozess und dessen cgroup zuordnen, passend zu
+        # Adresse und Port des Ziels
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         os.mkdir(os.path.join(tmp, "net"))
         kopf = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
         zeile = "   0: %s 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 %s 1 0 100 0 0 10 0\n"
+        lo6, alle6 = "00000000000000000000000001000000", "0" * 32
         with open(os.path.join(tmp, "net", "tcp"), "w") as f:
             f.write(kopf + zeile % ("0100007F:1E61", "101")      # 127.0.0.1:7777 – Container gvp
                     + zeile % ("00000000:1D13", "102")             # *:7443 – Host
                     + zeile % ("0100007F:1E5E", "103")             # 127.0.0.1:7774 – Prozess nicht lesbar
                     + zeile % ("0100007F:1E5F", "104")             # 127.0.0.1:7775 – zwei Besitzer
                     + zeile % ("0500000A:1E60", "105")             # 10.0.0.5:7776 – nicht über Loopback
-                    + zeile.replace(" 0A ", " 01 ") % ("0100007F:1E62", "106"))   # 7778: keine Verbindung
+                    + zeile.replace(" 0A ", " 01 ") % ("0100007F:1E62", "106")    # 7778: keine Verbindung
+                    + zeile % ("0100007F:1E64", "110")             # 127.0.0.1:7780 – gvp …
+                    + zeile % ("0100007F:1E65", "112"))            # 127.0.0.1:7781 – gvp
         with open(os.path.join(tmp, "net", "tcp6"), "w") as f:
-            f.write(kopf + zeile % ("00000000000000000000000001000000:1E61", "107"))   # [::1]:7777 – gvp
+            f.write(kopf + zeile % (lo6 + ":1E61", "107")         # [::1]:7777 – gvp
+                    + zeile % (alle6 + ":1E64", "111"))            # [::]:7780 – … und ein nicht lesbarer Prozess
         ids = {"gvp": "a" * 64, "selfreg": "b" * 64}
-        for pid, cgroup, inodes in (("20", "0::/system.slice/docker-%s.scope\n" % ids["gvp"], ["101", "107"]),
+        for pid, cgroup, inodes in (("20", "0::/system.slice/docker-%s.scope\n" % ids["gvp"], ["101", "107", "110", "112"]),
                                     ("21", "0::/system.slice/nginx.service\n", ["102"]),
                                     ("22", "0::/system.slice/docker-%s.scope\n" % ids["selfreg"], ["104"]),
                                     ("23", "0::/system.slice/other.service\n", ["104", "105", "106"])):
@@ -376,15 +383,35 @@ class HostProxys(unittest.TestCase):
             with open(os.path.join(tmp, pid, "cgroup"), "w") as f:
                 f.write(cgroup)
         infos = [inspect(n, mode="host", cid=i) for n, i in sorted(ids.items())]
-        self.assertEqual(scanner.socket_besitzer(["7777", "7443", "7774", "7775", "7776", "7778"], infos, proc=tmp),
-                         {"7777": "gvp", "7443": None})
-        # Ziele im Host-Netzwerk: veröffentlichter Port vor lauschendem Prozess; aus Sicht des Hosts bzw. eines
-        # Containers im Host-Netzwerk
+        ziele = [(a, p) for a in ("127.0.0.1", "::1") for p in ("7777", "7443", "7774", "7775", "7776", "7778", "7780")]
+        self.assertEqual(scanner.socket_besitzer(ziele, infos, proc=tmp),
+                         {("127.0.0.1", "7777"): ["gvp"], ("::1", "7777"): ["gvp"], ("127.0.0.1", "7443"): [None],
+                          # dort lauscht nichts (7776 nur auf 10.0.0.5, 7778 nur eine Verbindung)
+                          ("127.0.0.1", "7776"): [], ("127.0.0.1", "7778"): [], ("::1", "7443"): [],
+                          ("::1", "7774"): [], ("::1", "7775"): [], ("::1", "7776"): [], ("::1", "7778"): []})
+        self.assertEqual(scanner.socket_besitzer(ziele, infos, proc=os.path.join(tmp, "fehlt")), {})
+        # Ziele: je Adresse veröffentlichter Port vor lauschendem Prozess, aus Sicht des Hosts bzw. eines Containers
+        # im Host-Netzwerk; nur passende Adressen (nicht [::1] für 127.0.0.1, nicht 127.0.0.2 für 127.0.0.1)
         infos.append(inspect("reg", ["back"], ports={"7776/tcp": [{"HostIp": "0.0.0.0", "HostPort": "7443"}],
-                                                     "53/udp": [{"HostIp": "127.0.0.1", "HostPort": "7777"}]}))
-        self.assertEqual(scanner.loopback_ziele({"7777", "7443", "7774"}, infos, "Host", proc=tmp),
-                         {"7443": [("reg", "7776")], "7777": [("gvp", "7777")]})
-        self.assertEqual(scanner.loopback_ziele({"7777"}, infos[:2], "gvp", proc=tmp), {"7777": [("gvp", "7777")]})
+                                                     "53/udp": [{"HostIp": "127.0.0.1", "HostPort": "7777"}],
+                                                     "80/tcp": [{"HostIp": "::1", "HostPort": "7781"}],
+                                                     "81/tcp": [{"HostIp": "127.0.0.2", "HostPort": "7782"}]}))
+        ziele = {("127.0.0.1", "7777"), ("127.0.0.1", "7443"), ("127.0.0.1", "7774"), ("localhost", "7777"),
+                 ("127.0.0.1", "7780"), ("127.0.0.1", "7781"), ("::1", "7781"), ("localhost", "7781"),
+                 ("127.0.0.1", "7782"), ("127.0.0.2", "7782"), ("localhost", "7443")}
+        self.assertEqual(scanner.loopback_ziele(ziele, infos, "Host", proc=tmp), {
+            ("127.0.0.1", "7443"): [("reg", "7776")],
+            ("127.0.0.1", "7777"): [("gvp", "7777")],
+            ("127.0.0.1", "7781"): [("gvp", "7781")],
+            ("127.0.0.2", "7782"): [("reg", "81")],
+            ("::1", "7781"): [("reg", "80")],
+            ("localhost", "7443"): [("reg", "7776")],        # auf ::1 lauscht nichts
+            ("localhost", "7777"): [("gvp", "7777")],
+            ("localhost", "7781"): [("gvp", "7781"), ("reg", "80")]})
+        # (fehlen: 7774 nicht lesbar, 7780 zusätzlich ein nicht lesbarer Socket, 7782 auf 127.0.0.1 ohne Socket –
+        # Rückfallregel)
+        self.assertEqual(scanner.loopback_ziele({("127.0.0.1", "7777")}, infos[:2], "gvp", proc=tmp),
+                         {("127.0.0.1", "7777"): [("gvp", "7777")]})
 
     def test_host_exec_mit_benutzer_des_masters(self):
         h = scanner.Host()
