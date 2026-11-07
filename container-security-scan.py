@@ -3068,26 +3068,35 @@ def scan_container(name, a, via_proxy=None):
     # Ziele nur aus Aufrufen (Ziel-URL, Verbindung), auf denen nichts lauscht: nichts erreichbar (z.B. URL für eine
     # andere Umgebung) – anders als bei einem Proxy-Ziel kein Anlass, alles als öffentlich zu werten
     # Ziele über Loopback, auf denen hier nichts lauscht: gelten einem anderen Container mit demselben Loopback
-    # (Host-Netzwerk, gemeinsamer Netzwerk-Namespace) oder dem Host selbst
+    # (Host-Netzwerk, gemeinsamer Netzwerk-Namespace) oder dem Host selbst – außer im gemeinsamen
+    # Netzwerk-Namespace lauscht dort ein Socket, dessen Prozess nicht nachweisbar ist (dann Rückfallregel). Im
+    # Host-Netzwerk sind das auch alle Sockets des Hosts; sie gehören nicht zu diesem Container.
     unmatched = sorted(port for port in web["published"] if port not in listening and port not in fremd
                        and port not in web["via_proxy"]) + \
         sorted(port for port, reasons in web["via_proxy"].items() if port != "*" and port not in listening
-               and port not in fremd and any(LOOPBACK_GRUND not in r for r in reasons)
+               and port not in fremd
+               and (any(LOOPBACK_GRUND not in r for r in reasons) or (port in ohne_prozess and not web["host_network"]))
                and not (all(aufruf_grund(r) for r in reasons if LOOPBACK_GRUND not in r) and port not in ohne_prozess))
     if unmatched or (not procs and (web["published"] or web["host_network"] or web.get("lan") or web["via_proxy"])):
         label = "unbekannter Dienst:" + (",".join(unmatched) or "?")
         for x in comps:
             if x["typ"] != "host" and label not in x["aktiv"]:
                 x["aktiv"].append(label)
-        nachbarn = web.get("nachbarn", []) if not procs or any(port in ohne_prozess for port in unmatched) else []
+        # könnte ein Proxy sein: Nachbarn in den Docker-Netzen, Container mit demselben Loopback auch dort, wo
+        # nur auf Loopback gelauscht wird
+        unbekannt = not procs or any(port in ohne_prozess for port in unmatched)
+        loopback = list(web.get("loopback", [])) if unbekannt else []
+        nachbarn = [ct for ct in web.get("nachbarn", []) if ct not in loopback] if unbekannt else []
         services.append({"label": label, "name": "?", "version": "", "exe": "?", "exposed": True,
-                         "backends": [(ct, "*", label) for ct in nachbarn],
+                         "backends": [(ct, "*", label) for ct in nachbarn] +
+                                     [(ct, "*", label + LOOPBACK_GRUND) for ct in loopback],
                          "unresolved": [], "unklar": ["Prozess nicht ermittelbar"],
                          "endpoints": [e for port in unmatched for e in web["published"].get(port, [])],
                          "description": "Kein lesbarer Prozess für Port %s – alle Komponenten werden als öffentlich "
                                         "genutzt gewertet%s" % (", ".join(unmatched) or "?",
-                                        ", Container in denselben Docker-Netzen als möglicherweise öffentlich: " +
-                                        ", ".join(nachbarn) if nachbarn else "")})
+                                        ", Container in denselben Docker-Netzen bzw. mit demselben Loopback als "
+                                        "möglicherweise öffentlich: " + ", ".join(nachbarn + loopback)
+                                        if nachbarn or loopback else "")})
         warnings.append("Prozess zu Port %s nicht ermittelbar (%s) – alle Komponenten als öffentlich genutzt gewertet"
                         % (", ".join(unmatched) or "?", how["procs"]))
     for svc in services:
