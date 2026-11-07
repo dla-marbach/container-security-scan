@@ -155,6 +155,17 @@ class Datenformat(Tmp):
         self.assertEqual(nur_versionen["affected"][0]["versions"], ["1"])
         self.assertEqual(len(scanner.osv_compact({"id": "X", "summary": "a" * 500, "affected": []})["summary"]), 200)
 
+    def test_osv_compact_behaelt_versionen_ausserhalb_der_bereiche(self):
+        aff = {"package": {"ecosystem": "PyPI", "name": "a"}, "versions": ["0.9", "1.0", "1.1", "2.5"],
+               "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "1.0"}, {"fixed": "2.0"}]}]}
+        kurz = scanner.osv_compact({"id": "GHSA-y", "affected": [aff]}, "PyPI")["affected"][0]
+        self.assertEqual(kurz["versions"], ["0.9", "2.5"])        # 1.0 und 1.1 decken die Bereiche ab
+        for v in ("0.9", "1.0", "1.1", "1.5", "2.0", "2.5", "3.0"):
+            self.assertEqual(scanner.affected_by(v, kurz, scanner.cmp_pep440), scanner.affected_by(v, aff, scanner.cmp_pep440), v)
+        # unbekanntes Ökosystem: kein Vergleich möglich -> alle Versionen bleiben
+        fremd = dict(aff, package={"ecosystem": "crates.io", "name": "a"})
+        self.assertEqual(scanner.osv_compact({"id": "X", "affected": [fremd]})["affected"][0]["versions"], aff["versions"])
+
     def test_osv_compact_ubuntu(self):
         def aff(eco, name):
             return {"package": {"ecosystem": eco, "name": name}, "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}]}],

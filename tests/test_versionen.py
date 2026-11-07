@@ -124,6 +124,19 @@ class Betroffen(unittest.TestCase):
         self.assertEqual(scanner.affected_by("1.0.3", a, scanner.cmp_semver), (True, ""))
         self.assertFalse(scanner.affected_by("1.0.4", a, scanner.cmp_semver)[0])
 
+    def test_limit_als_obere_grenze_ohne_fix(self):
+        a = self.aff(("ECOSYSTEM", [{"introduced": "1.0.0"}, {"limit": "2.0.0"}]))
+        self.assertEqual(scanner.affected_by("1.5.0", a, scanner.cmp_semver), (True, ""))
+        self.assertFalse(scanner.affected_by("2.0.0", a, scanner.cmp_semver)[0])
+        self.assertFalse(scanner.affected_by("2.1.0", a, scanner.cmp_semver)[0])
+        # mehrere Grenzen: unter einer davon genügt; "*" = unbegrenzt; Fix-Angabe unabhängig von der Grenze
+        a = self.aff(("ECOSYSTEM", [{"introduced": "0"}, {"fixed": "1.2"}, {"limit": "1.5"}, {"limit": "*"}]))
+        self.assertEqual(scanner.affected_by("1.1", a, scanner.cmp_semver), (True, "1.2"))
+        self.assertFalse(scanner.affected_by("3.0", a, scanner.cmp_semver)[0])
+        a = self.aff(("SEMVER", [{"introduced": "0"}, {"limit": "1.0.0"}]), versions=["1.2.0"])
+        self.assertFalse(scanner.affected_by("1.1.0", a, scanner.cmp_semver)[0])
+        self.assertTrue(scanner.affected_by("1.2.0", a, scanner.cmp_semver)[0])   # explizit genannt
+
     def test_dpkg_bereich_mit_debian_revision(self):
         a = self.aff(("ECOSYSTEM", [{"introduced": "0"}, {"fixed": "3.0.11-1~deb12u2"}]))
         self.assertEqual(scanner.affected_by("3.0.11-1~deb12u1", a, scanner.cmp_dpkg), (True, "3.0.11-1~deb12u2"))
