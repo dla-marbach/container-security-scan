@@ -351,14 +351,15 @@ CVE-2026-107814   mariadb       2027-03-31  betrifft nur die RPM-Pakete von Mari
 
 ## Aufruf und Optionen
 
-Für den Betrieb genügt der Wrapper ([Installation und Betrieb](#installation-und-betrieb)). Direkter Aufruf
-für Spezialfälle, immer mit dem festgehaltenen Code und `--db`:
+Für den Betrieb genügt der Wrapper ([Installation und Betrieb](#installation-und-betrieb)), auch für einen
+einzelnen Container (`container-security-scan-lauf <container>`). Direkter Aufruf für Spezialfälle, immer mit
+dem festgehaltenen Code und `--db`; er verwendet den vorhandenen Datenstand, ohne ihn zu aktualisieren:
 
 ```bash
 C=/opt/container-security-scan/container-security-scan.py
 DB=/var/lib/container-security-scan/daten
 sudo $C --db $DB --alle-container <ausgabeverzeichnis>        # wie der Wrapper, ohne Datenaktualisierung
-sudo $C --db $DB <container> <ausgabeverzeichnis>             # einzelner Container
+sudo $C --db $DB <container> <ausgabeverzeichnis>             # einzelner Container, ohne Datenaktualisierung
 sudo $C --db $DB --alle <container> <ausgabeverzeichnis>      # alle Befunde in die Tabelle
 ```
 
