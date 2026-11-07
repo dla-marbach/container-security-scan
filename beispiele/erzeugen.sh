@@ -25,7 +25,8 @@ python3 -I container-security-scan.py --db daten --alle-container beispiele --nu
     > beispiele/ausgabe.txt 2>&1 || rc=$?
 [ "$rc" -le 1 ] || { cat beispiele/ausgabe.txt; echo "FEHLER: Rückgabewert $rc" >&2; exit 2; }
 
-# Berichte und ein SBOM, Dateinamen ohne Zeitpunkt (feste Links im README)
+# Berichte aller Container, aber nur ein SBOM (app-node) als Beispiel des Formats: die übrigen wären groß
+# (PHP über 1000 Komponenten) und blähten jeden Diff auf; keine .sha256. Dateinamen ohne Zeitpunkt (feste Links)
 rm -f beispiele/bekannt_*.json beispiele/scan_*.sha256
 for f in beispiele/scan_*; do
   mv "$f" "$(sed -E 's/_[0-9]{8}_[0-9]{6}//' <<<"$f")"

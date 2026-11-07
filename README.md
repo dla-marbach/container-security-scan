@@ -333,7 +333,8 @@ Beispiele: [`beispiele/`](beispiele/) – ein Lauf `--alle-container --nur-beheb
 [`beispiele/umgebung/compose.yml`](beispiele/umgebung/compose.yml) ([Konsolenausgabe](beispiele/ausgabe.txt)):
 nginx als öffentlicher Reverse Proxy vor Node.js 22.22.0 (Node2Shell) und PHP 8.3.30 als PHP-FPM
 (PHP2Shell) mit Anwendung, `vendor/` und eingebettetem jQuery 1.12.4 im Volume; Traefik mit Docker-Socket
-(gefährliche Einstellung) und Ziel per Label.
+(gefährliche Einstellung) und Ziel per Label. Berichte für alle vier Container, das SBOM als Beispiel des
+Formats nur für Node.js ([`scan_app-node.cdx.json`](beispiele/scan_app-node.cdx.json)), ohne `.sha256`.
 
 ## Was erfasst wird
 
