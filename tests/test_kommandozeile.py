@@ -204,6 +204,31 @@ class Kommandozeile(unittest.TestCase):
             rc = scanner.main()
         return rc, gesehen, out.getvalue()
 
+    def test_erneute_pruefung_ersetzt_bericht(self):
+        """app wird als Backend von proxy erneut geprüft: der erste Bericht entfällt, der neue bleibt –
+        auch wenn beide Prüfungen in derselben Sekunde liefen (gleicher Dateiname)."""
+        for namen in (["app-1", "app-2"], ["app-1", "app-1"]):
+            namen_iter = iter(namen)
+
+            def scan(name, a, via=None):
+                base = os.path.join(self.tmp, next(namen_iter) if name == "app" else name)
+                for ext in (".md", ".cdx.json", ".sha256"):
+                    with open(base + ext, "w") as f:
+                        f.write(name)
+                return 0, [("app", "3000", "nginx:80 in proxy")] if name == "proxy" else [], base
+            db = os.path.join(self.tmp, "db")
+            os.makedirs(db, exist_ok=True)
+            with mock.patch.object(scanner, "scan_container", side_effect=scan), \
+                    mock.patch.object(scanner, "docker_lage", return_value=([], {})), \
+                    mock.patch.object(scanner, "container_liste", return_value=(["app", "proxy"], [], {})), \
+                    mock.patch.object(scanner, "host_proxys", return_value=([], [], [], [])), \
+                    mock.patch.object(scanner, "log"), mock.patch("sys.stdout", new_callable=io.StringIO), \
+                    mock.patch.object(sys, "argv", ["x", "--db", db, "--oeffentliche", self.tmp]):
+                self.assertEqual(scanner.main(), 0)
+            for ext in (".md", ".cdx.json", ".sha256"):
+                self.assertTrue(os.path.exists(os.path.join(self.tmp, namen[1] + ext)), (namen, ext))
+                self.assertEqual(os.path.exists(os.path.join(self.tmp, namen[0] + ext)), namen[0] == namen[1])
+
     def test_alle_container(self):
         # proxy erreichbar -> Backend app (mit dem Port) und, da Traefik nicht auswertbar, alle Nachbarn ("*");
         # Backends vor den übrigen Containern; vpn nutzt das Netzwerk von "mit" -> Ziel geht an beide

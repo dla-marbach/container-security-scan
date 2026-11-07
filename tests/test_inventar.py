@@ -1,7 +1,11 @@
 """Inventar: OS-Pakete, Anwendungspakete, eingebettete Bibliotheken, Java- und Go-Programme, tar-Strom."""
 import io
 import json
+import os
+import shutil
+import subprocess
 import tarfile
+import tempfile
 import unittest
 import zipfile
 from unittest import mock
@@ -253,6 +257,47 @@ class TarStrom(unittest.TestCase):
         scanner.read_tar(io.BytesIO(b"kein tar"), files, extra)
         self.assertEqual((files, extra), ({}, []))
 
+
+
+@unittest.skipUnless(all(shutil.which(t) for t in ("sh", "find", "tar", "sort", "xargs", "grep")), "POSIX-Werkzeuge fehlen")
+class Dateisuche(unittest.TestCase):
+    """FIND_SH (läuft im Container) mit einem Testverzeichnis statt der Wurzel."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        os.makedirs(os.path.join(self.tmp, "app"))
+        with open(os.path.join(self.tmp, "app", "package.json"), "w") as f:
+            f.write("{}")
+
+    def suche(self, *wurzeln, **env):
+        skript = scanner.FIND_SH.replace('for r in / "$@"', 'for r in "$@"')
+        self.assertNotEqual(skript, scanner.FIND_SH)
+        p = subprocess.run(["sh", "-s", "--"] + list(wurzeln), input=skript.encode(), stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, env=dict(os.environ, **env), timeout=60)
+        with tarfile.open(fileobj=io.BytesIO(p.stdout)) as tf:
+            return p.returncode, [n for n in tf.getnames() if n.endswith("package.json")]
+
+    def test_vollstaendig(self):
+        rc, namen = self.suche(self.tmp)
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(namen), 1)
+
+    def test_fehler_der_suche_ergibt_fehlercode(self):
+        # nicht durchsuchbarer Pfad (wie ein unlesbares Verzeichnis): Strom bleibt nutzbar, Ergebnis unvollständig
+        rc, namen = self.suche(self.tmp, os.path.join(self.tmp, "fehlt"))
+        self.assertEqual(rc, 3)
+        self.assertEqual(len(namen), 1)
+
+    def test_fehler_von_tar_ergibt_fehlercode(self):
+        bin_ = os.path.join(self.tmp, "bin")
+        os.mkdir(bin_)
+        with open(os.path.join(bin_, "tar"), "w") as f:
+            f.write("#!/bin/sh\ncat >/dev/null\nexit 2\n")
+        os.chmod(os.path.join(bin_, "tar"), 0o755)
+        p = subprocess.run(["sh", "-s", "--", self.tmp], input=scanner.FIND_SH.replace('for r in / "$@"', 'for r in "$@"').encode(),
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60,
+                           env=dict(os.environ, PATH=bin_ + os.pathsep + os.environ.get("PATH", "")))
+        self.assertEqual(p.returncode, 2)
 
 if __name__ == "__main__":
     unittest.main()

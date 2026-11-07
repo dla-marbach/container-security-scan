@@ -518,18 +518,24 @@ JS_LIBS = [
 JS_GLOBS = sorted({rx.split("(")[0].replace("\\", "") + "*.js" for _, rx, _ in JS_LIBS})   # für find -iname
 GO_MAGIC = b"\xff Go buildinf:"
 
+# Fehler von find (z.B. unlesbare Verzeichnisse) dürfen nicht unbemerkt Dateien auslassen: POSIX-sh kennt kein
+# pipefail, daher meldet die Schleife sie über Deskriptor 3 an die äußere Shell (Exit-Code 3); tar über seinen
+# eigenen Exit-Code. grep/xargs liefern auch ohne Treffer einen Fehlercode und werden daher nicht gewertet.
 FIND_SH = r"""
-for r in / "$@"; do
+exec 4>&1
+fehler=$( { for r in / "$@"; do
   find "$r" -xdev \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f \( \
        -path /etc/os-release -o -path /usr/lib/os-release -o -path /etc/alpine-release -o -path /etc/debian_version \
     -o -path /var/lib/dpkg/status -o -path '/var/lib/dpkg/status.d/*' -o -path '/var/lib/dpkg/info/*.list' \
     -o -path /lib/apk/db/installed -o -name package.json -o -name .package-lock.json -o -name package-lock.json \
     -o -path '*.dist-info/METADATA' -o -path '*.egg-info/PKG-INFO' -o -name '*.egg-info' \
     -o -path '*/vendor/composer/installed.json' -o -name '*.jar' -o -name '*.war' -o -name '*.ear' \
-    -o -name pyvenv.cfg JSGLOBS \) -print
-  find "$r" -xdev \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -perm -100 -size +1000k -print \
-    | xargs grep -l 'Go buildinf:'
-done 2>/dev/null | sort -u | tar -cf - -T - 2>/dev/null
+    -o -name pyvenv.cfg JSGLOBS \) -print || echo f >&3
+  { find "$r" -xdev \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -perm -100 -size +1000k -print \
+      || echo f >&3; } | xargs grep -l 'Go buildinf:'
+done 2>/dev/null | sort -u | tar -cf - -T - 2>/dev/null || echo t >&3; } 3>&1 1>&4 )
+exec 4>&-
+case "$fehler" in *t*) exit 2 ;; ?*) exit 3 ;; esac
 """.replace("JSGLOBS", " ".join("-o -iname '%s'" % g for g in JS_GLOBS))
 
 
@@ -2233,7 +2239,11 @@ def affected_by(version, affected, cmp, distribution=False):
             continue
         c = cmp if rng["type"] == "ECOSYSTEM" else cmp_semver
         state = False
-        events = sorted(rng.get("events", []), key=_event_key(c))
+        # "limit": obere Grenze (ausschließlich) des ganzen Bereichs, kein Fix; mehrere -> unter einer davon
+        limits = [ev["limit"] for ev in rng.get("events", []) if "limit" in ev]
+        if limits and not any(v == "*" or c(version, v) < 0 for v in limits):
+            continue
+        events = sorted((ev for ev in rng.get("events", []) if "limit" not in ev), key=_event_key(c))
         if distribution and rng["type"] == "ECOSYSTEM" and events and next(iter(events[0])) != "introduced":
             # Widersprüchlicher Bereich: Fix vor der ersten betroffenen Version (z.B. Alpine "introduced 3.4.0,
             # fixed 3.3.7-r1", die Angabe "introduced" stammt aus einem anderen Versionszweig). Die Distribution
@@ -2551,6 +2561,24 @@ DATEN_OEKOSYSTEME = ["Debian", "Ubuntu", "Alpine", "npm", "PyPI", "Packagist", "
 DATEN_TEILE = {"Debian": 8, "Ubuntu": 8, "npm": 8, "PyPI": 2}     # Dateien je Ökosystem (jede deutlich < 50 MB)
 
 
+# Versionsvergleich je Ökosystem wie beim Abgleich (osv_target)
+OSV_CMP = {"Debian": cmp_dpkg, "Ubuntu": cmp_dpkg, "Alpine": cmp_apk, "SUSE": cmp_rpm, "openSUSE": cmp_rpm,
+           "npm": cmp_semver, "PyPI": cmp_pep440, "Packagist": cmp_php, "Maven": cmp_maven, "Go": cmp_semver,
+           "Bitnami": cmp_semver}
+
+
+def _in_ranges(version, ranges, ecosystem):
+    """Deckt schon ein Bereich die explizit genannte Version ab? (Dann ist sie für den Abgleich entbehrlich.)
+    Ohne bekannten Vergleich oder bei einem Vergleichsfehler: nein, die Version bleibt erhalten."""
+    cmp = OSV_CMP.get(ecosystem.split(":")[0])
+    if not cmp:
+        return False
+    try:
+        return affected_by(version, {"ranges": ranges}, cmp)[0]
+    except Exception:
+        return False
+
+
 def osv_compact(rec, eco=None):
     """Nur die Felder eines OSV-Eintrags, die der Abgleich braucht; None, wenn er nie abgeglichen wird.
     Ubuntu (entpackt rund 8 GB): ohne USN-Sammelmeldungen (osv_scan überspringt sie), ohne Ubuntu Pro, FIPS,
@@ -2575,8 +2603,9 @@ def osv_compact(rec, eco=None):
         ranges = [r for r in a.get("ranges") or [] if r.get("type") in ("ECOSYSTEM", "SEMVER")]
         if ranges:
             x["ranges"] = ranges
-        elif a.get("versions"):
-            x["versions"] = a["versions"]
+        versions = [v for v in a.get("versions") or [] if not (ranges and _in_ranges(v, ranges, x["package"].get("ecosystem", "")))]
+        if versions:
+            x["versions"] = versions
         # nur die Debian-Dringlichkeit; "binaries" (Ubuntu: rund 80 % der Daten) trägt zum Abgleich nichts bei:
         # Debian/Ubuntu werden über das Quellpaket abgeglichen, Ubuntu führt dort zudem Objekte statt Namen
         es = {k: v for k, v in (a.get("ecosystem_specific") or {}).items() if k == "urgency"}
@@ -3314,7 +3343,8 @@ def main():
                 continue
             log("FEHLER bei %s: %s" % (name, e))
             codes[name], backends, base = 2, [], None
-        if reports.get(name):      # erneute Prüfung ersetzt den ersten Bericht dieses Laufs
+        if reports.get(name) and reports[name] != base:   # erneute Prüfung ersetzt den ersten Bericht dieses Laufs
+            # (bei gleichem Namen – Prüfung in derselben Sekunde – ist er schon überschrieben)
             for ext in (".md", ".cdx.json", ".sha256"):
                 if os.path.exists(reports[name] + ext):
                     os.remove(reports[name] + ext)
