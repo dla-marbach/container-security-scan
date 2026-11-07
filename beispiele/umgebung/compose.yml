@@ -5,12 +5,13 @@
 # - app-traefik: Traefik (Port 8081) mit Docker-Socket (gefährliche Einstellung CONF-SOCKET), in einem eigenen
 #   Netz mit app-node als Ziel per Label
 # Die Anwendungen sind Platzhalter: nur die Dateien, aus denen der Scanner Name und Version liest.
+# Ports nur an Loopback: die veralteten Dienste (und Traefik mit Docker-Socket) nicht im Netz anbieten.
 name: beispiele
 services:
   proxy:
     image: nginx:1.31-alpine
     container_name: app-proxy
-    ports: ["8080:80"]
+    ports: ["127.0.0.1:8080:80"]
     volumes: ["./nginx.conf:/etc/nginx/conf.d/default.conf:ro"]
     depends_on: [node, php]     # nginx löst die Backends beim Start auf
   node:
@@ -33,7 +34,7 @@ services:
     image: traefik:v3.6
     container_name: app-traefik
     command: ["--providers.docker=true", "--providers.docker.exposedbydefault=false", "--entrypoints.web.address=:80"]
-    ports: ["8081:80"]
+    ports: ["127.0.0.1:8081:80"]
     volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
     networks: [traefik]
 networks:

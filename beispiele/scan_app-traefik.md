@@ -2,7 +2,7 @@
 
 - Image: traefik:v3.6 (sha256:31267173a15b)  
 - OS: Alpine Linux v3.24  
-- Zeitpunkt: 2026-11-07 19:54  
+- Zeitpunkt: 2026-11-07 20:37  
 - Scanner: container-security-scan 0.1.0  
 - Datenbank: OSV, Stand 2026-11-07 14:13 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 0 Volumes); Prozesse im Container (je Prozess-Benutzer)
@@ -59,7 +59,7 @@ Hinweis: 9 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit a
 
 | Dienst | Programm | Ports / Konfiguration |
 |---|---|---|
-| traefik:80 | traefik  | Port 80/tcp (alle) veröffentlicht als 0.0.0.0:8081; Ziel aus Docker-Labels: Container app-node, Port 3000; Weiterleitungen nicht vollständig auswertbar (traefik: Konfiguration wird nicht ausgewertet) – Container in denselben Docker-Netzen gelten als möglicherweise öffentlich: app-node |
+| traefik:80 | traefik  | Port 80/tcp (alle) veröffentlicht als 127.0.0.1:8081 (nur lokal – vermutlich hinter einem Reverse Proxy auf dem Host); Ziel aus Docker-Labels: Container app-node, Port 3000; Weiterleitungen nicht vollständig auswertbar (traefik: Konfiguration wird nicht ausgewertet) – Container in denselben Docker-Netzen gelten als möglicherweise öffentlich: app-node |
 
 ## Übersicht (Anzahl Befunde)
 
@@ -189,8 +189,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        ff3628a0156e50f67ce997b2577e9ea30e2c7978bb0224ae5cdb70fa56795688
-Gestartet: 2026-11-07T19:53:44.577673236Z
+ID:        10da5cab82cec4ef756eb8940e5e43201d600eed7c94c60e89ca69b2ed910b3a
+Gestartet: 2026-11-07T20:36:31.196394011Z
 Kommando:  ["/entrypoint.sh"] ["--providers.docker=true", "--providers.docker.exposedbydefault=false", "--entrypoints.web.address=:80"]
 Mounts:    /var/run/docker.sock->/var/run/docker.sock
 Host:      Kernel 6.18.44-fc-v310
@@ -200,7 +200,7 @@ Host:      Kernel 6.18.44-fc-v310
 
 ```
 PID                 USER                COMMAND
-18469               root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
+1500                root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

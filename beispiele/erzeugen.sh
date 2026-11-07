@@ -13,6 +13,11 @@ bereit() {                     # beide Proxys erreichen ihre Ziele
 }
 for _ in $(seq 60); do bereit && break; sleep 1; done
 bereit || { "${COMPOSE[@]}" ps -a; echo "FEHLER: Testumgebung antwortet nicht" >&2; exit 2; }
+# --alle-container scannt alle laufenden Container; Berichte anderer Container (Kommandozeilen, Konfiguration)
+# dürfen nicht in die öffentlichen Beispiele geraten
+andere=$(comm -23 <(docker ps -q --no-trunc | sort) <("${COMPOSE[@]}" ps -q | sort))
+[ -z "$andere" ] || { echo "FEHLER: Außer der Testumgebung laufen weitere Container ($(docker inspect -f \
+  '{{.Name}}' $andere | tr -d / | xargs)) – stoppen oder einen eigenen Docker-Daemon verwenden" >&2; exit 2; }
 
 rm -f beispiele/scan_* beispiele/bekannt_*.json beispiele/ausgabe.txt
 rc=0

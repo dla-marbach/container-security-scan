@@ -69,9 +69,10 @@ die Änderungen vor jedem Update ([Schritt 5](#5-code-aktualisieren)) und die Si
 prüft, gibt den Commit mit; das Installscript bricht ab, wenn der Tag auf einen anderen zeigt:
 
 ```bash
-git clone -q https://github.com/felixlohmeier/container-security-scan.git /tmp/css && cd /tmp/css
-git verify-tag $V        # Schlüssel des Maintainers vorher importieren: https://github.com/felixlohmeier.gpg
-git checkout -q $V && sudo bash installation/installieren.sh $V "$(git rev-parse HEAD)"
+# Schlüssel des Maintainers vorher importieren: https://github.com/felixlohmeier.gpg
+git clone -q https://github.com/felixlohmeier/container-security-scan.git /tmp/css && cd /tmp/css \
+  && git verify-tag $V && git checkout -q $V \
+  && sudo bash installation/installieren.sh $V "$(git rev-parse HEAD)"
 ```
 
 Die [Ausnahmeliste](#ausnahmen) `/etc/container-security-scan/ausnahmen.txt` enthält anfangs nur
@@ -551,13 +552,13 @@ selben Pull Request (ein Unit-Test prüft die Version). Startet die Testumgebung
 sudo bash beispiele/erzeugen.sh
 ```
 
-Änderungen unter `installation/` auf einem Testrechner (oder in einer VM) aus einem lokalen Tag ausprobieren,
-den Tag danach wieder löschen:
+Änderungen unter `installation/` auf einem Testrechner (oder in einer VM) ausprobieren: aus einem Tag des
+committeten Stands, angelegt in einem temporären Klon (die eigenen Tags bleiben unberührt):
 
 ```bash
-V=v$(./container-security-scan.py --version | cut -d" " -f2) && git tag -f $V && git bundle create /tmp/css.bundle $V
+V=v$(./container-security-scan.py --version | cut -d" " -f2) && rm -rf /tmp/css && git clone -q . /tmp/css
+git -C /tmp/css tag -f $V && git -C /tmp/css bundle create /tmp/css.bundle $V
 sudo env REPO=/tmp/css.bundle bash installation/installieren.sh $V && sudo /usr/local/sbin/container-security-scan-lauf
-git tag -d $V
 ```
 
 ### Releases
