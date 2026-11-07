@@ -212,7 +212,7 @@ docker-Rechten ausführen.
 |---|---|
 | `0` | keine relevanten Schwachstellen |
 | `1` | relevante Schwachstellen oder [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) gefunden |
-| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar, nginx- bzw. Apache-Konfiguration nicht lesbar (im Container oder eines Proxys auf dem Host), Distribution ohne aktuelle Sicherheitsdaten (EOL), Ausnahmeliste fehlerhaft. |
+| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar (z. B. unlesbare Verzeichnisse; während der Prüfung gelöschte oder geänderte Dateien zählen nicht), nginx- bzw. Apache-Konfiguration nicht lesbar (im Container oder eines Proxys auf dem Host), Distribution ohne aktuelle Sicherheitsdaten (EOL), Ausnahmeliste fehlerhaft. |
 
 **Relevant** ist P1 CRITICAL/HIGH und P2 CRITICAL (anpassbar über `RELEVANT` am Anfang des Skripts), dazu
 **jede aktiv ausgenutzte Lücke** aus dem [KEV-Katalog der CISA](https://www.cisa.gov/known-exploited-vulnerabilities-catalog),
@@ -361,7 +361,7 @@ sudo $C --db $DB --alle <container> <ausgabeverzeichnis>      # alle Befunde in 
 | `--ausnahmen DATEI` | Ausnahmeliste: passende Funde zählen nicht als relevant, jede Ausnahme mit Begründung und Ablaufdatum (siehe [Ausnahmen](#ausnahmen)) |
 | `--db-aktualisieren` | als root abgelehnt (Rückgabewert 2): nie Daten aus dem Netz als root schreiben. Im Git-Checkout den Branch `daten` nach `daten/` holen bzw. dort `git pull` – **nie den Code**; mit `--oekosysteme A,B` zusätzlich diese Ökosysteme direkt von OSV nach `osv-db/` (inkrementell, `--voll` lädt alles neu). Ohne Git-Checkout oder mit `--db`: alle Ökosysteme, die EOL- und die KEV-Daten direkt |
 | `--db DIR` | nur diese Datenverzeichnisse verwenden; mehrfach möglich, je Ökosystem gilt das erste, das es enthält. Mit `--db-aktualisieren` genau eines (Ziel). Standard: `daten/` (Clone des Branches `daten`) und `osv-db/` neben dem Skript |
-| `--user` | Benutzer für `docker exec` (Standard `0`) |
+| `--user` | Benutzer für `docker exec` (Standard `0`). Ein anderer Benutzer kann meist nicht alle Verzeichnisse lesen: Die Prüfung gilt dann als unvollständig (`2`), die Meldung nennt die ersten unlesbaren Pfade |
 
 ## Ausgabe
 

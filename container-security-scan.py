@@ -518,24 +518,47 @@ JS_LIBS = [
 JS_GLOBS = sorted({rx.split("(")[0].replace("\\", "") + "*.js" for _, rx, _ in JS_LIBS})   # für find -iname
 GO_MAGIC = b"\xff Go buildinf:"
 
-# Fehler von find (z.B. unlesbare Verzeichnisse) dürfen nicht unbemerkt Dateien auslassen: POSIX-sh kennt kein
-# pipefail, daher meldet die Schleife sie über Deskriptor 3 an die äußere Shell (Exit-Code 3); tar über seinen
-# eigenen Exit-Code. grep/xargs liefern auch ohne Treffer einen Fehlercode und werden daher nicht gewertet.
+# Fehler von find (z.B. unlesbare Verzeichnisse) dürfen nicht unbemerkt Dateien auslassen. POSIX-sh kennt kein
+# pipefail, daher sammelt die Schleife die Meldungen von find und tar über Deskriptor 3. Ausgenommen sind Dateien,
+# die während der Suche verschwinden oder sich ändern (temporäre Dateien laufender Programme): dabei geht nichts
+# verloren. Alle übrigen Meldungen und Fehler ohne Meldung ergeben Exit-Code 3 (Meldungen auf stderr). Die
+# Auswertung nutzt nur die Shell selbst (grep, sed fehlen in manchen Containern).
+# grep/xargs liefern auch ohne Treffer einen Fehlercode und werden nicht gewertet (wie bisher).
 FIND_SH = r"""
+LC_ALL=C; export LC_ALL
 exec 4>&1
-fehler=$( { for r in / "$@"; do
+meldungen=$( { for r in / "$@"; do
   find "$r" -xdev \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f \( \
        -path /etc/os-release -o -path /usr/lib/os-release -o -path /etc/alpine-release -o -path /etc/debian_version \
     -o -path /var/lib/dpkg/status -o -path '/var/lib/dpkg/status.d/*' -o -path '/var/lib/dpkg/info/*.list' \
     -o -path /lib/apk/db/installed -o -name package.json -o -name .package-lock.json -o -name package-lock.json \
     -o -path '*.dist-info/METADATA' -o -path '*.egg-info/PKG-INFO' -o -name '*.egg-info' \
     -o -path '*/vendor/composer/installed.json' -o -name '*.jar' -o -name '*.war' -o -name '*.ear' \
-    -o -name pyvenv.cfg JSGLOBS \) -print || echo f >&3
+    -o -name pyvenv.cfg JSGLOBS \) -print 2>&3 || echo "@find $r" >&3
   { find "$r" -xdev \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -perm -100 -size +1000k -print \
-      || echo f >&3; } | xargs grep -l 'Go buildinf:'
-done 2>/dev/null | sort -u | tar -cf - -T - 2>/dev/null || echo t >&3; } 3>&1 1>&4 )
+      2>&3 || echo "@find $r" >&3; } | xargs grep -l 'Go buildinf:' 2>/dev/null
+done | sort -u | tar -cf - -T - 2>&3 || echo "@tar" >&3; } 3>&1 1>&4 )
 exec 4>&-
-case "$fehler" in *t*) exit 2 ;; ?*) exit 3 ;; esac
+[ -n "$meldungen" ] || exit 0
+printf '%s\n' "$meldungen" | {
+  rest=; find_fehler=; tar_fehler=; find_meldung=; tar_meldung=
+  while IFS= read -r z; do
+    case "$z" in find:*) find_meldung=1 ;; tar:*) tar_meldung=1 ;; esac
+    case "$z" in
+      @find*) find_fehler="$find_fehler${z#@}: Fehler ohne Meldung
+" ;;
+      @tar) tar_fehler="tar: Fehler ohne Meldung
+" ;;
+      *"emoving leading"*|*"Exiting with failure status"*) ;;
+      *"No such file or directory"*|*"changed as we read it"*|*"shrank by"*) ;;
+      *) rest="$rest$z
+" ;;
+    esac
+  done
+  [ -n "$find_meldung" ] || rest="$rest$find_fehler"     # Fehlercode ganz ohne Meldung
+  [ -n "$tar_meldung" ] || rest="$rest$tar_fehler"
+  [ -z "$rest" ] || { printf '%s' "$rest" >&2; exit 3; }
+}
 """.replace("JSGLOBS", " ".join("-o -iname '%s'" % g for g in JS_GLOBS))
 
 
@@ -669,21 +692,26 @@ def read_tar(stream, files, extra, prefix=""):
         pass
 
 
-def stream_tar(cmd, files, extra, prefix="", input=None, timeout=1800):
-    """tar-Strom eines Befehls lesen (ohne alles im Speicher zu halten). Liefert False bei Fehler/Zeitüberschreitung."""
-    p = subprocess.Popen(cmd, stdin=subprocess.PIPE if input else subprocess.DEVNULL,
-                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    timer = threading.Timer(timeout, p.kill)
-    timer.start()
-    try:
-        if input:
-            p.stdin.write(input.encode())
-            p.stdin.close()
-        read_tar(p.stdout, files, extra, prefix)
-        p.stdout.close()
-        rc = p.wait()
-    finally:
-        timer.cancel()
+def stream_tar(cmd, files, extra, prefix="", input=None, timeout=1800, meldungen=None):
+    """tar-Strom eines Befehls lesen (ohne alles im Speicher zu halten). Liefert False bei Fehler/Zeitüberschreitung.
+    meldungen: Liste, an die die Fehlerausgabe des Befehls (zeilenweise) angehängt wird."""
+    with tempfile.TemporaryFile() as err:     # Datei statt Pipe: kein Blockieren bei viel Fehlerausgabe
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE if input else subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=err if meldungen is not None else subprocess.DEVNULL)
+        timer = threading.Timer(timeout, p.kill)
+        timer.start()
+        try:
+            if input:
+                p.stdin.write(input.encode())
+                p.stdin.close()
+            read_tar(p.stdout, files, extra, prefix)
+            p.stdout.close()
+            rc = p.wait()
+        finally:
+            timer.cancel()
+        if meldungen is not None:
+            err.seek(0)
+            meldungen.extend(x.strip() for x in err.read().decode("utf-8", "replace").splitlines() if x.strip())
     return rc == 0
 
 
@@ -691,11 +719,15 @@ def collect_files(c):
     """Liefert (Dateien, weitere Komponenten, Beschreibung, Probleme)."""
     files, extra, problems = {}, [], []
     if c.has_find_tar:
+        meldungen = []
         ok = stream_tar(["docker", "exec", "-i", "-w", "/", "-u", c.user or "0", "-e", "PATH=" + SAFE_PATH,
                          c.id, "sh", "-s", "--"] + c.mounts,
-                        files, extra, input=FIND_SH)
+                        files, extra, input=FIND_SH, meldungen=meldungen)
+        meldungen = list(OrderedDict.fromkeys(meldungen))    # beide find-Läufe melden dasselbe
         if not ok:
-            problems.append("Dateien im Container nicht vollständig lesbar (Fehler oder Zeitüberschreitung)")
+            problems.append("Dateien im Container nicht vollständig lesbar (%s)" % (
+                "; ".join(meldungen[:3]) + (" … und %d weitere" % (len(meldungen) - 3) if len(meldungen) > 3 else "")
+                if meldungen else "Fehler oder Zeitüberschreitung"))
         return files, extra, "find/tar im Container (inkl. %d Volumes)" % len(c.mounts), problems
     if not stream_tar(["docker", "export", c.id], files, extra):
         problems.append("docker export fehlgeschlagen")

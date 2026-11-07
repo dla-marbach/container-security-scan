@@ -269,35 +269,63 @@ class Dateisuche(unittest.TestCase):
         with open(os.path.join(self.tmp, "app", "package.json"), "w") as f:
             f.write("{}")
 
-    def suche(self, *wurzeln, **env):
+    def suche(self, *wurzeln, tar=None):
+        """FIND_SH ausführen; tar: Inhalt eines Ersatz-tar (sh-Skript). Liefert (Exit-Code, package.json, stderr)."""
         skript = scanner.FIND_SH.replace('for r in / "$@"', 'for r in "$@"')
         self.assertNotEqual(skript, scanner.FIND_SH)
+        if tar:
+            pfad = os.path.join(self.tmp, "ersatz-tar")
+            with open(pfad, "w") as f:
+                f.write("#!/bin/sh\ncat >/dev/null\n" + tar)
+            os.chmod(pfad, 0o755)
+            skript = skript.replace("| tar -cf", "| %s -cf" % pfad)
         p = subprocess.run(["sh", "-s", "--"] + list(wurzeln), input=skript.encode(), stdout=subprocess.PIPE,
-                           stderr=subprocess.DEVNULL, env=dict(os.environ, **env), timeout=60)
-        with tarfile.open(fileobj=io.BytesIO(p.stdout)) as tf:
-            return p.returncode, [n for n in tf.getnames() if n.endswith("package.json")]
+                           stderr=subprocess.PIPE, timeout=60)
+        namen = []
+        if not tar:
+            with tarfile.open(fileobj=io.BytesIO(p.stdout)) as tf:
+                namen = [n for n in tf.getnames() if n.endswith("package.json")]
+        return p.returncode, namen, p.stderr.decode()
 
     def test_vollstaendig(self):
-        rc, namen = self.suche(self.tmp)
-        self.assertEqual(rc, 0)
-        self.assertEqual(len(namen), 1)
+        rc, namen, err = self.suche(self.tmp)
+        self.assertEqual((rc, len(namen), err), (0, 1, ""))
 
-    def test_fehler_der_suche_ergibt_fehlercode(self):
+    def test_verschwundene_dateien_sind_kein_fehler(self):
+        # während der Suche gelöschte Dateien/Verzeichnisse (wie ein fehlender Pfad): nichts geht verloren
+        rc, namen, _ = self.suche(self.tmp, os.path.join(self.tmp, "fehlt"))
+        self.assertEqual((rc, len(namen)), (0, 1))
+        self.assertEqual(self.suche(self.tmp, tar='echo "tar: /x: Cannot stat: No such file or directory" >&2\n'
+                                                  'echo "tar: Exiting with failure status due to previous errors" >&2\n'
+                                                  'exit 2\n')[0], 0)
+
+    def test_andere_fehler_der_suche_ergeben_fehlercode(self):
         # nicht durchsuchbarer Pfad (wie ein unlesbares Verzeichnis): Strom bleibt nutzbar, Ergebnis unvollständig
-        rc, namen = self.suche(self.tmp, os.path.join(self.tmp, "fehlt"))
-        self.assertEqual(rc, 3)
-        self.assertEqual(len(namen), 1)
+        rc, namen, err = self.suche(self.tmp, os.path.join(self.tmp, "app", "package.json", "x"))
+        self.assertEqual((rc, len(namen)), (3, 1))
+        self.assertIn("Not a directory", err)
 
-    def test_fehler_von_tar_ergibt_fehlercode(self):
-        bin_ = os.path.join(self.tmp, "bin")
-        os.mkdir(bin_)
-        with open(os.path.join(bin_, "tar"), "w") as f:
-            f.write("#!/bin/sh\ncat >/dev/null\nexit 2\n")
-        os.chmod(os.path.join(bin_, "tar"), 0o755)
-        p = subprocess.run(["sh", "-s", "--", self.tmp], input=scanner.FIND_SH.replace('for r in / "$@"', 'for r in "$@"').encode(),
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60,
-                           env=dict(os.environ, PATH=bin_ + os.pathsep + os.environ.get("PATH", "")))
-        self.assertEqual(p.returncode, 2)
+    def test_fehler_von_tar_ergeben_fehlercode(self):
+        rc, _, err = self.suche(self.tmp, tar='echo "tar: /x: Cannot open: Permission denied" >&2\nexit 2\n')
+        self.assertEqual(rc, 3)
+        self.assertIn("Permission denied", err)
+        rc, _, err = self.suche(self.tmp, tar="exit 2\n")
+        self.assertEqual((rc, err), (3, "tar: Fehler ohne Meldung\n"))
+
+    def test_meldungen_im_bericht(self):
+        meldungen = []
+        cmd = ["sh", "-c", "echo 'find: /root: Permission denied' >&2; echo 'find: /root: Permission denied' >&2; exit 3"]
+        self.assertFalse(scanner.stream_tar(cmd, {}, [], meldungen=meldungen))
+        self.assertEqual(len(meldungen), 2)
+        c = mock.Mock(has_find_tar=True, user="0", id="abc", mounts=[])
+
+        def stream(cmd, files, extra, input=None, meldungen=None, **kw):
+            meldungen.extend(["find: /root: Permission denied"] * 2 + ["find: /a: x", "find: /b: x", "find: /c: x"])
+            return False
+        with mock.patch.object(scanner, "stream_tar", side_effect=stream):
+            problems = scanner.collect_files(c)[3]
+        self.assertEqual(problems, ["Dateien im Container nicht vollständig lesbar (find: /root: Permission denied; "
+                                    "find: /a: x; find: /b: x … und 1 weitere)"])
 
 if __name__ == "__main__":
     unittest.main()
