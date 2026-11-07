@@ -31,7 +31,8 @@ Ergebnis: scan_<name>_<zeit>.md        Bericht: Ergebnis, Dienste, Befunde nach 
           scan_<name>_<zeit>.cdx.json  SBOM (CycloneDX 1.5) als Beleg; auch mit Trivy/Grype/Dependency-Track nutzbar
           scan_<name>_<zeit>.sha256    Prüfsummen
 Rückgabewert: 0 = keine relevanten Schwachstellen, 1 = relevante Schwachstellen gefunden (siehe RELEVANT;
-                  dazu immer aktiv ausgenutzte laut CISA-KEV-Katalog),
+                  dazu immer aktiv ausgenutzte laut CISA-KEV-Katalog) oder gefährliche Einstellungen des
+                  Containers (CONF-…: privileged, Docker-Socket, pid=host …),
               2 = Fehler oder Prüfung unvollständig (z.B. Datenbank fehlt) – nie als "sauber" werten!
 
 Priorität (P1 = zuerst beheben):
@@ -79,6 +80,20 @@ from functools import cmp_to_key
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
+# Gefährliche Einstellungen des Containers (-> Rückgabewert 1, Kennung CONF-… für die Ausnahmeliste): Mit ihnen
+# wird aus einer Lücke im Container root auf dem Host. Nur, was ein Dienst praktisch nie braucht (keine allgemeine
+# Härtung wie no-new-privileges, cap_drop, Limits).
+KONF_CAPS = ("ALL", "SYS_ADMIN", "SYS_MODULE", "SYS_RAWIO", "DAC_READ_SEARCH", "BPF")
+# Socket der Container-Laufzeit (auch schreibgeschützt eingebunden nutzbar) bzw. Verzeichnisse, die ihn enthalten
+# (auch die Host-Wurzel)
+KONF_SOCKET = re.compile(r"/|/(var/)?run(/(docker|containerd|podman))?|.*/(docker|containerd|podman)\.sock")
+# Host-Pfade, die beschreibbar eingebunden den Host übernehmen lassen. Einzelne Volumes unter
+# /var/lib/docker/volumes/<name> bleiben unberücksichtigt, das Verzeichnis aller Volumes nicht.
+KONF_HOST_PFAD = re.compile(r"/(etc|home|dev)|/(root|boot|bin|sbin|lib\w*|proc|sys)(/.*)?"
+                            r"|/usr(/(local(/(s?bin|lib\w*)(/.*)?)?|(s?bin|lib\w*)(/.*)?))?"
+                            r"|/etc/(passwd|shadow|group|sudoers(\.d)?|cron[\w.]*|systemd|ssh|docker)(/.*)?"
+                            r"|/home/[^/]+/\.ssh(/.*)?"
+                            r"|/var/lib/docker(?!/volumes/)(/.*)?")
 INKREMENT_MAX = 2000           # mehr geänderte Einträge -> Gesamtexport laden (schneller)
 DB_MAX_ALTER_TAGE = 3          # ältere Datenbank -> Prüfung unvollständig (Rückgabewert 2)
 OSV_BASE = "https://osv-vulnerabilities.storage.googleapis.com/"
@@ -2637,6 +2652,73 @@ def osv_records(dbdir, fname):
 
 
 # ===========================================================================
+# 9a. Gefährliche Einstellungen des Containers
+# ===========================================================================
+def konfiguration_pruefen(c):
+    """Gefährliche Einstellungen aus docker inspect. Je Fund Kennung CONF-… (für die Ausnahmeliste, als Paket
+    gilt der Containername) und Text."""
+    h = c.info.get("HostConfig") or {}
+    funde = []
+
+    def fund(kennung, text, quelle=""):     # quelle: unterscheidet mehrere Mounts derselben Kennung ("neu")
+        funde.append({"id": kennung, "pkg": c.name, "text": text, "quelle": quelle})
+
+    if h.get("Privileged"):
+        fund("CONF-PRIVILEGED", "--privileged: alle Capabilities und Zugriff auf alle Geräte des Hosts")
+    else:   # privileged umfasst die folgenden ohnehin
+        for cap in OrderedDict.fromkeys(re.sub(r"^CAP_", "", x.upper()) for x in h.get("CapAdd") or []):
+            if cap in KONF_CAPS:
+                fund("CONF-CAP-" + cap.replace("_", "-"), "cap_add %s: ermöglicht den Ausbruch aus dem Container" % cap)
+        for opt in h.get("SecurityOpt") or []:
+            k, _, v = re.sub(r"[:=]", "=", opt, count=1).partition("=")
+            if k in ("seccomp", "apparmor") and v == "unconfined":
+                fund("CONF-%s-UNCONFINED" % k.upper(), "%s=unconfined: Schutzprofil abgeschaltet" % k)
+    if h.get("PidMode") == "host":
+        fund("CONF-PID-HOST", "pid=host: sieht und beeinflusst alle Prozesse des Hosts")
+    for m in c.info.get("Mounts") or []:
+        if m.get("Type") != "bind":
+            continue
+        src = (m.get("Source") or "").rstrip("/") or "/"
+        if KONF_SOCKET.fullmatch(src):
+            fund("CONF-SOCKET", "%s eingebunden als %s: Zugriff auf die Container-Laufzeit = root auf dem Host "
+                                "(auch schreibgeschützt)" % (src, m.get("Destination")), src)
+        elif m.get("RW") and KONF_HOST_PFAD.fullmatch(src):
+            fund("CONF-HOST-PFAD", "%s beschreibbar eingebunden als %s" % (src, m.get("Destination")), src)
+    return funde
+
+
+def userns_aktiv(c):
+    """Ist root im Container nicht root auf dem Host (Daemon mit userns-remap oder rootless, nicht abgeschaltet)?"""
+    if (c.info.get("HostConfig") or {}).get("UsernsMode") == "host":
+        return False
+    rc, out = run(["docker", "info", "--format", "{{json .SecurityOptions}}"])
+    return rc == 0 and bool(re.search(r"name=(userns|rootless)\b", out))
+
+
+def root_dienste(c, procs, web):
+    """Warnungen (kein Rückgabewert): öffentliche Ports, deren Prozesse alle als root laufen. Je Port geprüft:
+    Bei nginx/Apache/php-fpm (Master root, Worker unprivilegiert) hält mindestens ein Worker den Port."""
+    ports = OrderedDict()
+    for p in procs.values():
+        for port, addr in p["ports"].items():
+            if port_erreichbar(p, port, addr, web)[1]:     # wie die Priorität: auch LAN, "möglicherweise", nicht Loopback
+                ports.setdefault(port, []).append(p)
+    found = OrderedDict()   # Programm(e) -> Ports
+    for port, ps in ports.items():
+        if all(p["user"].split(":")[0] == "0" for p in ps):
+            found.setdefault("/".join(sorted({p["base"] for p in ps})), []).append(port)
+    if not found or userns_aktiv(c):
+        return []
+    return ["Öffentlicher Dienst %s:%s läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin "
+            "gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image" % (base, ",".join(ports))
+            for base, ports in found.items()]
+
+
+def konf_text(k, fett=""):
+    return "%s%s%s: %s" % (fett, k["id"], fett, k["text"])
+
+
+# ===========================================================================
 # 10. Bericht (Markdown)
 # ===========================================================================
 def fix_text(ver, fix):
@@ -2690,7 +2772,7 @@ def fund_text(r, fett=""):
 
 
 def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db_info, alle, nur_behebbare, known,
-                 ausnahmen=()):
+                 ausnahmen=(), konf=()):
     published = {s["label"] for s in services if s["exposed"]}
     rows = []
     for f in findings:
@@ -2733,10 +2815,21 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
         w(("- NEU: " if r["neu"] and known is not None else "- ") + fund_text(r, "**"))
     if len(relevant) > 30:
         w("- … weitere %d in der Tabelle unten" % (len(relevant) - 30))
-    if ausgenommen:
+    konf_gezaehlt = [k for k in konf if not k.get("ausgenommen")]
+    if konf_gezaehlt:
+        w("\n**%d gefährliche Einstellungen des Containers** (eine Lücke im Container führt damit zu root auf dem "
+          "Host; Kennung für die Ausnahmeliste, Paket = Containername)\n" % len(konf_gezaehlt))
+        for k in konf_gezaehlt:
+            w(("- NEU: " if k.get("neu") and known is not None else "- ") + konf_text(k, "**"))
+    else:
+        w("\nGefährliche Einstellungen des Containers (privileged, Docker-Socket, pid=host …): keine gezählt.")
+    konf_ausgenommen = [k for k in konf if k.get("ausgenommen")]
+    if ausgenommen or konf_ausgenommen:
         w("\nNicht gezählt (wären sonst relevant):")
         for r in ausgenommen[:30]:
             w("- %s (%s) in %s %s – %s" % (r["id"], schwere_text(r), r["pkg"], r["ver"], r["ausgenommen"]))
+        for k in konf_ausgenommen:
+            w("- %s – %s" % (konf_text(k), k["ausgenommen"]))
     unknown = sum(1 for r in rows if r["prio"] == 1 and r["sev"] == "UNKNOWN")
     if unknown:
         w("\nHinweis: %d Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit ansehen." % unknown)
@@ -2879,7 +2972,11 @@ def scan_container(name, a, via_proxy=None):
                 svc["label"], "; ".join(svc["unklar"]),
                 "Container in denselben Docker-Netzen gelten als möglicherweise öffentlich: " + ", ".join(web["nachbarn"])
                 if web.get("nachbarn") else "keine Container in denselben Docker-Netzen"))
+    warnings.extend(root_dienste(c, procs, web))
     how["warnungen"] = warnings
+    konf = konfiguration_pruefen(c)
+    ausnahmen_anwenden(konf, getattr(a, "ausnahmen_liste", None) or [], warnings)
+    konf_relevant = [k for k in konf if not k.get("ausgenommen")]
 
     log("Abgleich mit OSV-Daten %s ..." % ", ".join(a.dbdirs))
     findings, db_date, missing, os_newest = osv_scan(comps, osinfo, a.dbdirs)
@@ -2904,31 +3001,39 @@ def scan_container(name, a, via_proxy=None):
         known = {tuple(k) for k in json_datei(known_file)}
     except (OSError, ValueError):
         known = None
+    for k in konf_relevant:
+        k["neu"] = known is None or (k["pkg"], k["quelle"], k["id"]) not in known
 
     os.makedirs(a.ausgabe, exist_ok=True)
     base = os.path.join(a.ausgabe, "scan_%s_%s" % (c.name, datetime.datetime.now().strftime("%Y%m%d_%H%M%S")))
     rows, relevant = write_report(base + ".md", c, osinfo, comps, services, procs, web, how, findings, db_info,
-                                  a.alle, a.nur_behebbare, known, getattr(a, "ausnahmen_liste", None) or [])
+                                  a.alle, a.nur_behebbare, known, getattr(a, "ausnahmen_liste", None) or [], konf)
     if not problems:
         with open(known_file, "w", encoding="utf-8") as f:
-            json.dump(sorted([r["pkg"], r["ver"], r["id"]] for r in relevant), f)
+            json.dump(sorted([[r["pkg"], r["ver"], r["id"]] for r in relevant] +
+                             [[k["pkg"], k["quelle"], k["id"]] for k in konf_relevant]), f)
     write_cdx(base + ".cdx.json", c, osinfo, comps, services)
     with open(base + ".sha256", "w") as f:
         for ext in (".md", ".cdx.json"):
             f.write("%s  %s\n" % (datei_sha256(base + ext), os.path.basename(base + ext)))
 
-    code = 2 if problems else 1 if relevant else 0
+    code = 2 if problems else 1 if relevant or konf_relevant else 0
     public = [s["label"] for s in services if s["exposed"]]
     unknown = sum(1 for r in rows if r["prio"] == 1 and r["sev"] == "UNKNOWN")
     kev = sum(1 for r in relevant if r.get("kev"))
     for warn in how["warnungen"]:
         print("%s: WARNUNG: %s" % (c.name, warn))
-    print("%s: %s – %d Befunde, davon %d relevant (%d neu%s)%s; öffentlich: %s – Bericht: %s.md" % (
-        c.name, {0: "OK", 1: "RELEVANTE SCHWACHSTELLEN", 2: "UNVOLLSTÄNDIG: " + "; ".join(problems)}[code],
+    funde = " und ".join(x for x in ("RELEVANTE SCHWACHSTELLEN" if relevant else "",
+                                     "GEFÄHRLICHE EINSTELLUNGEN" if konf_relevant else "") if x)
+    print("%s: %s – %d Befunde, davon %d relevant (%d neu%s)%s%s; öffentlich: %s – Bericht: %s.md" % (
+        c.name, {0: "OK", 1: funde, 2: "UNVOLLSTÄNDIG: " + "; ".join(problems)}[code],
         len(rows), len(relevant), sum(r["neu"] for r in relevant), ", %d aktiv ausgenutzt" % kev if kev else "",
         ", P1 ohne Schweregrad: %d" % unknown if unknown else "",
+        ", %d gefährliche Einstellungen" % len(konf_relevant) if konf_relevant else "",
         ", ".join(public) or "nichts", base))
     # relevante Funde auch auf der Konsole (Rundeck-Log, Mail), neue zuerst – Details im Bericht
+    for k in sorted(konf_relevant, key=lambda k: not k["neu"]):
+        print("%s:   %s%s" % (c.name, "NEU: " if k["neu"] and known is not None else "", konf_text(k)))
     for r in relevant:
         print("%s:   %s%s" % (c.name, "NEU: " if r["neu"] and known is not None else "", fund_text(r)))
     sys.stdout.flush()
@@ -3226,8 +3331,9 @@ def main():
                 queue[ziel] = merged
                 queue.move_to_end(ziel, last=False)
     code = 2 if 2 in codes.values() or host_code == 2 else 1 if 1 in codes.values() else 0
-    print("Gesamt: %d Container geprüft – %s" % (len(codes), {0: "OK", 1: "RELEVANTE SCHWACHSTELLEN gefunden",
-                                                             2: "mindestens eine Prüfung UNVOLLSTÄNDIG"}[code]))
+    print("Gesamt: %d Container geprüft – %s" % (len(codes), {
+        0: "OK", 1: "RELEVANTE FUNDE (Schwachstellen bzw. gefährliche Einstellungen)",
+        2: "mindestens eine Prüfung UNVOLLSTÄNDIG"}[code]))
     return code
 
 

@@ -10,7 +10,8 @@ Nach der [Einrichtung](#installation-und-betrieb) (einmalig, wenige Minuten):
 
 ```bash
 sudo /usr/local/sbin/container-security-scan-lauf
-# 0 = ok, 1 = relevante Schwachstellen, 2 = Fehler/unvollständig – Berichte unter /var/log/container-security-scan/
+# 0 = ok, 1 = relevante Schwachstellen oder gefährliche Einstellungen, 2 = Fehler/unvollständig
+# Berichte unter /var/log/container-security-scan/
 ```
 
 ## Warum?
@@ -176,13 +177,14 @@ chmod 440 /etc/sudoers.d/rundeck-container-scan && visudo -c
 ### 4. Auf das Ergebnis reagieren
 
 - **0** – nichts zu tun.
-- **1** – Funde im Bericht prüfen (seit dem letzten Lauf neue sind markiert) und Images aktualisieren.
-  Fehlalarme mit Begründung und Ablaufdatum in die [Ausnahmeliste](#ausnahmen), nicht die Alarmierung
-  abschalten.
+- **1** – Funde im Bericht prüfen (seit dem letzten Lauf neue sind markiert) und Images aktualisieren bzw.
+  [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) beseitigen. Fehlalarme und bewusst
+  akzeptierte Risiken mit Begründung und Ablaufdatum in die [Ausnahmeliste](#ausnahmen), nicht die
+  Alarmierung abschalten.
 - **2** – Ursache beheben (Daten nicht aktualisiert oder veraltet, Container nicht lesbar …), sonst ist
   die Überwachung blind. Details: [Rückgabewert](#rückgabewert).
-- Warnungen zum Supportende ändern den Rückgabewert nicht. Der Host selbst ist nicht Teil des Scans
-  (SLES: `zypper list-patches --category security`).
+- Warnungen (Supportende, öffentlicher Dienst als root …) ändern den Rückgabewert nicht. Der Host selbst
+  ist nicht Teil des Scans (SLES: `zypper list-patches --category security`).
 
 ### 5. Code aktualisieren
 
@@ -209,7 +211,7 @@ docker-Rechten ausführen.
 | Wert | Bedeutung |
 |---|---|
 | `0` | keine relevanten Schwachstellen |
-| `1` | relevante Schwachstellen gefunden |
+| `1` | relevante Schwachstellen oder [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) gefunden |
 | `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar, nginx- bzw. Apache-Konfiguration nicht lesbar (im Container oder eines Proxys auf dem Host), Distribution ohne aktuelle Sicherheitsdaten (EOL), Ausnahmeliste fehlerhaft. |
 
 **Relevant** ist P1 CRITICAL/HIGH und P2 CRITICAL (anpassbar über `RELEVANT` am Anfang des Skripts), dazu
@@ -284,6 +286,39 @@ Konfiguration eines Proxys auf dem Host nicht lesbar, ist die Prüfung unvollst�
   Bereiche gelten ab Version 0. Gültige Angaben bleiben wirksam (curl 8.12.1 ist von einer Lücke ab 8.13.0
   nicht betroffen).
 
+### Gefährliche Einstellungen des Containers
+
+Einstellungen, mit denen aus einer Lücke im Container root auf dem Host wird. Sie sind **immer relevant**
+(Rückgabewert 1), unabhängig von Schwachstellen und von `--nur-behebbare`, denn beheben lassen sie sich
+immer. Geprüft wird nur, was ein Dienst praktisch nie braucht, aus `docker inspect`:
+
+| Kennung | Befund |
+|---|---|
+| `CONF-PRIVILEGED` | `--privileged` |
+| `CONF-SOCKET` | Socket der Container-Laufzeit eingebunden (`docker.sock`, `containerd.sock`, `podman.sock`) oder ein Verzeichnis, das ihn enthält (`/run`, `/var/run`, `/run/docker`, `/run/containerd`, `/run/podman`, die Host-Wurzel `/`) – auch schreibgeschützt, denn `:ro` verhindert den Zugriff auf einen Socket nicht |
+| `CONF-PID-HOST` | `pid=host` |
+| `CONF-CAP-…` | zusätzliche Capability, die den Ausbruch erlaubt: `ALL`, `SYS_ADMIN`, `SYS_MODULE`, `SYS_RAWIO`, `DAC_READ_SEARCH`, `BPF` (z. B. `CONF-CAP-SYS-ADMIN`) |
+| `CONF-SECCOMP-UNCONFINED`, `CONF-APPARMOR-UNCONFINED` | Schutzprofil ausdrücklich abgeschaltet |
+| `CONF-HOST-PFAD` | Host-Pfad beschreibbar eingebunden: `/etc` (ganz oder `passwd`, `shadow`, `sudoers`, `cron*`, `systemd`, `ssh`, `docker`), `/root`, `/boot`, `/bin`, `/sbin`, `/lib*`, `/usr` und `/usr/local` (ganz oder Programme, Bibliotheken), `/proc`, `/sys`, `/dev`, `/home` (ganz oder `~/.ssh`), `/var/lib/docker` (auch das Verzeichnis aller Volumes; einzelne Volumes nicht) |
+
+Mit `--privileged` entfallen die Befunde zu Capabilities und Schutzprofilen (darin enthalten). Typischer
+begründeter Fall ist ein Reverse Proxy wie Traefik mit `docker.sock`: besser einen Socket-Proxy mit
+Lesezugriff vorschalten (z. B. `tecnativa/docker-socket-proxy`), sonst Ausnahme mit Begründung und
+Ablaufdatum (Paket = Containername):
+
+```
+CONF-SOCKET       traefik       2027-03-31  liest nur Labels, Umstieg auf Socket-Proxy geplant
+```
+
+**Öffentlicher Dienst als root:** Laufen alle Prozesse an einem öffentlichen Port (im Sinne der
+[Erreichbarkeit](#erreichbarkeit), auch „möglicherweise“) als root (je Port geprüft), erscheint eine **Warnung** (kein Rückgabewert), z. B. Node oder Python als root. nginx, Apache
+und php-fpm (Master root, Worker unprivilegiert am selben Port) zählen nicht. Mit userns-remap oder rootless Docker ist root im
+Container nicht root auf dem Host; dann entfällt die Warnung (außer bei `--userns=host`).
+
+Nicht geprüft werden allgemeine Härtung (no-new-privileges, `cap_drop: ALL`, read-only, Limits, Ports nur
+an bestimmte IPs) und der Docker-Daemon. Geprüft werden die gescannten (laufenden) Container, mit
+`--alle-container` (so im Wrapper) also alle, mit `--oeffentliche` nur die erreichbaren und deren Ziele.
+
 ### Ausnahmen
 
 Für Fehlalarme und bewusst akzeptierte Risiken, die die automatische Bewertung nicht erkennt, z. B.
@@ -297,7 +332,8 @@ CVE-2024-8926     php           2027-06-30  betrifft nur PHP-CGI unter Windows (
 CVE-2026-107814   mariadb       2027-03-31  betrifft nur die RPM-Pakete von MariaDB, hier Ubuntu-Image
 ```
 
-- Kennung wie im Bericht (CVE oder Kennung der Quelle), Paket wie in der Spalte „Paket“ oder `*` für alle.
+- Kennung wie im Bericht (CVE, Kennung der Quelle oder `CONF-…`), Paket wie in der Spalte „Paket“ (bei
+  `CONF-…` der Containername) oder `*` für alle.
 - Jede Ausnahme braucht ein Ablaufdatum und eine Begründung: Danach zählt der Fund wieder, mit Warnung im
   Bericht. So bleibt keine Ausnahme unbemerkt für immer.
 - Ausgenommene Funde stehen im Bericht unter „Nicht gezählt“ und in der Tabelle mit Begründung.
@@ -580,9 +616,9 @@ CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # m
 | `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c` und dem Benutzer des Hauptprozesses (nie root für fremde Programme/Optionen), nginx-Variablen (`set`, `map`), veröffentlichte Ports, Backends, Docker-Netze (macvlan, geroutet, Host-Netzwerk, gemeinsamer Netzwerk-Namespace), Ziele aus Traefik-/Caddy-Labels, Proxys und Tunnel direkt auf dem Host (Erkennung, Benutzer der Abfrage, Ziele über Container-IP) |
 | `test_nutzung.py` | Zuordnung Komponente → Dienst, Erreichbarkeit (auch „möglicherweise“ über nicht auswertbare Proxys, Ziel-URLs und offene Verbindungen, Datenbanken als Ziel ausgenommen), Priorität P1–P4 |
 | `test_osv.py` | Abgleich je Ökosystem, Quellpakete, Fremdquellen über Bitnami, Datenformat, Kürzung der Ubuntu-Daten (gleiche Funde wie vollständig), inkrementelle Aktualisierung, ungültige Kennungen (kein Pfad) |
-| `test_bewertung.py` | widersprüchliche Versionsbereiche der Distribution, Kernel-Pakete, Schweregrad über die CVE, KEV (Daten erzeugen, laden, markieren), Ausnahmeliste (Format, Rechte, Ablauf), nur Windows, Relevanz |
+| `test_bewertung.py` | widersprüchliche Versionsbereiche der Distribution, Kernel-Pakete, Schweregrad über die CVE, KEV (Daten erzeugen, laden, markieren), Ausnahmeliste (Format, Rechte, Ablauf), nur Windows, Relevanz, gefährliche Einstellungen (`CONF-…`), öffentliche Dienste als root (auch userns-remap/rootless) |
 | `test_eol.py` | EOL-Daten erzeugen, Supportende und Vorwarnung |
-| `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden, KEV macht P4 relevant, Ausnahme, Kernel-Pakete |
+| `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden, KEV macht P4 relevant, gefährliche Einstellungen ergeben 1 (auch ohne Schwachstellen, Ausnahme nach Containername), root-Dienst nur Warnung (auch über Proxy-Ziel, nicht bei Loopback), Ausnahme, Kernel-Pakete |
 | `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), Reihenfolge und Weitergabe der Erreichbarkeit mit `--alle-container`/`--oeffentliche`, `--db-aktualisieren` als root abgelehnt, holt bzw. aktualisiert nur den Branch `daten` (nie den Code), `daten/` ohne Git bricht ab, Berichte nur für den Aufrufer lesbar, docker nicht erreichbar, fehlerhafte Ausnahmeliste und unerwartete Fehler → 2 |
 | `test_docker.py` | mit den Daten aus dem Branch `daten` unter `daten/`, Lauf mit `--alle-container`: nginx (`-c`) als Proxy vor Node (direkt und über `set $backend`), Traefik mit Label-Ziel und Nachbar ohne Label, gemeinsamer Netzwerk-Namespace, interner Container, Gateway in Node mit Ziel-URL und offenen Verbindungen (zu Node und Redis), nginx direkt auf dem Host vor einer Container-IP (wenn nginx installiert ist); EOL-Warnungen, Berichte, `docker diff` unverändert |
 
