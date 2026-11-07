@@ -272,10 +272,10 @@ erreichbar, wenn eine der folgenden Bedingungen zutrifft:
 | Host-Netzwerk | `network_mode: host` |
 | eigene Adresse im LAN | Docker-Netz mit Treiber macvlan/ipvlan oder `gateway_mode_ipv4/6` `routed` bzw. `nat-unprotected` |
 | gemeinsamer Netzwerk-Namespace | `network_mode: container:…`/`service:…` (z. B. VPN- oder Sidecar-Container): es gelten die Ports des Spenders; ein Ziel des Spenders wird an alle Container dieses Namespace weitergegeben |
-| hinter einem erreichbaren nginx/Apache | Backends aus `nginx -T` bzw. der Apache-Konfiguration (`proxy_pass`, `fastcgi_pass`, `upstream`, `ProxyPass`, `SetHandler proxy:`), auch über mehrere Proxys hintereinander. Variablen aus `set` und `map` (`proxy_pass $backend` mit `resolver`) werden aufgelöst; Ziele per Container-Name, Alias, Compose-Dienst, IP oder `<name>.<netz>` |
+| hinter einem erreichbaren nginx/Apache | Backends aus `nginx -T` bzw. der Apache-Konfiguration (`proxy_pass`, `fastcgi_pass`, `upstream`, `ProxyPass`, `SetHandler proxy:`), auch über mehrere Proxys und Variablen aus `set`/`map`; Ziele per Container-Name, Alias, Compose-Dienst oder IP |
 | hinter einem erreichbaren Traefik bzw. caddy-docker-proxy | Ziele aus Docker-Labels (`traefik.*.services.*.loadbalancer.server.port`, `caddy.reverse_proxy: {{upstreams …}}`) |
 | hinter einem Reverse Proxy **direkt auf dem Host** | nginx/Apache außerhalb von Docker (Programm mit dem Wurzelverzeichnis des Hosts, nicht in der cgroup eines Containers), das nicht nur auf Loopback lauscht: Konfiguration wie oben, Ziele über die Container-IP (z. B. `proxy_pass http://172.18.0.5:3000`). Ergebnis auf der Konsole als `Host: …`; gilt auch für den Einzelscan |
-| aufgerufen von einer erreichbaren Anwendung | z. B. API-Gateway in Java/Node oder eine App, die einen internen HTTP-Dienst aufruft: **Ziel-URLs** (`http(s)://`, `ws(s)://`, `grpc(s)://` auf einen anderen Container) in der Umgebung des Containers (`docker inspect`) oder der Kommandozeile – `mysql://`, `redis://` u. ä. zählen nicht – sowie zum Zeitpunkt des Scans **offene TCP-Verbindungen** zu einem Port eines anderen Containers. Gilt auch für Worker hinter einem Webserver im selben Container (php-fpm hinter nginx). Ausgenommen sind Datenbanken, Caches und Message Broker als Ziel (MySQL/MariaDB, PostgreSQL, Redis/Valkey, MongoDB, Memcached, RabbitMQ, Elasticsearch/OpenSearch, Solr, Kafka u. a.): die Anwendung ruft sie auf, leitet aber keine Anfragen von außen durch. Lauscht auf dem Ziel-Port nichts (z. B. URL für eine andere Umgebung), bleibt es ohne Folgen. Im Bericht der Anwendung als `Aufruf: Container …, Port … (Quelle)`; Werte der Umgebung erscheinen nicht (Zugangsdaten) |
+| aufgerufen von einer erreichbaren Anwendung | z. B. API-Gateway oder php-fpm hinter nginx im selben Container: Ziel-URLs (`http(s)://`, `ws(s)://`, `grpc(s)://`) auf andere Container in Umgebung oder Kommandozeile sowie beim Scan offene TCP-Verbindungen. Datenbanken, Caches und Message Broker als Ziel zählen nicht. Im Bericht als `Aufruf: Container …, Port … (Quelle)`, ohne Werte der Umgebung |
 | hinter einem Tunnel-Agenten | cloudflared, frpc, ngrok, chisel – im Container oder auf dem Host: leiten Verkehr von außen weiter, ohne zu lauschen; gelten immer als erreichbar und nicht auswertbar (siehe nächste Zeile). Container mit einem solchen Image bzw. Befehl werden vorgezogen |
 | **möglicherweise** erreichbar | Container im selben Docker-Netz wie ein erreichbarer Dienst, dessen Weiterleitungen nicht vollständig bekannt sind: Traefik, Caddy, HAProxy, Envoy, Varnish u. a. (Konfiguration wird nicht ausgewertet; Labels geben nur einen Teil der Ziele an), nginx-Ziel mit nicht auflösbarer Variable (`proxy_pass http://$host`), nicht lesbare nginx-Konfiguration, veröffentlichter Port ohne erkennbaren Prozess. Bei einem solchen Dienst auf dem Host oder im Host-Netzwerk: alle Container mit einem Docker-Netz (der Host erreicht sie über ihre IP). Mit Warnung je Dienst |
 
@@ -288,7 +288,9 @@ Konfiguration eines Proxys auf dem Host nicht lesbar, ist die Prüfung unvollst�
 - **Schweregrad:** Einstufung der Distribution (Debian, Ubuntu), sonst Angabe der Quelle, sonst CVSS. Hat
   der zutreffende Eintrag keinen (z. B. Go-Daten, Debian „not yet assigned“), wird die Bewertung derselben
   CVE aus den Bitnami- bzw. Alpine-Daten (CVSS der NVD) übernommen, bei mehreren die höchste. Solche Werte
-  sind im Bericht mit `*` markiert.
+  sind im Bericht mit `*` markiert. CVSS 4 wird angenähert (eher zu hoch), als Schadsoftware gemeldete
+  Pakete (`MAL-…`) gelten als CRITICAL. Ohne jede Bewertung („UNKNOWN“) zählt ein Fund nicht als relevant
+  (außer KEV), wird aber eigens ausgewiesen.
 - **KEV:** aktiv ausgenutzte Lücken sind im Bericht mit `KEV` markiert und immer relevant (siehe oben).
 - **Nur Windows:** Daten außerhalb der Distributionen (GitHub, Bitnami) führen auch Lücken, die nur unter
   Windows auftreten (z. B. „On Windows a directory returned by tempfile.mkdtemp() …“). Nennt der Titel das
@@ -542,11 +544,6 @@ die Lücke aktiv ausgenutzt.
 
 ## Grenzen
 
-- Schweregrad: Einstufung der Distribution (Debian, Ubuntu), sonst Angabe der Quelle, sonst CVSS 3 bzw.
-  eine Näherung für CVSS 4 (eher zu hoch), sonst die Bewertung derselben CVE aus Bitnami/Alpine (`*`). Als
-  Schadsoftware gemeldete Pakete (`MAL-…`) gelten als CRITICAL. Einträge, für die es nirgends eine Bewertung
-  gibt („UNKNOWN“), zählen nicht als relevant (außer KEV), werden aber eigens ausgewiesen.
-- Lücken nur unter Windows werden nur erkannt, wenn der Titel es eindeutig sagt; sonst Ausnahmeliste.
 - Nicht erfasst: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung, Bundles ohne Kopfkommentar,
   Programme direkt auf dem Host, UDP-Dienste nur bei offenem Socket.
 - Erreichbarkeit: Konfigurationen werden nur von nginx und Apache ausgewertet; andere Proxys machen alle
@@ -614,21 +611,7 @@ python3 -m unittest discover -s tests                                   # Unit-T
 CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit echten Containern
 ```
 
-| Datei | Prüft |
-|---|---|
-| `test_versionen.py` | Versionsvergleiche (dpkg, rpm, apk, SemVer, PEP 440, Maven, PHP) und OSV-Versionsbereiche |
-| `test_schweregrad.py` | CVSS 3/4, Vorrang von Quellen-Einstufung, Debian-Dringlichkeit, Ubuntu-Priorität, `MAL-…` |
-| `test_inventar.py` | dpkg (auch distroless), apk, rpm, npm/Composer/PyPI, JS-Bibliotheken, JARs, Go-Build-Info, tar-Strom |
-| `test_prozesse.py` | Prozesse, Ports und Dateien aus `/proc` (je Prozess-Benutzer bzw. über den Host, nie alle Host-Prozesse), Volumes, fester Suchpfad im Container, Benutzer der Versionsabfragen |
-| `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c` und dem Benutzer des Hauptprozesses (nie root für fremde Programme/Optionen), nginx-Variablen (`set`, `map`), veröffentlichte Ports, Backends, Docker-Netze (macvlan, geroutet, Host-Netzwerk, gemeinsamer Netzwerk-Namespace), Ziele aus Traefik-/Caddy-Labels, Proxys und Tunnel direkt auf dem Host (Erkennung, Benutzer der Abfrage, Ziele über Container-IP) |
-| `test_nutzung.py` | Zuordnung Komponente → Dienst, Erreichbarkeit (auch „möglicherweise“ über nicht auswertbare Proxys, Ziel-URLs und offene Verbindungen, Datenbanken als Ziel ausgenommen), Priorität P1–P4 |
-| `test_osv.py` | Abgleich je Ökosystem, Quellpakete, Fremdquellen über Bitnami, Datenformat, Kürzung der Ubuntu-Daten (gleiche Funde wie vollständig), inkrementelle Aktualisierung, ungültige Kennungen (kein Pfad) |
-| `test_bewertung.py` | widersprüchliche Versionsbereiche der Distribution, Kernel-Pakete, Schweregrad über die CVE, KEV (Daten erzeugen, laden, markieren), Ausnahmeliste (Format, Rechte, Ablauf), nur Windows, Relevanz, gefährliche Einstellungen (`CONF-…`), öffentliche Dienste als root (auch userns-remap/rootless) |
-| `test_eol.py` | EOL-Daten erzeugen, Supportende und Vorwarnung |
-| `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden, KEV macht P4 relevant, gefährliche Einstellungen ergeben 1 (auch ohne Schwachstellen, Ausnahme nach Containername), root-Dienst nur Warnung (auch über Proxy-Ziel, nicht bei Loopback), Ausnahme, Kernel-Pakete |
-| `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), Reihenfolge und Weitergabe der Erreichbarkeit mit `--alle-container`/`--oeffentliche`, `--db-aktualisieren` als root abgelehnt, holt bzw. aktualisiert nur den Branch `daten` (nie den Code), `daten/` ohne Git bricht ab, Berichte nur für den Aufrufer lesbar, docker nicht erreichbar, fehlerhafte Ausnahmeliste und unerwartete Fehler → 2 |
-| `test_docker.py` | mit den Daten aus dem Branch `daten` unter `daten/`, Lauf mit `--alle-container`: nginx (`-c`) als Proxy vor Node (direkt und über `set $backend`), Traefik mit Label-Ziel und Nachbar ohne Label, gemeinsamer Netzwerk-Namespace, interner Container, Gateway in Node mit Ziel-URL und offenen Verbindungen (zu Node und Redis), nginx direkt auf dem Host vor einer Container-IP (wenn nginx installiert ist); EOL-Warnungen, Berichte, `docker diff` unverändert |
-| `test_installation.py` | Installscript aus dem README: Syntax (auch des eingebetteten Wrappers), Beispiele der Ausnahmeliste gültig (auskommentiert und aktiviert, mit `CONF-…`), Link auf das Release; mit `CSS_RELEASE_TESTS=1` und voller Git-Historie, ob `VERSION` und `SHA256` zum Release passen (siehe [Releases](#releases)) |
+Was welche Testdatei prüft: [`tests/README.md`](tests/README.md).
 
 Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11, 3.13 und
 3.14 (Python des Runners, mit dem auch die Daten erzeugt werden), den Docker-Test und die Prüfung des
