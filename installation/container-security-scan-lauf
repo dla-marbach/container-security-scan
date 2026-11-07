@@ -1,0 +1,38 @@
+#!/bin/bash
+# container-security-scan: Wrapper für den Betrieb, installiert von installieren.sh (README: Installation
+# und Betrieb). Eigene Änderungen ersetzt die nächste Installation.
+# Daten als csscan aktualisieren, dann als root mit dem installierten Code scannen.
+# Aufruf von Hand, per cron (--mail) oder per Rundeck (sudo, ohne Argumente).
+# Von Hand optional genau ein Container (Name oder ID) statt aller: ... [--mail] [container]
+# Ausgabe auf die Konsole und ins Log; letzte Zeile "ERGEBNIS: …"; Rückgabewert 0/1/2 wie das Skript.
+set -u
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+CODE=/opt/container-security-scan/container-security-scan.py
+D=/var/lib/container-security-scan
+OUT=/var/log/container-security-scan
+AUSNAHMEN=/etc/container-security-scan/ausnahmen.txt   # wird verwendet, wenn vorhanden
+MAIL=nein; [ "${1:-}" = --mail ] && { MAIL=ja; shift; }
+ZIEL=(--alle-container)                 # Standard: alle laufenden Container
+if [ $# -gt 0 ]; then                   # Name/ID wie bei Docker, nie mit "-" am Anfang (sonst Option)
+  [[ $# -eq 1 && $1 =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] \
+      || { echo "FEHLER: Aufruf: $0 [--mail] [container]"; exit 2; }
+  ZIEL=("$1")
+fi
+
+cd / && umask 077                       # Berichte enthalten u. a. Prozess-Kommandozeilen
+exec 9>/run/container-security-scan.lock
+flock -n 9 || { echo "ERGEBNIS: UNVOLLSTAENDIG (Scan läuft bereits) – $(hostname)"; exit 2; }
+mkdir -p "$OUT/berichte"
+LOG=$OUT/$(date +%F_%H%M%S).txt
+ARGS=(--db "$D/daten")
+[ -f "$AUSNAHMEN" ] && ARGS+=(--ausnahmen "$AUSNAHMEN")
+{
+  runuser -u csscan -- git -C "$D/daten" pull --ff-only --quiet \
+      || { echo "FEHLER: Daten nicht aktualisiert (git pull als csscan)"; exit 2; }
+  python3 -I "$CODE" "${ARGS[@]}" --nur-behebbare "${ZIEL[@]}" "$OUT/berichte"
+} 2>&1 | tee "$LOG"
+rc=${PIPESTATUS[0]}
+case $rc in 0) e=OK ;; 1) e=FUNDE ;; *) e=UNVOLLSTAENDIG; rc=2 ;; esac
+echo "ERGEBNIS: $e (Rückgabewert $rc) – $(hostname)" | tee -a "$LOG"
+[ "$MAIL" = ja ] && [ $rc -ne 0 ] && mail -s "container-security-scan $(hostname): $e" root < "$LOG"
+exit $rc
