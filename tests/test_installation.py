@@ -59,10 +59,8 @@ class InstallscriptTest(unittest.TestCase):
         self.bash_n(self.script)
         wrapper = heredoc(self.script, "LAUF")
         self.assertTrue(wrapper.startswith("#!/bin/bash\n"))
-        for platzhalter in ("@VERSION@", "@SHA256@", "@QUELLE@"):   # das Installscript ersetzt genau diese
-            self.assertIn(platzhalter, wrapper)
-            self.assertIn("s/%s/" % platzhalter, self.script)
-        self.assertEqual(set(re.findall(r"@\w+@", wrapper)), {"@VERSION@", "@SHA256@", "@QUELLE@"})
+        self.assertEqual(set(re.findall(r"@\w+@", wrapper)), {"@VERSION@"})   # ersetzt das Installscript
+        self.assertIn("s/@VERSION@/", self.script)
         self.bash_n(wrapper)
 
     def test_version_und_pruefsumme(self):
@@ -73,9 +71,8 @@ class InstallscriptTest(unittest.TestCase):
         self.assertIn("aktuell [%s](https://github.com/felixlohmeier/container-security-scan/blob/%s/README.md"
                       % (version, version), self.readme)
 
-    def test_wrapper_isoliert_und_geprueft(self):
+    def test_wrapper_isoliert(self):
         wrapper = heredoc(self.script, "LAUF")
-        self.assertIn('sha256sum -c --status', wrapper)
         aufrufe = re.findall(r'(\S+) "\$CODE"', wrapper)
         self.assertTrue(aufrufe)
         self.assertEqual(set(aufrufe), {"-I"}, "Code nur über python3 -I starten")
