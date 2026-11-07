@@ -289,9 +289,15 @@ class Gesamtlauf(unittest.TestCase):
                       self.konsole)
         self.assertIn("app:   CONF-SOCKET: /var/run/docker.sock eingebunden", self.konsole)
         self.assertEqual(scanner.json_datei(os.path.join(self.a.ausgabe, "bekannt_app.json")),
-                         [["app", "", "CONF-PRIVILEGED"], ["app", "", "CONF-SOCKET"]])
+                         [["app", "", "CONF-PRIVILEGED"], ["app", "/var/run/docker.sock", "CONF-SOCKET"]])
         self.lauf()     # bekannt: nicht neu
         self.assertNotIn("NEU:", self.konsole)
+        # weiterer Mount mit derselben Kennung ist neu
+        self.info["Mounts"].append({"Type": "bind", "Source": "/run/containerd/containerd.sock", "Destination": "/c",
+                                    "RW": False})
+        self.lauf()
+        self.assertIn("app:   NEU: CONF-SOCKET: /run/containerd/containerd.sock", self.konsole)
+        self.assertNotIn("NEU: CONF-SOCKET: /var/run/docker.sock", self.konsole)
 
     def test_ausnahme_fuer_einstellung(self):
         self.info = {"HostConfig": {"PidMode": "host"}, "Mounts": []}

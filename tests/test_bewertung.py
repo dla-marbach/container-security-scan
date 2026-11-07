@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from _laden import scanner, schreibe_jsonl, eintrag, proc
+from _laden import scanner, schreibe_jsonl, eintrag, proc, web
 
 ALPINE = {"id": "alpine", "version": "3.21.3", "pretty": "Alpine Linux v3.21"}
 DEBIAN = {"id": "debian", "version": "12.7", "pretty": "Debian GNU/Linux 12"}
@@ -262,6 +262,9 @@ class Konfiguration(unittest.TestCase):
                                                                            "seccomp=/etc/docker/profil.json"]},
                                       [{"Type": "volume", "Source": "/var/lib/docker/volumes/daten/_data", "RW": True},
                                        {"Type": "bind", "Source": "/srv/app", "RW": True},
+                                       {"Type": "bind", "Source": "/home/deploy/app", "RW": True},
+                                       {"Type": "bind", "Source": "/usr/local/app", "RW": True},
+                                       {"Type": "bind", "Source": "/var/lib/docker/volumes/daten/_data", "RW": True},
                                        {"Type": "bind", "Source": "/etc/letsencrypt", "RW": True},
                                        {"Type": "bind", "Source": "/etc/localtime", "RW": False},
                                        {"Type": "bind", "Source": "/var/lib/docker/containers", "RW": False},
@@ -282,14 +285,15 @@ class Konfiguration(unittest.TestCase):
 
     def test_socket_auch_schreibgeschuetzt(self):
         for src in ("/var/run/docker.sock", "/run/docker.sock", "/run/containerd/containerd.sock",
-                    "/run/user/1000/podman/podman.sock", "/var/run", "/run/"):
+                    "/run/user/1000/podman/podman.sock", "/run/podman", "/var/run/podman", "/var/run", "/run/",
+                    "/"):     # Host-Wurzel enthält den Socket
             self.assertEqual(self.pruefen(mounts=[{"Type": "bind", "Source": src, "Destination": "/x", "RW": False}]),
                              [("CONF-SOCKET", "app")], src)
 
     def test_host_pfade_nur_beschreibbar(self):
-        for src in ("/", "/etc", "/etc/shadow", "/etc/cron.d", "/root/.ssh", "/boot", "/usr", "/usr/local/bin",
-                    "/lib64", "/sys/fs/cgroup", "/proc/sys", "/dev", "/home", "/var/lib/docker",
-                    "/var/lib/docker/containers"):
+        for src in ("/etc", "/etc/shadow", "/etc/cron.d", "/root/.ssh", "/boot", "/usr", "/usr/local",
+                    "/usr/local/bin", "/lib64", "/sys/fs/cgroup", "/proc/sys", "/dev", "/home", "/home/admin/.ssh",
+                    "/var/lib/docker", "/var/lib/docker/containers", "/var/lib/docker/volumes"):
             m = {"Type": "bind", "Source": src, "Destination": "/host", "RW": True}
             self.assertEqual(self.pruefen(mounts=[m]), [("CONF-HOST-PFAD", "app")], src)
             self.assertEqual(self.pruefen(mounts=[dict(m, RW=False)]), [], src)
@@ -306,9 +310,9 @@ class RootDienste(unittest.TestCase):
 
     def warnungen(self, procs, exposed=True, info=None, docker_info=(0, '["name=apparmor","name=seccomp"]')):
         c = mock.Mock(info=info or {"HostConfig": {}})
-        services = [{"label": p["label"], "exposed": exposed} for p in procs if p["ports"]]
+        published = {port: ["0.0.0.0:" + port] for p in procs for port in p["ports"] if exposed is True or port in exposed}
         with mock.patch.object(scanner, "run", return_value=docker_info):
-            return scanner.root_dienste(c, services, {p["pid"]: p for p in procs})
+            return scanner.root_dienste(c, {p["pid"]: p for p in procs}, web(published=published))
 
     def test_node_als_root(self):
         w = self.warnungen([proc(1, "/usr/local/bin/node", ports={"3000": "alle"}, user="0:0")])
@@ -321,7 +325,19 @@ class RootDienste(unittest.TestCase):
                                          proc(7, "/usr/sbin/nginx", ports={"80": "alle"}, user="101:101")]), [])
         self.assertEqual(self.warnungen([proc(1, "/usr/local/bin/node", ports={"3000": "alle"}, user="1000:1000")]), [])
         self.assertEqual(self.warnungen([proc(1, "/usr/local/bin/node", ports={"3000": "alle"}, user="")]), [])
-        self.assertEqual(self.warnungen([proc(1, "/usr/local/bin/node", ports={"3000": "alle"})], exposed=False), [])
+        self.assertEqual(self.warnungen([proc(1, "/usr/local/bin/node", ports={"3000": "alle"})], exposed=()), [])
+        # php-fpm: Master root mit allen Pools, je Pool eigene unprivilegierte Worker
+        self.assertEqual(self.warnungen([proc(1, "/usr/sbin/php-fpm", ports={"9000": "alle", "9001": "alle"}),
+                                         proc(7, "/usr/sbin/php-fpm", ports={"9000": "alle"}, user="33:33"),
+                                         proc(8, "/usr/sbin/php-fpm", ports={"9001": "alle"}, user="34:34")]), [])
+
+    def test_je_oeffentlichem_port(self):
+        # root am öffentlichen Port, unprivilegiert nur an einem internen Port desselben Programms
+        w = self.warnungen([proc(1, "/usr/local/bin/node", ports={"3000": "alle"}),
+                            proc(2, "/usr/local/bin/node", ports={"9229": "localhost"}, user="1000:1000")],
+                           exposed=("3000",))
+        self.assertEqual(len(w), 1)
+        self.assertIn("Öffentlicher Dienst node:3000 läuft als root", w[0])
 
     def test_userns_remap_und_rootless(self):
         node = [proc(1, "/usr/local/bin/node", ports={"3000": "alle"}, user="0:0")]

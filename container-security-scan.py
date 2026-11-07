@@ -77,12 +77,15 @@ RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
 # Härtung wie no-new-privileges, cap_drop, Limits).
 KONF_CAPS = ("ALL", "SYS_ADMIN", "SYS_MODULE", "SYS_RAWIO", "DAC_READ_SEARCH", "BPF")
 # Socket der Container-Laufzeit (auch schreibgeschützt eingebunden nutzbar) bzw. Verzeichnisse, die ihn enthalten
-KONF_SOCKET = re.compile(r"/(var/)?run(/(docker|containerd))?|.*/(docker|containerd|podman)\.sock")
-# Host-Pfade, die beschreibbar eingebunden den Host übernehmen lassen (benannte Volumes ausgenommen)
-KONF_HOST_PFAD = re.compile(r"/|/(etc|home|dev)|/(root|boot|bin|sbin|lib\w*|proc|sys)(/.*)?"
-                            r"|/usr(/(local/)?(s?bin|lib\w*)(/.*)?)?"
+# (auch die Host-Wurzel)
+KONF_SOCKET = re.compile(r"/|/(var/)?run(/(docker|containerd|podman))?|.*/(docker|containerd|podman)\.sock")
+# Host-Pfade, die beschreibbar eingebunden den Host übernehmen lassen. Einzelne Volumes unter
+# /var/lib/docker/volumes/<name> bleiben unberücksichtigt, das Verzeichnis aller Volumes nicht.
+KONF_HOST_PFAD = re.compile(r"/(etc|home|dev)|/(root|boot|bin|sbin|lib\w*|proc|sys)(/.*)?"
+                            r"|/usr(/(local(/(s?bin|lib\w*)(/.*)?)?|(s?bin|lib\w*)(/.*)?))?"
                             r"|/etc/(passwd|shadow|group|sudoers(\.d)?|cron[\w.]*|systemd|ssh|docker)(/.*)?"
-                            r"|/var/lib/docker(?!/volumes(/|$))(/.*)?")
+                            r"|/home/[^/]+/\.ssh(/.*)?"
+                            r"|/var/lib/docker(?!/volumes/)(/.*)?")
 INKREMENT_MAX = 2000           # mehr geänderte Einträge -> Gesamtexport laden (schneller)
 DB_MAX_ALTER_TAGE = 3          # ältere Datenbank -> Prüfung unvollständig (Rückgabewert 2)
 OSV_BASE = "https://osv-vulnerabilities.storage.googleapis.com/"
@@ -2302,8 +2305,8 @@ def konfiguration_pruefen(c):
     h = c.info.get("HostConfig") or {}
     funde = []
 
-    def fund(kennung, text):
-        funde.append({"id": kennung, "pkg": c.name, "text": text})
+    def fund(kennung, text, quelle=""):     # quelle: unterscheidet mehrere Mounts derselben Kennung ("neu")
+        funde.append({"id": kennung, "pkg": c.name, "text": text, "quelle": quelle})
 
     if h.get("Privileged"):
         fund("CONF-PRIVILEGED", "--privileged: alle Capabilities und Zugriff auf alle Geräte des Hosts")
@@ -2323,9 +2326,9 @@ def konfiguration_pruefen(c):
         src = (m.get("Source") or "").rstrip("/") or "/"
         if KONF_SOCKET.fullmatch(src):
             fund("CONF-SOCKET", "%s eingebunden als %s: Zugriff auf die Container-Laufzeit = root auf dem Host "
-                                "(auch schreibgeschützt)" % (src, m.get("Destination")))
+                                "(auch schreibgeschützt)" % (src, m.get("Destination")), src)
         elif m.get("RW") and KONF_HOST_PFAD.fullmatch(src):
-            fund("CONF-HOST-PFAD", "%s beschreibbar eingebunden als %s" % (src, m.get("Destination")))
+            fund("CONF-HOST-PFAD", "%s beschreibbar eingebunden als %s" % (src, m.get("Destination")), src)
     return funde
 
 
@@ -2337,20 +2340,23 @@ def userns_aktiv(c):
     return rc == 0 and bool(re.search(r"name=(userns|rootless)\b", out))
 
 
-def root_dienste(c, services, procs):
-    """Warnungen (kein Rückgabewert): öffentliche Dienste, deren Prozesse am Port alle als root laufen. Wie bei
-    nginx/Apache/php-fpm (Master root, Worker unprivilegiert) üblich, zählt ein Dienst nur, wenn kein Prozess
-    mit diesem Port unprivilegiert läuft."""
-    exposed = [s["label"] for s in services if s["exposed"]]
-    found = []
-    for label in exposed:
-        ps = [p for p in procs.values() if p["label"] == label]
-        if ps and all(p["user"].split(":")[0] == "0" for p in ps):
-            found.append(label)
+def root_dienste(c, procs, web):
+    """Warnungen (kein Rückgabewert): öffentliche Ports, deren Prozesse alle als root laufen. Je Port geprüft:
+    Bei nginx/Apache/php-fpm (Master root, Worker unprivilegiert) hält mindestens ein Worker den Port."""
+    ports = OrderedDict()
+    for p in procs.values():
+        for port, addr in p["ports"].items():
+            if web["published"].get(port) or web["via_proxy"].get(port) or (web["host_network"] and addr != "localhost"):
+                ports.setdefault(port, []).append(p)
+    found = OrderedDict()   # Programm(e) -> Ports
+    for port, ps in ports.items():
+        if all(p["user"].split(":")[0] == "0" for p in ps):
+            found.setdefault("/".join(sorted({p["base"] for p in ps})), []).append(port)
     if not found or userns_aktiv(c):
         return []
-    return ["Öffentlicher Dienst %s läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin "
-            "gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image" % label for label in found]
+    return ["Öffentlicher Dienst %s:%s läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin "
+            "gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image" % (base, ",".join(ports))
+            for base, ports in found.items()]
 
 
 def konf_text(k, fett=""):
@@ -2584,7 +2590,7 @@ def scan_container(name, a, via_proxy=None):
     for svc in services:
         for b in svc["unresolved"]:
             warnings.append("Backend %s von %s keinem Container zuordenbar – dort ggf. gesondert scannen" % (b, svc["label"]))
-    warnings.extend(root_dienste(c, services, procs))
+    warnings.extend(root_dienste(c, procs, web))
     how["warnungen"] = warnings
     konf = konfiguration_pruefen(c)
     ausnahmen_anwenden(konf, getattr(a, "ausnahmen_liste", None) or [], warnings)
@@ -2614,7 +2620,7 @@ def scan_container(name, a, via_proxy=None):
     except (OSError, ValueError):
         known = None
     for k in konf_relevant:
-        k["neu"] = known is None or (k["pkg"], "", k["id"]) not in known
+        k["neu"] = known is None or (k["pkg"], k["quelle"], k["id"]) not in known
 
     os.makedirs(a.ausgabe, exist_ok=True)
     base = os.path.join(a.ausgabe, "scan_%s_%s" % (c.name, datetime.datetime.now().strftime("%Y%m%d_%H%M%S")))
@@ -2623,7 +2629,7 @@ def scan_container(name, a, via_proxy=None):
     if not problems:
         with open(known_file, "w", encoding="utf-8") as f:
             json.dump(sorted([[r["pkg"], r["ver"], r["id"]] for r in relevant] +
-                             [[k["pkg"], "", k["id"]] for k in konf_relevant]), f)
+                             [[k["pkg"], k["quelle"], k["id"]] for k in konf_relevant]), f)
     write_cdx(base + ".cdx.json", c, osinfo, comps, services)
     with open(base + ".sha256", "w") as f:
         for ext in (".md", ".cdx.json"):

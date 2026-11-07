@@ -265,11 +265,11 @@ immer. Geprüft wird nur, was ein Dienst praktisch nie braucht, aus `docker insp
 | Kennung | Befund |
 |---|---|
 | `CONF-PRIVILEGED` | `--privileged` |
-| `CONF-SOCKET` | Socket der Container-Laufzeit eingebunden (`docker.sock`, `containerd.sock`, `podman.sock`, `/run`, `/var/run`) – auch schreibgeschützt, denn `:ro` verhindert den Zugriff auf einen Socket nicht |
+| `CONF-SOCKET` | Socket der Container-Laufzeit eingebunden (`docker.sock`, `containerd.sock`, `podman.sock`) oder ein Verzeichnis, das ihn enthält (`/run`, `/var/run`, `/run/docker`, `/run/containerd`, `/run/podman`, die Host-Wurzel `/`) – auch schreibgeschützt, denn `:ro` verhindert den Zugriff auf einen Socket nicht |
 | `CONF-PID-HOST` | `pid=host` |
 | `CONF-CAP-…` | zusätzliche Capability, die den Ausbruch erlaubt: `ALL`, `SYS_ADMIN`, `SYS_MODULE`, `SYS_RAWIO`, `DAC_READ_SEARCH`, `BPF` (z. B. `CONF-CAP-SYS-ADMIN`) |
 | `CONF-SECCOMP-UNCONFINED`, `CONF-APPARMOR-UNCONFINED` | Schutzprofil ausdrücklich abgeschaltet |
-| `CONF-HOST-PFAD` | Host-Pfad beschreibbar eingebunden: `/`, `/etc` (ganz oder `passwd`, `shadow`, `sudoers`, `cron*`, `systemd`, `ssh`, `docker`), `/root`, `/boot`, `/bin`, `/sbin`, `/lib*`, `/usr` (Programme, Bibliotheken), `/proc`, `/sys`, `/dev`, `/home`, `/var/lib/docker` (außer benannten Volumes) |
+| `CONF-HOST-PFAD` | Host-Pfad beschreibbar eingebunden: `/etc` (ganz oder `passwd`, `shadow`, `sudoers`, `cron*`, `systemd`, `ssh`, `docker`), `/root`, `/boot`, `/bin`, `/sbin`, `/lib*`, `/usr` und `/usr/local` (ganz oder Programme, Bibliotheken), `/proc`, `/sys`, `/dev`, `/home` (ganz oder `~/.ssh`), `/var/lib/docker` (auch das Verzeichnis aller Volumes; einzelne Volumes nicht) |
 
 Mit `--privileged` entfallen die Befunde zu Capabilities und Schutzprofilen (darin enthalten). Typischer
 begründeter Fall ist ein Reverse Proxy wie Traefik mit `docker.sock`: besser einen Socket-Proxy mit
@@ -280,9 +280,9 @@ Ablaufdatum (Paket = Containername):
 CONF-SOCKET       traefik       2027-03-31  liest nur Labels, Umstieg auf Socket-Proxy geplant
 ```
 
-**Öffentlicher Dienst als root:** Laufen alle Prozesse an einem öffentlichen Port als root, erscheint eine
-**Warnung** (kein Rückgabewert), z. B. Node oder Python als root. nginx, Apache und php-fpm (Master root,
-Worker unprivilegiert am selben Port) zählen nicht. Mit userns-remap oder rootless Docker ist root im
+**Öffentlicher Dienst als root:** Laufen alle Prozesse an einem öffentlichen Port als root (je Port
+geprüft), erscheint eine **Warnung** (kein Rückgabewert), z. B. Node oder Python als root. nginx, Apache
+und php-fpm (Master root, Worker unprivilegiert am selben Port) zählen nicht. Mit userns-remap oder rootless Docker ist root im
 Container nicht root auf dem Host; dann entfällt die Warnung (außer bei `--userns=host`).
 
 Nicht geprüft werden allgemeine Härtung (no-new-privileges, `cap_drop: ALL`, read-only, Limits, Ports nur
