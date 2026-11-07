@@ -150,6 +150,13 @@ class Dienste(unittest.TestCase):
         s = self.dienst(nginx, published={"80": ["0.0.0.0:80"]}, nachbarn=["shop"], unlesbar={"/usr/sbin/nginx"})
         self.assertEqual(s["backends"], [("shop", "*", "nginx:80")])
 
+    def test_tunnel_ohne_port_ist_erreichbar(self):
+        tunnel = proc(1, "/usr/local/bin/cloudflared", ["cloudflared", "tunnel", "run"])
+        s = self.dienst(tunnel, nachbarn=["shop"])
+        self.assertTrue(s["exposed"])
+        self.assertEqual(s["backends"], [("shop", "*", "cloudflared")])
+        self.assertIn("Tunnel-Agent", s["description"])
+
     def test_beschreibung(self):
         p = proc(1, "/usr/local/bin/node", ["node", "/app/server.js"], cwd="/app", ports={"3000": "alle"})
         s = self.dienst(p)

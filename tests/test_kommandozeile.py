@@ -173,13 +173,14 @@ class Kommandozeile(unittest.TestCase):
         alt = os.umask(0o022)
         try:
             with mock.patch.object(scanner, "scan_container", side_effect=scan), \
+                    mock.patch.object(scanner, "docker_lage", side_effect=scanner.ScanError("x")), \
                     mock.patch.object(sys, "argv", ["x", "--db", db, "web", self.tmp]):
                 self.assertEqual(scanner.main(), 0)
         finally:
             os.umask(alt)
         self.assertEqual(gesehen, [0o077])
 
-    def mehrere(self, option, public, rest, gruppen, backends, weg=()):
+    def mehrere(self, option, public, rest, gruppen, backends, weg=(), host=([], [], [], [])):
         """main() mit --oeffentliche/--alle-container; liefert (Rückgabewert, [(Container, via)], Ausgabe)."""
         db = os.path.join(self.tmp, "db")
         os.makedirs(db, exist_ok=True)
@@ -194,7 +195,9 @@ class Kommandozeile(unittest.TestCase):
         def run(cmd, *a, **kw):
             return (1, "") if cmd[:2] == ["docker", "inspect"] and cmd[-1] in weg else (0, "")
         with mock.patch.object(scanner, "scan_container", side_effect=scan), \
+                mock.patch.object(scanner, "docker_lage", return_value=([], {})), \
                 mock.patch.object(scanner, "container_liste", return_value=(public, rest, gruppen)), \
+                mock.patch.object(scanner, "host_proxys", return_value=host), \
                 mock.patch.object(scanner, "run", side_effect=run), \
                 mock.patch.object(scanner, "log"), mock.patch("sys.stdout", new_callable=io.StringIO) as out, \
                 mock.patch.object(sys, "argv", ["x", "--db", db, option, self.tmp]):
@@ -215,6 +218,34 @@ class Kommandozeile(unittest.TestCase):
         # --oeffentliche: nur erreichbare Container und ihre Backends
         rc, gesehen, _ = self.mehrere("--oeffentliche", ["proxy"], ["app", "cron", "db"], {}, backends)
         self.assertEqual(sorted(n for n, _ in gesehen), ["app", "db", "proxy", "vpn"])
+
+    def test_ziele_eines_proxys_auf_dem_host(self):
+        # nginx auf dem Host vor app (Container-IP, kein veröffentlichter Port): app zuerst, als erreichbar
+        svc = {"label": "nginx:443 auf dem Host", "exposed": True, "backends": [("app", "3000", "nginx:443")]}
+        host = ([("app", "3000", "nginx:443 auf dem Host")], [svc], [], [])
+        rc, gesehen, out = self.mehrere("--alle-container", ["proxy"], ["app", "db"], {}, {}, host=host)
+        self.assertEqual((rc, gesehen[0]), (0, ("app", {"3000": ["nginx:443 auf dem Host"]})))
+        self.assertEqual([n for n, _ in gesehen], ["app", "proxy", "db"])
+        self.assertIn("Host: nginx:443 auf dem Host – erreichbar; Ziele in Containern: app (3000)", out)
+        # Konfiguration auf dem Host nicht lesbar: unvollständig
+        rc, _, out = self.mehrere("--alle-container", ["proxy"], [], {}, {},
+                                  host=([], [], [], ["/usr/sbin/nginx -T fehlgeschlagen"]))
+        self.assertEqual(rc, 2)
+        self.assertIn("Host: UNVOLLSTÄNDIG: /usr/sbin/nginx -T fehlgeschlagen", out)
+
+    def test_einzelscan_kennt_proxys_auf_dem_host(self):
+        db = os.path.join(self.tmp, "db")
+        os.makedirs(db, exist_ok=True)
+        infos = [{"Id": "abc123", "Name": "/app", "HostConfig": {}, "NetworkSettings": {"Networks": {"n": {}}}}]
+        host = ([("app", "3000", "nginx:443 auf dem Host"), ("db", "*", "nginx:443 auf dem Host")], [], [], [])
+        for ref in ("app", "abc"):
+            with mock.patch.object(scanner, "scan_container", return_value=(0, [], None)) as scan, \
+                    mock.patch.object(scanner, "docker_lage", return_value=(infos, {})), \
+                    mock.patch.object(scanner, "host_proxys", return_value=host), \
+                    mock.patch("sys.stdout", new_callable=io.StringIO), \
+                    mock.patch.object(sys, "argv", ["x", "--db", db, ref, self.tmp]):
+                self.assertEqual(scanner.main(), 0)
+            self.assertEqual(scan.call_args[0][2], {"3000": ["nginx:443 auf dem Host"]})
 
     def test_alle_container_ohne_container(self):
         rc, gesehen, out = self.mehrere("--alle-container", [], [], {}, {})

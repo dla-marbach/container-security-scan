@@ -7,16 +7,20 @@ Szenario (Lauf mit --alle-container):
   im Zweifel erreichbar
 - Node.js im Netzwerk-Namespace eines anderen Containers (network_mode: container:), der den Port veröffentlicht
 - Node.js in einem eigenen Netz ohne veröffentlichten Port: wird mitgeprüft, gilt als intern
+- nur wenn nginx auf dem Host installiert ist: nginx direkt auf dem Host (eigene Konfiguration, ohne root)
+  vor Node.js über die Container-IP, ohne veröffentlichten Port
 Geprüft werden Rückgabewert, Erreichbarkeit, Berichte, EOL-Warnungen und dass der Scan im Container nichts
 verändert (docker diff).
 """
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+import urllib.request
 import uuid
 
 from _laden import SKRIPT
@@ -26,6 +30,7 @@ NGINX_IMAGE = os.environ.get("CSS_NGINX_IMAGE", "nginx:1.27-alpine")
 NODE_IMAGE = os.environ.get("CSS_NODE_IMAGE", "node:20-alpine")
 TRAEFIK_IMAGE = os.environ.get("CSS_TRAEFIK_IMAGE", "traefik:v3.3")
 NODE_SERVER = "require('http').createServer((q, r) => r.end('ok')).listen(%d)"
+HOST_NGINX = shutil.which("nginx") or next((p for p in ("/usr/sbin/nginx", "/usr/local/sbin/nginx") if os.path.exists(p)), None)
 
 
 def docker(*args, **kw):
@@ -44,6 +49,7 @@ class Integration(unittest.TestCase):
         cls.tnet, cls.traefik, cls.label, cls.nachbar = cls.id + "-t", cls.id + "-traefik", cls.id + "-label", cls.id + "-nachbar"
         cls.vpn, cls.mit = cls.id + "-vpn", cls.id + "-mit"
         cls.inet, cls.intern = cls.id + "-i", cls.id + "-intern"
+        cls.hnet, cls.hinterhost = cls.id + "-h", cls.id + "-hinterhost"
         conf = os.path.join(cls.tmp, "proxy.conf")
         with open(conf, "w") as f:
             f.write("events {}\nhttp { server { listen 8080; resolver 127.0.0.11 valid=10s;\n"
@@ -51,7 +57,7 @@ class Integration(unittest.TestCase):
                     "  location /v/ { set $backend http://%s:3001; proxy_pass $backend; } } }\n" % (cls.node, cls.varnode))
         os.chmod(cls.tmp, 0o755)
         os.chmod(conf, 0o644)
-        for net in (cls.net, cls.tnet, cls.inet):
+        for net in (cls.net, cls.tnet, cls.inet, cls.hnet):
             docker("network", "create", net)
         docker("run", "-d", "--name", cls.node, "--network", cls.net, NODE_IMAGE, "node", "-e", NODE_SERVER % 3000)
         docker("run", "-d", "--name", cls.varnode, "--network", cls.net, NODE_IMAGE, "node", "-e", NODE_SERVER % 3001)
@@ -68,7 +74,22 @@ class Integration(unittest.TestCase):
         docker("run", "-d", "--name", cls.mit, "--network", "container:" + cls.vpn, NODE_IMAGE, "node", "-e",
                NODE_SERVER % 3004)
         docker("run", "-d", "--name", cls.intern, "--network", cls.inet, NODE_IMAGE, "node", "-e", NODE_SERVER % 3005)
-        cls.alle = (cls.node, cls.varnode, cls.proxy, cls.label, cls.nachbar, cls.traefik, cls.vpn, cls.mit, cls.intern)
+        docker("run", "-d", "--name", cls.hinterhost, "--network", cls.hnet, NODE_IMAGE, "node", "-e", NODE_SERVER % 3006)
+        cls.alle = (cls.node, cls.varnode, cls.proxy, cls.label, cls.nachbar, cls.traefik, cls.vpn, cls.mit, cls.intern,
+                    cls.hinterhost)
+        cls.host_nginx = None
+        if HOST_NGINX:      # nginx auf dem Host vor hinterhost, über dessen IP (wie ein Proxy außerhalb von Docker)
+            ip = docker("inspect", "-f", "{{(index .NetworkSettings.Networks \"%s\").IPAddress}}" % cls.hnet,
+                        cls.hinterhost).strip()
+            hconf = os.path.join(cls.tmp, "host-nginx.conf")
+            with open(hconf, "w") as f:
+                f.write("pid {t}/host-nginx.pid; error_log {t}/host-nginx.log; events {{}}\n"
+                        "http {{ access_log off; client_body_temp_path {t}/cb; proxy_temp_path {t}/pt;\n"
+                        "  fastcgi_temp_path {t}/ft; uwsgi_temp_path {t}/ut; scgi_temp_path {t}/st;\n"
+                        "  server {{ listen 18099; location / {{ proxy_pass http://{ip}:3006; }} }} }}\n"
+                        .format(t=cls.tmp, ip=ip))
+            cls.host_nginx = subprocess.Popen([HOST_NGINX, "-c", hconf, "-e", os.path.join(cls.tmp, "host-nginx.log"),
+                                               "-g", "daemon off;"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         cls.bereit()
         cls.diff_vorher = {c: cls.diff(c) for c in cls.alle}
         cls.out = os.path.join(cls.tmp, "berichte")
@@ -89,8 +110,13 @@ class Integration(unittest.TestCase):
             antwort = [docker("exec", cls.proxy, "wget", "-qO-", "http://127.0.0.1:8080" + pfad, timeout=30).strip()
                        for pfad in ("/", "/v/")]
             antwort.append(docker("exec", cls.vpn, "wget", "-qO-", "http://127.0.0.1:3004/", timeout=30).strip())
+            if cls.host_nginx:
+                try:
+                    antwort.append(urllib.request.urlopen("http://127.0.0.1:18099/", timeout=5).read().decode())
+                except OSError:
+                    antwort.append("")
             diff = [cls.diff(c) for c in cls.alle]
-            if antwort == ["ok"] * 3 and diff == letzte:
+            if antwort == ["ok"] * len(antwort) and diff == letzte:
                 return
             letzte = diff
             time.sleep(1)
@@ -98,9 +124,12 @@ class Integration(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        if cls.host_nginx:
+            cls.host_nginx.send_signal(signal.SIGTERM)
+            cls.host_nginx.wait(30)
         docker("rm", "-f", cls.mit)
         docker("rm", "-f", *cls.alle)
-        docker("network", "rm", cls.net, cls.tnet, cls.inet)
+        docker("network", "rm", cls.net, cls.tnet, cls.inet, cls.hnet)
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def bericht(self, container):
@@ -131,6 +160,12 @@ class Integration(unittest.TestCase):
         self.assertIn("(über Container %s)" % self.vpn, self.bericht(self.mit))
         self.assertIn("Prozess in einem Container mit demselben Netzwerk (%s)" % self.mit, self.bericht(self.vpn))
         self.assertNotIn("unbekannter Dienst", self.bericht(self.vpn))
+
+    @unittest.skipUnless(HOST_NGINX, "nginx auf dem Host nicht installiert")
+    def test_proxy_auf_dem_host(self):
+        self.assertIn("Host: nginx:18099 auf dem Host – erreichbar; Ziele in Containern: %s (3006)" % self.hinterhost,
+                      self.ausgabe)
+        self.assertIn("Port 3006/tcp (alle) öffentlich über nginx:18099 auf dem Host", self.bericht(self.hinterhost))
 
     def test_interner_container_wird_mitgeprueft(self):
         self.assertIn("Port 3005/tcp (alle) nicht veröffentlicht", self.bericht(self.intern))

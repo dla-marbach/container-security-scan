@@ -16,9 +16,9 @@ Aufruf:
      mit --oekosysteme X,Y: zusätzlich diese Ökosysteme direkt von OSV nach osv-db laden (z.B. SUSE)
   ./container-security-scan.py <container> [ausgabeverzeichnis] [--nur-behebbare] [--alle] [--ausnahmen DATEI]
   ./container-security-scan.py --alle-container [ausgabeverzeichnis] [...]
-     alle laufenden Container: zuerst die erreichbaren (veröffentlichte Ports, Host-Netzwerk, LAN-Netz) und
-     deren Backends hinter einem Reverse Proxy – Dienste hinter einem erreichbaren Proxy gelten als öffentlich
-     (P1) –, dann alle übrigen. Im Zweifel erreichbar: hinter einem Proxy, dessen Ziele nicht vollständig
+     alle laufenden Container: zuerst die erreichbaren (veröffentlichte Ports, Host-Netzwerk, LAN-Netz, Ziele
+     eines Reverse Proxys oder Tunnels direkt auf dem Host) und deren Backends hinter einem Reverse Proxy –
+     Dienste hinter einem erreichbaren Proxy gelten als öffentlich (P1) –, dann alle übrigen. Im Zweifel erreichbar: hinter einem Proxy, dessen Ziele nicht vollständig
      bekannt sind (Traefik, HAProxy, nginx mit $host …), gelten alle Container im selben Docker-Netz als
      möglicherweise öffentlich (P1). "Öffentlich" = von außerhalb des Docker-Hosts (Intranet oder Internet).
   ./container-security-scan.py --oeffentliche [ausgabeverzeichnis] [...]
@@ -954,6 +954,12 @@ def collect_procs(c):
             raise ScanError("Prozesse des Containers nicht ermittelbar (docker top fehlgeschlagen)")
         rc, out = run(["sh", "-s", "--"] + pids, input=PROC_SH)
         how = "über /proc des Hosts"
+    procs, fremd = procs_auswerten(out)
+    return procs, how, fremd
+
+
+def procs_auswerten(out):
+    """Ausgabe von PROC_SH auswerten: (Prozesse, lauschende Ports ohne sichtbaren Prozess)."""
     procs, sockets, listen = OrderedDict(), defaultdict(set), {}
     for line in out.splitlines():
         f = line.split("\t")
@@ -985,7 +991,7 @@ def collect_procs(c):
     for p in procs.values():
         p["base"] = posixpath.basename(p["exe"])
         p["label"] = p["base"] + (":" + ",".join(p["ports"]) if p["ports"] else "")
-    return procs, how, fremd
+    return procs, fremd
 
 
 # ===========================================================================
@@ -1249,7 +1255,9 @@ def parse_apache(c, exe, web, user=NOBODY):
 # davon erreichbar, gelten alle Container in seinen Docker-Netzen als möglicherweise erreichbar (im Zweifel
 # erreichbar). Traefik und caddy-docker-proxy: Ziele aus Docker-Labels werden zusätzlich genau zugeordnet.
 PROXY_UNBEKANNT = {"traefik", "caddy", "haproxy", "envoy", "varnishd", "lighttpd", "h2o", "angie", "pound", "hitch",
-                   "stunnel", "stunnel4", "socat", "sniproxy", "oauth2-proxy", "squid", "frps", "cloudflared"}
+                   "stunnel", "stunnel4", "socat", "sniproxy", "oauth2-proxy", "squid", "frps"}
+# Tunnel-Agenten: leiten Verkehr aus dem Internet weiter, ohne selbst auf einem Port zu lauschen -> immer erreichbar
+TUNNEL = {"cloudflared", "frpc", "ngrok", "chisel"}
 LAN_TREIBER = ("macvlan", "ipvlan")     # Container mit eigener Adresse im LAN, ohne veröffentlichte Ports erreichbar
 
 
@@ -1350,10 +1358,46 @@ def label_ziele(proxy, infos):
     return result
 
 
+def web_leer():
+    return {"docroots": defaultdict(list), "backends": defaultdict(list), "vhosts": defaultdict(list),
+            "upstreams": defaultdict(list), "modphp": set(), "raw": [], "published": defaultdict(list), "containers": {},
+            "via_proxy": {}, "problems": [], "unlesbar": set(), "label_ziele": {}, "host_network": False, "lan": [],
+            "spender": None, "nachbarn": [], "netz_gruppe": []}
+
+
 def collect_web(c, procs):
-    web = {"docroots": defaultdict(list), "backends": defaultdict(list), "vhosts": defaultdict(list),
-           "upstreams": defaultdict(list), "modphp": set(), "raw": [], "published": defaultdict(list), "containers": {},
-           "via_proxy": {}, "problems": [], "unlesbar": set(), "label_ziele": {}}
+    web = web_leer()
+    webserver_lesen(c, procs, web)
+    infos, netze = docker_lage()
+    web["published"], web["host_network"], web["lan"], web["spender"] = direkt_erreichbar(c.info, infos, netze)
+    web["nachbarn"] = nachbarn_von(c.info, infos)
+    # Container im selben Netzwerk-Namespace (network_mode: container:/service:): lauschen auf denselben Ports
+    web["netz_gruppe"] = netz_gruppe(c.info, infos)
+    for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
+        web["label_ziele"][proxy] = label_ziele(proxy, infos)
+    web["containers"] = container_index(infos)
+    return web
+
+
+def container_index(infos):
+    """Namen, Aliase und IPs aller laufenden Container -> Containername (für Backends wie http://app:3000,
+    app.netz oder 172.18.0.5)."""
+    index = {}
+    for d in infos:
+        name = name_von(d)
+        keys = [name, (d.get("Config") or {}).get("Hostname"),
+                ((d.get("Config") or {}).get("Labels") or {}).get("com.docker.compose.service")]
+        for netname, net in ((d.get("NetworkSettings") or {}).get("Networks") or {}).items():
+            names = [name] + (net.get("Aliases") or []) + (net.get("DNSNames") or [])
+            keys += [net.get("IPAddress"), net.get("GlobalIPv6Address")] + names + [k + "." + netname for k in names if k]
+        for k in keys:
+            if k:
+                index.setdefault(k, name)
+    return index
+
+
+def webserver_lesen(c, procs, web):
+    """Konfiguration der laufenden nginx- und Apache-Server lesen (im Container bzw. auf dem Host)."""
     for exe in sorted({p["exe"] for p in procs.values() if p["base"] in ("nginx", "apache2", "httpd")}):
         masters = server_masters(procs, exe)
         if posixpath.basename(exe) == "nginx":
@@ -1378,25 +1422,6 @@ def collect_web(c, procs):
         else:
             for user in OrderedDict.fromkeys(server_user(p) for p in masters):
                 parse_apache(c, exe, web, user)
-    infos, netze = docker_lage()
-    web["published"], web["host_network"], web["lan"], web["spender"] = direkt_erreichbar(c.info, infos, netze)
-    web["nachbarn"] = nachbarn_von(c.info, infos)
-    # Container im selben Netzwerk-Namespace (network_mode: container:/service:): lauschen auf denselben Ports
-    web["netz_gruppe"] = netz_gruppe(c.info, infos)
-    for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
-        web["label_ziele"][proxy] = label_ziele(proxy, infos)
-    # Namen, Aliase und IPs aller laufenden Container (für Backends wie http://app:3000 oder app.netz)
-    for d in infos:
-        name = name_von(d)
-        keys = [name, (d.get("Config") or {}).get("Hostname"),
-                ((d.get("Config") or {}).get("Labels") or {}).get("com.docker.compose.service")]
-        for netname, net in ((d.get("NetworkSettings") or {}).get("Networks") or {}).items():
-            names = [name] + (net.get("Aliases") or []) + (net.get("DNSNames") or [])
-            keys += [net.get("IPAddress"), net.get("GlobalIPv6Address")] + names + [k + "." + netname for k in names if k]
-        for k in keys:
-            if k:
-                web["containers"].setdefault(k, name)
-    return web
 
 
 def resolve_backend(target, web, self_name, depth=0):
@@ -1576,8 +1601,10 @@ def mark_usage(comps, procs, owners, web):
 
     services = []   # ein Eintrag je Prozess mit offenen Ports (gleiches Etikett nur einmal)
     versions = {norm(c["ort"]): c["version"] for c in comps if c["typ"] in ("runtime", "server")}
-    for label, p in OrderedDict((p["label"], p) for p in procs.values() if p["ports"]).items():
-        desc, exposed = [], False
+    for label, p in OrderedDict((p["label"], p) for p in procs.values() if p["ports"] or p["base"] in TUNNEL).items():
+        desc, exposed = [], p["base"] in TUNNEL
+        if exposed:
+            desc.append("Tunnel-Agent: leitet Verkehr von außen weiter, ohne selbst auf einem Port zu lauschen")
         for port, addr in p["ports"].items():
             if web["published"].get(port):
                 how, exposed = "veröffentlicht als " + ", ".join(web["published"][port]) + (
@@ -1616,7 +1643,7 @@ def mark_usage(comps, procs, owners, web):
         # Weiterleitungen nicht vollständig bekannt: im Zweifel erreichbar -> alle Container in den Docker-Netzen
         unklar = []
         if exposed:
-            if p["base"] in PROXY_UNBEKANNT:
+            if p["base"] in PROXY_UNBEKANNT or p["base"] in TUNNEL:
                 unklar.append("%s: Konfiguration wird nicht ausgewertet" % p["base"])
             if p["exe"] in web.get("unlesbar", ()):
                 unklar.append("Konfiguration nicht lesbar")
@@ -2757,16 +2784,125 @@ def scan_container(name, a, via_proxy=None):
     return code, [(ct, port, "%s in %s" % (label, c.name)) for s in services for ct, port, label in s["backends"]], base
 
 
-def container_liste():
+def container_liste(infos, netze):
     """Laufende Container: (direkt erreichbare, übrige, {Container: [andere im selben Netzwerk-Namespace]}).
     Direkt erreichbar: veröffentlichte Ports, Host-Netzwerk, LAN-Netz (macvlan/ipvlan, geroutet) – auch über
-    einen Container, dessen Netzwerk-Namespace mitgenutzt wird."""
-    infos, netze = docker_lage()
+    einen Container, dessen Netzwerk-Namespace mitgenutzt wird; vorgezogen auch Tunnel-Agenten (nach Image bzw.
+    Befehl), damit ihre Ziele schon mit ihrer Erreichbarkeit geprüft werden."""
     public, rest = [], []
     for d in sorted(infos, key=name_von):
         published, host, lan, _ = direkt_erreichbar(d, infos, netze)
-        (public if published or host or lan else rest).append(name_von(d))
+        cfg = d.get("Config") or {}
+        befehl = " ".join([cfg.get("Image") or ""] + list(cfg.get("Entrypoint") or []) + list(cfg.get("Cmd") or []))
+        tunnel = any(re.search(r"\b%s\b" % t, befehl) for t in TUNNEL)
+        (public if published or host or lan or tunnel else rest).append(name_von(d))
     return public, rest, {name_von(d): netz_gruppe(d, infos) for d in infos}
+
+
+# ===========================================================================
+# Reverse Proxys und Tunnel direkt auf dem Host
+# ===========================================================================
+HOST_PROXYS = {"nginx", "apache2", "httpd"} | PROXY_UNBEKANNT | TUNNEL
+
+
+class Host(object):
+    """Gegenstück zu Container für die Konfiguration eines Proxys auf dem Host: Abfragen mit dem Benutzer des
+    Hauptprozesses (nie mehr), leerer Umgebung und festem Suchpfad."""
+    has_sh = True
+    info = {"Config": {"Env": []}}
+
+    def exec(self, cmd, input=None, binary=False, stderr=False, user=None, timeout=60, path=SAFE_PATH):
+        uid, _, gid = (user or NOBODY).partition(":")
+        if (uid, gid) == (str(os.geteuid()), str(os.getegid())):
+            pre = []
+        elif os.geteuid() == 0 and uid.isdigit() and gid.isdigit():
+            pre = ["setpriv", "--reuid=" + uid, "--regid=" + gid, "--clear-groups", "--"]
+        else:
+            return 126, ""
+        return run(pre + ["env", "-i", "PATH=" + path] + cmd, input, binary, stderr, timeout)
+
+    def read_file(self, path):
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                return f.read()
+        except OSError:
+            return ""
+
+
+def host_proxy_pids(infos, proc="/proc"):
+    """PIDs von Proxys und Tunneln direkt auf dem Host: Programmname bekannt, gleiches Wurzelverzeichnis wie
+    dieses Skript (nicht in einem Container) und nicht in der cgroup eines Containers.
+    Liefert (PIDs, Anzahl nicht lesbarer Prozesse)."""
+    root = os.stat("/")
+    ids = [d["Id"] for d in infos if d.get("Id")]
+    pids, gesperrt = [], 0
+    for pid in sorted((x for x in os.listdir(proc) if x.isdigit()), key=int):
+        try:
+            exe = os.readlink(os.path.join(proc, pid, "exe"))
+            st = os.stat(os.path.join(proc, pid, "root"))
+        except PermissionError:
+            gesperrt += 1
+            continue
+        except OSError:             # Kernel-Thread oder beendet
+            continue
+        if posixpath.basename(re.sub(r" \(deleted\)$", "", exe)) not in HOST_PROXYS \
+                or (st.st_dev, st.st_ino) != (root.st_dev, root.st_ino):
+            continue
+        try:
+            with open(os.path.join(proc, pid, "cgroup")) as f:
+                cgroup = f.read()
+        except OSError:
+            cgroup = ""
+        if not any(i in cgroup for i in ids):
+            pids.append(pid)
+    return pids, gesperrt
+
+
+def host_proxys(infos):
+    """Reverse Proxys und Tunnel direkt auf dem Host, z.B. nginx vor einem Container ohne veröffentlichten Port
+    (proxy_pass http://172.18.0.5:3000). Liefert (Ziele [(Container, Port, Grund)], Dienste, Warnungen, Probleme).
+    Ziele per Container-IP; nicht auswertbare Weiterleitungen machen alle Container mit Docker-Netz möglicherweise
+    erreichbar (der Host erreicht sie über ihre IP)."""
+    pids, gesperrt = host_proxy_pids(infos)
+    warnings = ["Prozesse auf dem Host nicht vollständig lesbar (%d; Skript nicht als root?) – Reverse Proxys auf "
+                "dem Host ggf. nicht erkannt" % gesperrt] if gesperrt else []
+    if not pids:
+        return [], [], warnings, []
+    rc, out = run(["sh", "-s", "--"] + pids, input=PROC_SH)
+    procs, _ = procs_auswerten(out)
+    web = web_leer()
+    web.update(self="Host", host_network=True, containers=container_index(infos),
+               nachbarn=sorted(name_von(d) for d in infos if netze_von(spender_von(d, infos) or d)))
+    webserver_lesen(Host(), procs, web)
+    for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
+        web["label_ziele"][proxy] = label_ziele(proxy, infos)
+    services = mark_usage([], procs, {}, web)
+    for svc in services:
+        svc["label"] += " auf dem Host"
+        for b in svc["unresolved"]:
+            warnings.append("Backend %s von %s keinem Container zuordenbar (anderer Server?)" % (b, svc["label"]))
+        if svc["unklar"]:
+            warnings.append("Weiterleitungen von %s nicht vollständig auswertbar (%s) – alle Container mit einem "
+                            "Docker-Netz gelten als möglicherweise öffentlich" % (svc["label"], "; ".join(svc["unklar"])))
+    ziele = [(ct, port, svc["label"]) for svc in services for ct, port, _ in svc["backends"]]
+    return ziele, services, warnings, web["problems"]
+
+
+def host_ausgeben(services, warnings, problems):
+    """Ergebnis der Proxys auf dem Host auf der Konsole; Rückgabewert 2 bei unvollständiger Prüfung, sonst 0."""
+    for warn in warnings:
+        print("Host: WARNUNG: %s" % warn)
+    for svc in services:
+        ziele = OrderedDict()
+        for ct, port, _ in svc["backends"]:
+            ziele.setdefault(ct, []).append("alle Ports" if port == "*" else port)
+        print("Host: %s – %s" % (svc["label"], ("erreichbar; Ziele in Containern: " + ", ".join(
+            "%s (%s)" % (ct, ", ".join(p)) for ct, p in ziele.items()) if ziele else "erreichbar; keine Ziele in Containern")
+            if svc["exposed"] else "nicht von außen erreichbar (nur Loopback)"))
+    if problems:
+        print("Host: UNVOLLSTÄNDIG: " + "; ".join(problems))
+    sys.stdout.flush()
+    return 2 if problems else 0
 
 
 def main():
@@ -2867,20 +3003,41 @@ def main():
         raise ScanError("keine OSV-Daten gefunden (%s) – zuerst: %s --db-aktualisieren" % (", ".join(a.db or [data_dir]), sys.argv[0]))
     a.ausnahmen_liste = ausnahmen_laden(a.ausnahmen) if a.ausnahmen else []
     if not mehrere:
-        return scan_container(a.container, a)[0]
+        # auch ein Einzelscan kennt Proxys auf dem Host (ohne die in anderen Containern)
+        try:
+            infos, netze = docker_lage()
+        except ScanError:
+            return scan_container(a.container, a)[0]       # meldet den Fehler selbst
+        d = next((x for x in infos if a.container in (name_von(x), x.get("Id")) or x.get("Id", "").startswith(a.container)), {})
+        ziele, services, warnings, problems = host_proxys(infos)
+        host_code = host_ausgeben(services, warnings, problems)
+        namen = {name_von(d)} | set(netz_gruppe(d, infos)) if d else set()
+        via = {}
+        for ct, port, reason in ziele:
+            if ct in namen and reason not in via.setdefault(port, []):
+                via[port].append(reason)
+        code = scan_container(a.container, a, via)[0]
+        return 2 if 2 in (code, host_code) else code
     try:
-        public, rest, gruppen = container_liste()
+        infos, netze = docker_lage()
+        public, rest, gruppen = container_liste(infos, netze)
+        ziele, services, warnings, problems = host_proxys(infos)
     except ScanError as e:
         log("FEHLER: %s" % e)
         return 2
+    host_code = host_ausgeben(services, warnings, problems)
 
     # Erreichbare Container, dabei (wiederholt) deren Backends in anderen Containern – vorgezogen, damit sie
     # schon mit ihrer Erreichbarkeit geprüft werden; mit --alle-container danach die übrigen
     queue = OrderedDict((n, {}) for n in public)
+    for ct, port, reason in ziele:          # Ziele von Proxys auf dem Host: erreichbar, vorgezogen
+        for ziel in [ct] + gruppen.get(ct, []):
+            queue.setdefault(ziel, {}).setdefault(port, []).append(reason)
+            queue.move_to_end(ziel, last=False)
     spaeter = list(rest) if a.alle_container else []
     if not queue and not spaeter:
         print("Keine laufenden Container gefunden." if a.alle_container else "Keine Container mit veröffentlichten Ports gefunden.")
-        return 0
+        return host_code
     vias, codes, reports, runs = {}, {}, {}, Counter()
     while queue or spaeter:
         if not queue:
@@ -2916,7 +3073,7 @@ def main():
                     continue          # Schutz vor Endlosschleifen bei gegenseitigen Proxys
                 queue[ziel] = merged
                 queue.move_to_end(ziel, last=False)
-    code = 2 if 2 in codes.values() else 1 if 1 in codes.values() else 0
+    code = 2 if 2 in codes.values() or host_code == 2 else 1 if 1 in codes.values() else 0
     print("Gesamt: %d Container geprüft – %s" % (len(codes), {0: "OK", 1: "RELEVANTE SCHWACHSTELLEN gefunden",
                                                              2: "mindestens eine Prüfung UNVOLLSTÄNDIG"}[code]))
     return code

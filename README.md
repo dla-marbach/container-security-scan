@@ -210,7 +210,7 @@ docker-Rechten ausführen.
 |---|---|
 | `0` | keine relevanten Schwachstellen |
 | `1` | relevante Schwachstellen gefunden |
-| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar, nginx-Konfiguration nicht lesbar, Distribution ohne aktuelle Sicherheitsdaten (EOL), Ausnahmeliste fehlerhaft. |
+| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar, nginx-Konfiguration nicht lesbar (im Container oder eines Proxys auf dem Host), Distribution ohne aktuelle Sicherheitsdaten (EOL), Ausnahmeliste fehlerhaft. |
 
 **Relevant** ist P1 CRITICAL/HIGH und P2 CRITICAL (anpassbar über `RELEVANT` am Anfang des Skripts), dazu
 **jede aktiv ausgenutzte Lücke** aus dem [KEV-Katalog der CISA](https://www.cisa.gov/known-exploited-vulnerabilities-catalog),
@@ -254,10 +254,13 @@ erreichbar, wenn eine der folgenden Bedingungen zutrifft:
 | gemeinsamer Netzwerk-Namespace | `network_mode: container:…`/`service:…` (z. B. VPN- oder Sidecar-Container): es gelten die Ports des Spenders; ein Ziel des Spenders wird an alle Container dieses Namespace weitergegeben |
 | hinter einem erreichbaren nginx/Apache | Backends aus `nginx -T` bzw. der Apache-Konfiguration (`proxy_pass`, `fastcgi_pass`, `upstream`, `ProxyPass`, `SetHandler proxy:`), auch über mehrere Proxys hintereinander. Variablen aus `set` und `map` (`proxy_pass $backend` mit `resolver`) werden aufgelöst; Ziele per Container-Name, Alias, Compose-Dienst, IP oder `<name>.<netz>` |
 | hinter einem erreichbaren Traefik bzw. caddy-docker-proxy | Ziele aus Docker-Labels (`traefik.*.services.*.loadbalancer.server.port`, `caddy.reverse_proxy: {{upstreams …}}`) |
-| **möglicherweise** erreichbar | Container im selben Docker-Netz wie ein erreichbarer Dienst, dessen Weiterleitungen nicht vollständig bekannt sind: Traefik, Caddy, HAProxy, Envoy, Varnish u. a. (Konfiguration wird nicht ausgewertet; Labels geben nur einen Teil der Ziele an), nginx-Ziel mit nicht auflösbarer Variable (`proxy_pass http://$host`), nicht lesbare nginx-Konfiguration, veröffentlichter Port ohne erkennbaren Prozess. Bei einem solchen Dienst im Host-Netzwerk: alle Container mit einem Docker-Netz. Mit Warnung je Dienst |
+| hinter einem Reverse Proxy **direkt auf dem Host** | nginx/Apache außerhalb von Docker (Programm mit dem Wurzelverzeichnis des Hosts, nicht in der cgroup eines Containers), das nicht nur auf Loopback lauscht: Konfiguration wie oben, Ziele über die Container-IP (z. B. `proxy_pass http://172.18.0.5:3000`). Ergebnis auf der Konsole als `Host: …`; gilt auch für den Einzelscan |
+| hinter einem Tunnel-Agenten | cloudflared, frpc, ngrok, chisel – im Container oder auf dem Host: leiten Verkehr von außen weiter, ohne zu lauschen; gelten immer als erreichbar und nicht auswertbar (siehe nächste Zeile). Container mit einem solchen Image bzw. Befehl werden vorgezogen |
+| **möglicherweise** erreichbar | Container im selben Docker-Netz wie ein erreichbarer Dienst, dessen Weiterleitungen nicht vollständig bekannt sind: Traefik, Caddy, HAProxy, Envoy, Varnish u. a. (Konfiguration wird nicht ausgewertet; Labels geben nur einen Teil der Ziele an), nginx-Ziel mit nicht auflösbarer Variable (`proxy_pass http://$host`), nicht lesbare nginx-Konfiguration, veröffentlichter Port ohne erkennbaren Prozess. Bei einem solchen Dienst auf dem Host oder im Host-Netzwerk: alle Container mit einem Docker-Netz (der Host erreicht sie über ihre IP). Mit Warnung je Dienst |
 
-Nicht erkennbar ist ein Reverse Proxy direkt auf dem Host, der eine Container-IP ohne veröffentlichten Port
-anspricht. Solche Container prüft `--alle-container` trotzdem mit, ihre Funde erscheinen als P2.
+Die Prozesse auf dem Host liest das Skript nur als root vollständig; sonst warnt es (`Host: WARNUNG: Prozesse
+auf dem Host nicht vollständig lesbar`), da ein Proxy auf dem Host unerkannt bleiben könnte. Ist die
+Konfiguration eines Proxys auf dem Host nicht lesbar, ist die Prüfung unvollständig (Rückgabewert 2).
 
 ### Bewertung der Funde
 
@@ -325,8 +328,10 @@ sudo $C --db $DB --alle <container> <ausgabeverzeichnis>      # alle Befunde in 
 
 ## Ausgabe
 
-Auf der Konsole (beim Wrapper auch im Log, in der Mail und im Rundeck-Log) je Container Warnungen, eine
-Zusammenfassung mit dem Pfad des Berichts und darunter alle relevanten Funde, neue zuerst:
+Auf der Konsole (beim Wrapper auch im Log, in der Mail und im Rundeck-Log) zuerst Reverse Proxys direkt auf
+dem Host mit ihren Zielen (`Host: nginx:443 auf dem Host – erreichbar; Ziele in Containern: app (3000)`), dann
+je Container Warnungen, eine Zusammenfassung mit dem Pfad des Berichts und darunter alle relevanten Funde,
+neue zuerst:
 
 ```
 app-php830: RELEVANTE SCHWACHSTELLEN – 6963 Befunde, davon 92 relevant (3 neu); öffentlich: apache2:80 – Bericht: …
@@ -476,7 +481,8 @@ die Lücke aktiv ausgenutzt.
   mit Zeitlimit, im Verzeichnis `/` und **nie mit mehr Rechten als der laufende Prozess**.
 - Die Konfiguration der Webserver (`nginx -T`, `apache2 -S/-M/-t`) wird mit dem Benutzer des jeweiligen
   Hauptprozesses abgefragt, nicht als root: Programm, Optionen und Konfiguration bestimmt der Container,
-  und `load_module`/`LoadModule` würde dabei Code laden. `nginx -T` kann wie `nginx -t` fehlende Log- oder
+  und `load_module`/`LoadModule` würde dabei Code laden. Für einen Proxy direkt auf dem Host ebenso
+  (`setpriv` mit Benutzer und Gruppe des Hauptprozesses, leere Umgebung, fester Suchpfad). `nginx -T` kann wie `nginx -t` fehlende Log- oder
   Temp-Verzeichnisse anlegen, die der Hauptprozess ohnehin anlegt.
 - Befehle im Container (`sh`, `find`, `tar`, `awk`, `rpm` …) werden über einen festen Suchpfad
   (`/usr/sbin:/usr/bin:/sbin:/bin`) gesucht, nicht über den `PATH` des Images – liegt dort ein Verzeichnis,
@@ -500,9 +506,9 @@ die Lücke aktiv ausgenutzt.
 - Nicht erfasst: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung, Bundles ohne Kopfkommentar,
   Programme direkt auf dem Host, UDP-Dienste nur bei offenem Socket.
 - Erreichbarkeit: Konfigurationen werden nur von nginx und Apache ausgewertet; andere Proxys machen alle
-  Container in ihren Docker-Netzen „möglicherweise“ erreichbar (eher zu viel). Anwendungen, die selbst
-  weiterleiten (z. B. ein API-Gateway in Java oder Node), werden nicht als Proxy erkannt; ihre Ziele erscheinen
-  als P2. Ein Reverse Proxy direkt auf dem Host ist nur über veröffentlichte Ports sichtbar.
+  Container in ihren Docker-Netzen „möglicherweise“ erreichbar (eher zu viel), auf dem Host alle Container.
+  Anwendungen, die selbst weiterleiten (z. B. ein API-Gateway in Java oder Node), werden nicht als Proxy
+  erkannt; ihre Ziele erscheinen als P2.
 - EOL-Abgleich nur für Produkte mit Paketkennung bzw. die genannten Laufzeiten/Server und nur für
   numerische Versionszweige; einzelne OS-Pakete, Java-Laufzeiten (herstellerabhängig) und Anwendungen
   ohne Paketkennung (z. B. WordPress, Nextcloud) werden nicht auf Supportende geprüft.
@@ -567,14 +573,14 @@ CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # m
 | `test_schweregrad.py` | CVSS 3/4, Vorrang von Quellen-Einstufung, Debian-Dringlichkeit, Ubuntu-Priorität, `MAL-…` |
 | `test_inventar.py` | dpkg (auch distroless), apk, rpm, npm/Composer/PyPI, JS-Bibliotheken, JARs, Go-Build-Info, tar-Strom |
 | `test_prozesse.py` | Prozesse, Ports und Dateien aus `/proc` (je Prozess-Benutzer bzw. über den Host, nie alle Host-Prozesse), Volumes, fester Suchpfad im Container, Benutzer der Versionsabfragen |
-| `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c` und dem Benutzer des Hauptprozesses (nie root für fremde Programme/Optionen), nginx-Variablen (`set`, `map`), veröffentlichte Ports, Backends, Docker-Netze (macvlan, geroutet, Host-Netzwerk, gemeinsamer Netzwerk-Namespace), Ziele aus Traefik-/Caddy-Labels |
+| `test_webserver.py` | nginx-/Apache-Konfiguration, `nginx -T` mit `-p`/`-c` und dem Benutzer des Hauptprozesses (nie root für fremde Programme/Optionen), nginx-Variablen (`set`, `map`), veröffentlichte Ports, Backends, Docker-Netze (macvlan, geroutet, Host-Netzwerk, gemeinsamer Netzwerk-Namespace), Ziele aus Traefik-/Caddy-Labels, Proxys und Tunnel direkt auf dem Host (Erkennung, Benutzer der Abfrage, Ziele über Container-IP) |
 | `test_nutzung.py` | Zuordnung Komponente → Dienst, Erreichbarkeit (auch „möglicherweise“ über nicht auswertbare Proxys), Priorität P1–P4 |
 | `test_osv.py` | Abgleich je Ökosystem, Quellpakete, Fremdquellen über Bitnami, Datenformat, Kürzung der Ubuntu-Daten (gleiche Funde wie vollständig), inkrementelle Aktualisierung, ungültige Kennungen (kein Pfad) |
 | `test_bewertung.py` | widersprüchliche Versionsbereiche der Distribution, Kernel-Pakete, Schweregrad über die CVE, KEV (Daten erzeugen, laden, markieren), Ausnahmeliste (Format, Rechte, Ablauf), nur Windows, Relevanz |
 | `test_eol.py` | EOL-Daten erzeugen, Supportende und Vorwarnung |
 | `test_ausgabe.py` | Bericht, CycloneDX-SBOM, Gesamtlauf mit Rückgabewerten 0/1/2 und bekannten Funden, KEV macht P4 relevant, Ausnahme, Kernel-Pakete |
 | `test_kommandozeile.py` | Aufruf als Programm: Optionen (auch mehrfaches `--db`), Reihenfolge und Weitergabe der Erreichbarkeit mit `--alle-container`/`--oeffentliche`, `--db-aktualisieren` als root abgelehnt, holt bzw. aktualisiert nur den Branch `daten` (nie den Code), `daten/` ohne Git bricht ab, Berichte nur für den Aufrufer lesbar, docker nicht erreichbar, fehlerhafte Ausnahmeliste und unerwartete Fehler → 2 |
-| `test_docker.py` | mit den Daten aus dem Branch `daten` unter `daten/`, Lauf mit `--alle-container`: nginx (`-c`) als Proxy vor Node (direkt und über `set $backend`), Traefik mit Label-Ziel und Nachbar ohne Label, gemeinsamer Netzwerk-Namespace, interner Container; EOL-Warnungen, Berichte, `docker diff` unverändert |
+| `test_docker.py` | mit den Daten aus dem Branch `daten` unter `daten/`, Lauf mit `--alle-container`: nginx (`-c`) als Proxy vor Node (direkt und über `set $backend`), Traefik mit Label-Ziel und Nachbar ohne Label, gemeinsamer Netzwerk-Namespace, interner Container, nginx direkt auf dem Host vor einer Container-IP (wenn nginx installiert ist); EOL-Warnungen, Berichte, `docker diff` unverändert |
 
 Die GitHub Action [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11, 3.13 und
 3.14 (Python des Runners, mit dem auch die Daten erzeugt werden) sowie den Docker-Test aus.

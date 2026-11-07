@@ -1,4 +1,7 @@
 """Webserver-Konfiguration (nginx, Apache), veröffentlichte Ports, Backends in anderen Containern."""
+import os
+import shutil
+import tempfile
 import unittest
 from unittest import mock
 
@@ -219,6 +222,70 @@ class DockerLage(unittest.TestCase):
     def test_docker_nicht_erreichbar(self):
         with mock.patch.object(scanner, "run", return_value=(1, "")):
             self.assertRaises(scanner.ScanError, scanner.docker_lage)
+
+
+class HostProxys(unittest.TestCase):
+    def test_host_proxy_pids(self):
+        # nur bekannte Proxys mit dem Wurzelverzeichnis des Hosts und nicht in der cgroup eines Containers
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        anderes = os.path.join(tmp, "rootfs")
+        os.mkdir(anderes)
+        for pid, exe, root, cgroup in (("10", "/usr/sbin/nginx", "/", "0::/system.slice/nginx.service\n"),
+                                       ("11", "/usr/sbin/sshd", "/", "0::/system.slice/ssh.service\n"),
+                                       ("12", "/usr/sbin/nginx", anderes, "0::/system.slice/docker-x.scope\n"),
+                                       ("13", "/usr/sbin/nginx", "/", "0::/system.slice/docker-abc123.scope\n"),
+                                       ("14", "/usr/local/bin/cloudflared (deleted)", "/", "0::/x\n")):
+            os.mkdir(os.path.join(tmp, pid))
+            os.symlink(exe, os.path.join(tmp, pid, "exe"))
+            os.symlink(root, os.path.join(tmp, pid, "root"))
+            with open(os.path.join(tmp, pid, "cgroup"), "w") as f:
+                f.write(cgroup)
+        os.mkdir(os.path.join(tmp, "15"))       # Kernel-Thread: kein exe
+        self.assertEqual(scanner.host_proxy_pids([{"Id": "abc123"}], proc=tmp), (["10", "14"], 0))
+
+    def test_host_proxys(self):
+        infos = [inspect("app", ["back"]), inspect("db", ["back"]), inspect("ohne")]
+        infos[2]["NetworkSettings"]["Networks"] = {}
+        ip = infos[0]["NetworkSettings"]["Networks"]["back"]["IPAddress"]
+        procs = ("P\t10\t/usr/sbin/nginx\t/\tnginx: master process /usr/sbin/nginx\t0:0\t1\nS\t10\t5\n"
+                 "T\t5\t00000000:01BB\ttcp\n")
+        conf = "http { server { listen 443; location / { proxy_pass http://%s:3000; } } }" % ip
+        with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 0)), \
+                mock.patch.object(scanner, "run", return_value=(0, procs)), \
+                mock.patch.object(scanner.Host, "exec", return_value=(0, conf)) as ex:
+            ziele, services, warnings, problems = scanner.host_proxys(infos)
+        self.assertEqual(ex.call_args[0][0], ["/usr/sbin/nginx", "-T"])
+        self.assertEqual(ex.call_args[1]["user"], "0:0")
+        self.assertEqual(ziele, [("app", "3000", "nginx:443 auf dem Host")])
+        self.assertEqual((warnings, problems), ([], []))
+        # variables Ziel: alle Container mit Docker-Netz möglicherweise erreichbar
+        conf = "http { server { listen 443; location / { proxy_pass http://$host; } } }"
+        with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 2)), \
+                mock.patch.object(scanner, "run", return_value=(0, procs)), \
+                mock.patch.object(scanner.Host, "exec", return_value=(0, conf)):
+            ziele, services, warnings, problems = scanner.host_proxys(infos)
+        self.assertEqual(ziele, [("app", "*", "nginx:443 auf dem Host"), ("db", "*", "nginx:443 auf dem Host")])
+        self.assertIn("nicht vollständig lesbar (2;", warnings[0])
+        self.assertIn("Weiterleitungen von nginx:443 auf dem Host nicht vollständig auswertbar", warnings[1])
+
+    def test_host_exec_mit_benutzer_des_masters(self):
+        h = scanner.Host()
+        with mock.patch.object(scanner, "run", return_value=(0, "")) as run, \
+                mock.patch.object(scanner.os, "geteuid", return_value=0), mock.patch.object(scanner.os, "getegid", return_value=0):
+            h.exec(["/usr/sbin/nginx", "-T"], user="0:0")
+            self.assertEqual(run.call_args[0][0], ["env", "-i", "PATH=" + scanner.SAFE_PATH, "/usr/sbin/nginx", "-T"])
+            h.exec(["/usr/sbin/nginx", "-T"], user="33:33")
+            self.assertEqual(run.call_args[0][0][:5], ["setpriv", "--reuid=33", "--regid=33", "--clear-groups", "--"])
+        with mock.patch.object(scanner, "run") as run, \
+                mock.patch.object(scanner.os, "geteuid", return_value=1000), mock.patch.object(scanner.os, "getegid", return_value=1000):
+            self.assertEqual(h.exec(["/usr/sbin/nginx", "-T"], user="0:0")[0], 126)   # ohne root kein Wechsel
+            run.assert_not_called()
+
+    def test_tunnel_container_vorgezogen(self):
+        infos = [inspect("app", ["n"]), inspect("tunnel", ["n"])]
+        infos[1]["Config"].update(Image="cloudflare/cloudflared:2026.1.0", Cmd=["tunnel", "run"])
+        self.assertEqual(scanner.container_liste(infos, {})[:2], (["tunnel"], ["app"]))
 
 
 class Apache(unittest.TestCase):
