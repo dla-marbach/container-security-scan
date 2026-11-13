@@ -13,6 +13,9 @@ Szenario (Lauf mit --alle-container):
   vor Node.js über die Container-IP, ohne veröffentlichten Port, und über 127.0.0.1 vor Node.js in zwei
   Containern im Host-Netzwerk (einer nur auf Loopback) und vor dem Gateway (Port auf 127.0.0.1 veröffentlicht):
   jeder Port nur beim Container, der dort lauscht
+- gehärteter Node.js-Container (read_only, cap_drop: ALL, no-new-privileges, Benutzer node) mit npm-Paketen in
+  Verzeichnissen, die nur node lesen darf (im Image und in einem Bind-Mount): root im Container darf dort nicht
+  hinein, der Scanner liest dann passiv von außen (docker export, docker cp) und ist trotzdem vollständig
 Geprüft werden Rückgabewert, Erreichbarkeit, Berichte, EOL-Warnungen und dass der Scan im Container nichts
 verändert (docker diff).
 """
@@ -65,6 +68,7 @@ class Integration(unittest.TestCase):
         cls.hnet, cls.hinterhost = cls.id + "-h", cls.id + "-hinterhost"
         cls.hostlo, cls.hostnetz = cls.id + "-hostlo", cls.id + "-hostnetz"
         cls.gnet, cls.gw, cls.api, cls.ziel, cls.redis = (cls.id + x for x in ("-g", "-gw", "-api", "-ziel", "-redis"))
+        cls.hart = cls.id + "-hart"
         conf = os.path.join(cls.tmp, "proxy.conf")
         with open(conf, "w") as f:
             f.write("events {}\nhttp { server { listen 8080; resolver 127.0.0.11 valid=10s;\n"
@@ -94,10 +98,30 @@ class Integration(unittest.TestCase):
         docker("run", "-d", "--name", cls.ziel, "--network", cls.gnet, NODE_IMAGE, "node", "-e",
                "require('net').createServer(s => s.on('error', () => {})).listen(3009)")
         docker("run", "-d", "--name", cls.redis, "--network", cls.gnet, REDIS_IMAGE)
+        # gehärtet: Paket im Image unter /home/node (nur für node lesbar) und im Bind-Mount (0700, Besitzer ist der
+        # Aufrufer): root im Container darf ohne Capabilities in keines der beiden Verzeichnisse
+        bau = os.path.join(cls.tmp, "hart")
+        os.makedirs(bau)
+        with open(os.path.join(bau, "Dockerfile"), "w") as f:
+            f.write("FROM %s\nRUN mkdir -p /home/node/app/node_modules/lodash && printf '%%s' "
+                    "'{\"name\": \"lodash\", \"version\": \"4.17.20\"}' "
+                    "> /home/node/app/node_modules/lodash/package.json && chown -R node:node /home/node "
+                    "&& chmod 700 /home/node\n" % NODE_IMAGE)
+        docker("build", "-q", "-t", cls.hart, bau, timeout=600)
+        geheim = os.path.join(cls.tmp, "geheim")
+        os.makedirs(os.path.join(geheim, "node_modules", "minimist"))
+        with open(os.path.join(geheim, "node_modules", "minimist", "package.json"), "w") as f:
+            f.write('{"name": "minimist", "version": "1.2.5"}')
+        os.chmod(geheim, 0o700)
+        if os.geteuid() == 0:     # sonst gehörte es root und root im Container dürfte hinein
+            os.chown(geheim, 1000, 1000)
+        docker("run", "-d", "--name", cls.hart, "--network", cls.inet, "--read-only", "--cap-drop", "ALL",
+               "--security-opt", "no-new-privileges:true", "--user", "node", "-v", geheim + ":/app/geheim:ro",
+               cls.hart, "node", "-e", NODE_SERVER % 3010)
         docker("run", "-d", "--name", cls.gw, "--network", cls.gnet, "-p", "127.0.0.1::3007",
                "-e", "API_URL=http://%s:3008/v1" % cls.api, NODE_IMAGE, "node", "-e", GATEWAY % (cls.ziel, cls.redis))
         cls.alle = (cls.node, cls.varnode, cls.proxy, cls.label, cls.nachbar, cls.traefik, cls.vpn, cls.mit, cls.intern,
-                    cls.hinterhost, cls.api, cls.ziel, cls.redis, cls.gw)
+                    cls.hinterhost, cls.api, cls.ziel, cls.redis, cls.gw, cls.hart)
         cls.host_nginx = None
         if HOST_NGINX:      # nginx auf dem Host vor hinterhost, über dessen IP (wie ein Proxy außerhalb von Docker),
             # und über 127.0.0.1 vor hostlo (Host-Netzwerk, nur Loopback), hostnetz (Host-Netzwerk) und gw
@@ -165,6 +189,7 @@ class Integration(unittest.TestCase):
             cls.host_nginx.wait(30)
         docker("rm", "-f", cls.mit)
         docker("rm", "-f", *cls.alle)
+        docker("rmi", "-f", cls.hart)
         docker("network", "rm", cls.net, cls.tnet, cls.inet, cls.hnet, cls.gnet)
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
@@ -233,6 +258,18 @@ class Integration(unittest.TestCase):
 
     def test_interner_container_wird_mitgeprueft(self):
         self.assertIn("Port 3005/tcp (alle) nicht veröffentlicht", self.bericht(self.intern))
+
+    def test_gehaertet_ohne_leserechte_passiv_gelesen(self):
+        zeile = [l for l in self.ausgabe.splitlines() if l.startswith(self.hart + ": ") and "Bericht:" in l]
+        self.assertEqual(len(zeile), 1, self.ausgabe)
+        self.assertNotIn("UNVOLLSTÄNDIG", zeile[0])
+        self.assertIn("docker export und docker cp (1 Volumes), da find/tar im Container ohne Leserechte",
+                      self.bericht(self.hart))
+        namen = [n for n in os.listdir(self.out) if n.startswith("scan_%s_" % self.hart) and n.endswith(".json")]
+        with open(os.path.join(self.out, namen[0]), encoding="utf-8") as f:
+            sbom = f.read()
+        self.assertIn("pkg:npm/lodash@4.17.20", sbom)       # im Image, nur für node lesbar
+        self.assertIn("pkg:npm/minimist@1.2.5", sbom)       # im Bind-Mount, für root im Container nicht lesbar
 
     def test_eol_warnungen(self):
         self.assertIn("%s: WARNUNG: Supportende: node 20." % self.node, self.ausgabe)

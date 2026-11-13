@@ -2,8 +2,8 @@
 
 - Image: traefik:v3.6 (sha256:31267173a15b)  
 - OS: Alpine Linux v3.24  
-- Zeitpunkt: 2026-11-13 11:40  
-- Scanner: container-security-scan 0.2.2  
+- Zeitpunkt: 2026-11-13 12:14  
+- Scanner: container-security-scan 0.3.0  
 - Datenbank: OSV, Stand 2026-11-13 03:23 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 0 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
@@ -171,10 +171,10 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 
 | Typ | Name | Version | Fundort | Genutzt von |
 |---|---|---|---|---|
-| host | linux-kernel | 6.12.8+ | Host | Host |
-| host | docker-engine | 29.1.3 | Host | Host |
-| host | containerd | 2.2.1 | Host | Host |
-| host | runc | 1.3.4-0ubuntu1~24.04.1 | Host | Host |
+| host | linux-kernel | 6.18.44-fc-v445 | Host | Host |
+| host | docker-engine | 29.9.2 | Host | Host |
+| host | containerd | v2.4.2 | Host | Host |
+| host | runc | 1.5.2 | Host | Host |
 | host | docker-init | 0.19.0 | Host | Host |
 
 ## Anhang
@@ -190,21 +190,25 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        efb458d18a86808f754ca5b1bafe89954d4b0a725eb5c1574d2237fac8cc4112
-Gestartet: 2026-11-13T11:39:10.041981021Z
+ID:        57ebdd1e05f5497e01108437008ef3675381e4a037c1468fef155d793a63fa96
+Gestartet: 2026-11-13T12:14:03.159234027Z
 Kommando:  ["/entrypoint.sh"] ["--providers.docker=true", "--providers.docker.exposedbydefault=false", "--entrypoints.web.address=:80"]
 Mounts:    /var/run/docker.sock->/var/run/docker.sock
-Host:      Kernel 6.12.8+
+Host:      Kernel 6.18.44-fc-v445
 ```
 
 ### Laufende Prozesse
 
 ```
 PID                 USER                COMMAND
-3302                root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
-7327                nobody              timeout 50 mariadbd --version
-7368                nobody              timeout 50 mysqld --version
-7409                nobody              timeout 50 postgres --version
+28919               root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
+31843               nobody              timeout 50 nginx -v
+31874               nobody              timeout 50 httpd -v
+31904               nobody              timeout 50 apache2 -v
+31933               nobody              timeout 50 java -XX:-UsePerfData -version
+31963               nobody              timeout 50 mariadbd --version
+31992               nobody              timeout 50 mysqld --version
+32022               nobody              timeout 50 postgres --version
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

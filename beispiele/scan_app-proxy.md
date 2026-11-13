@@ -2,8 +2,8 @@
 
 - Image: nginx:1.31-alpine (sha256:713fc2ebfd92)  
 - OS: Alpine Linux v3.24  
-- Zeitpunkt: 2026-11-13 11:39  
-- Scanner: container-security-scan 0.2.2  
+- Zeitpunkt: 2026-11-13 12:14  
+- Scanner: container-security-scan 0.3.0  
 - Datenbank: OSV, Stand 2026-11-13 03:23 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
@@ -49,10 +49,10 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 
 | Typ | Name | Version | Fundort | Genutzt von |
 |---|---|---|---|---|
-| host | linux-kernel | 6.12.8+ | Host | Host |
-| host | docker-engine | 29.1.3 | Host | Host |
-| host | containerd | 2.2.1 | Host | Host |
-| host | runc | 1.3.4-0ubuntu1~24.04.1 | Host | Host |
+| host | linux-kernel | 6.18.44-fc-v445 | Host | Host |
+| host | docker-engine | 29.9.2 | Host | Host |
+| host | containerd | v2.4.2 | Host | Host |
+| host | runc | 1.5.2 | Host | Host |
 | host | docker-init | 0.19.0 | Host | Host |
 
 ## Anhang
@@ -68,32 +68,37 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        1226883f32da0fb54ffe7f74e794fdefc7c01c2ba90d24777287b93b10e3d07f
-Gestartet: 2026-11-13T11:39:10.802902704Z
+ID:        3e3810ffa71a9d172ad5db6810574e7014cc36df69633757afe254a79bf9d8f4
+Gestartet: 2026-11-13T12:14:03.284540725Z
 Kommando:  ["/docker-entrypoint.sh"] ["nginx", "-g", "daemon off;"]
-Mounts:    /workspaces/container-security-scan/dla-marbach/container-security-scan/beispiele/umgebung/nginx.conf->/etc/nginx/conf.d/default.conf
-Host:      Kernel 6.12.8+
+Mounts:    /home/user/container-security-scan/beispiele/umgebung/nginx.conf->/etc/nginx/conf.d/default.conf
+Host:      Kernel 6.18.44-fc-v445
 ```
 
 ### Laufende Prozesse
 
 ```
 PID                 USER                COMMAND
-3504                root                nginx: master process nginx -g daemon off;
-3580                101                 nginx: worker process
-3581                101                 nginx: worker process
-4376                nobody              timeout 50 httpd -v
-4415                nobody              timeout 50 apache2 -v
-4456                nobody              timeout 50 java -XX:-UsePerfData -version
-4498                nobody              timeout 50 mariadbd --version
-4538                nobody              timeout 50 mysqld --version
-4578                nobody              timeout 50 postgres --version
+29007               root                nginx: master process nginx -g daemon off;
+29074               redis               nginx: worker process
+29075               redis               nginx: worker process
+29076               redis               nginx: worker process
+29077               redis               nginx: worker process
+29708               nobody              timeout 50 nginx -v
+29738               nobody              timeout 50 httpd -v
+29767               nobody              timeout 50 apache2 -v
+29798               nobody              timeout 50 java -XX:-UsePerfData -version
+29828               nobody              timeout 50 mariadbd --version
+29859               nobody              timeout 50 mysqld --version
+29890               nobody              timeout 50 postgres --version
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher
 
 - PID 20 (/usr/sbin/nginx): /[aio] (deleted)
 - PID 21 (/usr/sbin/nginx): /[aio] (deleted)
+- PID 22 (/usr/sbin/nginx): /[aio] (deleted)
+- PID 23 (/usr/sbin/nginx): /[aio] (deleted)
 
 ACHTUNG: Diese Prozesse nutzen noch alte Dateiversionen – Dienst neu starten.
 

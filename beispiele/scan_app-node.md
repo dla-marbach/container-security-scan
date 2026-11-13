@@ -2,8 +2,8 @@
 
 - Image: node:22.22.0-alpine (sha256:e4bf2a82ad0a)  
 - OS: Alpine Linux v3.23  
-- Zeitpunkt: 2026-11-13 11:40  
-- Scanner: container-security-scan 0.2.2  
+- Zeitpunkt: 2026-11-13 12:14  
+- Scanner: container-security-scan 0.3.0  
 - Datenbank: OSV, Stand 2026-11-13 03:23 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
@@ -187,10 +187,10 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 
 | Typ | Name | Version | Fundort | Genutzt von |
 |---|---|---|---|---|
-| host | linux-kernel | 6.12.8+ | Host | Host |
-| host | docker-engine | 29.1.3 | Host | Host |
-| host | containerd | 2.2.1 | Host | Host |
-| host | runc | 1.3.4-0ubuntu1~24.04.1 | Host | Host |
+| host | linux-kernel | 6.18.44-fc-v445 | Host | Host |
+| host | docker-engine | 29.9.2 | Host | Host |
+| host | containerd | v2.4.2 | Host | Host |
+| host | runc | 1.5.2 | Host | Host |
 | host | docker-init | 0.19.0 | Host | Host |
 
 ## Anhang
@@ -208,18 +208,18 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        26a90a97afc5e812e50a7cd2c8d983fd0888d38285c4b6ce9bbeec86395645b2
-Gestartet: 2026-11-13T11:39:10.046213217Z
+ID:        a5f9b9e25fdbe2d78877429f7c082d80ac99b85ae759c4b78afe6c4789bf32ee
+Gestartet: 2026-11-13T12:14:03.02930583Z
 Kommando:  ["docker-entrypoint.sh"] ["node", "server.js"]
-Mounts:    /workspaces/container-security-scan/dla-marbach/container-security-scan/beispiele/umgebung/node->/app
-Host:      Kernel 6.12.8+
+Mounts:    /home/user/container-security-scan/beispiele/umgebung/node->/app
+Host:      Kernel 6.18.44-fc-v445
 ```
 
 ### Laufende Prozesse
 
 ```
 PID                 USER                COMMAND
-3318                root                node server.js
+28849               root                node server.js
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

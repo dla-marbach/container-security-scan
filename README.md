@@ -475,6 +475,8 @@ Lücke aktiv ausgenutzt.
   Scan als root startet. Nur `node`, `php`, `python3` … ohne Pfad werden über den `PATH` des Images
   gesucht, dann aber als `nobody` abgefragt.
 - Ohne Shell oder Werkzeuge im Container wird passiv gelesen (`docker export`, `docker cp`, `/proc` des Hosts).
+  Ebenso, wenn `find`/`tar` nur an fehlenden Rechten scheitern: Bei `cap_drop: ALL` darf auch root im Container
+  nicht in Verzeichnisse anderer Benutzer (z. B. `/home/node`). Der Bericht nennt dann unter „Erfassung“ den Grund.
 - Der tar-Strom aus dem Container wird im Speicher gelesen; nichts wird auf dem Host entpackt.
 - Getestet: `docker diff` zeigt vor und nach dem Scan keine Änderung im Container.
 - Es werden nur Daten **heruntergeladen** (GitHub bzw. OSV, endoflife.date und CISA); Paketlisten verlassen den Server nicht.
