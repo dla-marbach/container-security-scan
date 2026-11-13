@@ -1,5 +1,5 @@
 {
- "geprueft": "2026-11-12T03:27:03Z",
+ "geprueft": "2026-11-13T03:28:43Z",
  "products": [
   {
    "cycles": [
@@ -5111,7 +5111,7 @@
    "cycles": [
     {
      "cycle": "2.3",
-     "eol": false
+     "eol": "2027-12-31"
     },
     {
      "cycle": "2.2",
