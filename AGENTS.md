@@ -4,8 +4,9 @@ Hinweise für Coding-Agenten. Für Nutzer gilt das [README](README.md), für die
 
 ## Projekt
 
-Schwachstellen-Scan für laufende Docker-Container. Der Scanner läuft auf Servern **als root**; jede Änderung
-ist sicherheitsrelevant.
+Schwachstellen-Scan für laufende Docker-Container und den Host selbst (`--host`: Dienste direkt auf dem Server,
+z. B. nginx/Apache unter SLES 15). Der Scanner läuft auf Servern **als root**; jede Änderung ist
+sicherheitsrelevant.
 
 ```
 container-security-scan.py   der gesamte Scanner (eine Datei), enthält VERSION
@@ -36,7 +37,7 @@ Den Branch `daten` nie von Hand ändern.
 
 ```bash
 python3 -m unittest discover -s tests                                        # schnell, ohne Docker; vor jedem Commit
-CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit Docker und daten/
+CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit Docker und daten/ (auch SLES-Host)
 sudo bash beispiele/erzeugen.sh                                              # Beispiele neu (Docker, daten/)
 ```
 

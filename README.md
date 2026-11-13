@@ -1,6 +1,7 @@
 # container-security-scan
 
-Schwachstellen-Scan für **laufende Docker-Container** – mit Fokus auf das, was tatsächlich läuft und
+Schwachstellen-Scan für **laufende Docker-Container** und die **Dienste direkt auf dem Server** (z. B.
+nginx, Apache und php-fpm aus den Paketen von SLES 15) – mit Fokus auf das, was tatsächlich läuft und
 von außen erreichbar ist. Ein einzelnes Python-Skript, nur Standardbibliothek, ab Python 3.6 (SLES 15),
 rein lesend. Die Schwachstellendaten (gekürzter Auszug aus [OSV](https://osv.dev), dazu Supportende und
 aktiv ausgenutzte Lücken) liegen im Branch [`daten`](https://github.com/dla-marbach/container-security-scan/tree/daten) und werden täglich per GitHub
@@ -10,7 +11,7 @@ Nach der [Einrichtung](#installation-und-betrieb) (einmalig, wenige Minuten):
 
 ```bash
 sudo /usr/local/sbin/container-security-scan-lauf
-# 0 = ok, 1 = relevante Schwachstellen oder gefährliche Einstellungen, 2 = Fehler/unvollständig
+# 0 = ok, 1 = relevante Schwachstellen oder Einstellungen, 2 = Fehler/unvollständig
 # Berichte unter /var/log/container-security-scan/
 ```
 
@@ -26,6 +27,8 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 - **Eingebettete JavaScript-Bibliotheken** (z. B. jQuery 1.x unter `Resources/Public/…`) erkennt Trivy nicht.
 - Von Tausenden Funden zählen die, die ein **öffentlich erreichbarer Dienst** tatsächlich lädt – auch
   hinter einem Reverse Proxy (nginx → php-fpm oder Node im Nachbarcontainer).
+- Auf dem Server selbst zählt, was die Firewall durchlässt und welche **Webadresse** bei welchem Dienst
+  ankommt, auch über mehrere Proxys hintereinander (nginx → Apache → php-fpm).
 
 ## Installation und Betrieb
 
@@ -44,8 +47,9 @@ die Daten und scannt dann als root – von Hand, per cron oder per Rundeck.
 
 ### 1. Einrichten
 
-Voraussetzungen: Linux mit Docker, Python ≥ 3.6 (SLES 15: `python3`), `git`, `curl`; optional `rpm` (nur für
-RPM-Container ohne eigenes `rpm`).
+Voraussetzungen: Linux (z. B. SLES 15), Python ≥ 3.6 (SLES 15: `python3`), `git`, `curl`; für Container Docker
+(ohne Docker prüft der Wrapper nur den Host); für den [Host](#scan-des-hosts) `rpm` bzw. `dpkg`, `ip` (iproute2),
+optional firewalld.
 
 Das Installscript [`installation/installieren.sh`](installation/installieren.sh) (zum Einrichten und
 Aktualisieren) aus dem [aktuellen Release](https://github.com/dla-marbach/container-security-scan/releases/latest)
@@ -84,8 +88,9 @@ auskommentierte [Beispiele](installation/ausnahmen.txt). Sie muss root gehören 
 sudo /usr/local/sbin/container-security-scan-lauf
 ```
 
-Geprüft werden alle laufenden Container, zuerst die [erreichbaren](#erreichbarkeit) samt den Backends
-hinter ihren Reverse Proxys. Nur ein Container (dann ohne Erreichbarkeit über Proxys in anderen Containern):
+Geprüft werden zuerst der [Host selbst](#scan-des-hosts), dann alle laufenden Container, zuerst die
+[erreichbaren](#erreichbarkeit) samt den Backends hinter ihren Reverse Proxys (auch denen auf dem Host). Ohne
+Docker nur der Host. Nur ein Container (dann ohne Host und ohne Erreichbarkeit über Proxys in anderen Containern):
 
 ```bash
 sudo /usr/local/sbin/container-security-scan-lauf <container>
@@ -128,13 +133,14 @@ chmod 440 /etc/sudoers.d/rundeck-container-scan && visudo -c
 ### 4. Auf das Ergebnis reagieren
 
 - **0** – nichts zu tun.
-- **1** – Funde im Bericht prüfen (neue sind markiert), Images aktualisieren bzw.
-  [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) beseitigen; Fehlalarme und
-  akzeptierte Risiken in die [Ausnahmeliste](#ausnahmen).
+- **1** – Funde im Bericht prüfen (neue sind markiert), Images bzw. Pakete des Hosts aktualisieren (SLES:
+  `zypper patch`), [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) und
+  [Einstellungen der Webserver](#einstellungen-der-webserver) beseitigen; Fehlalarme und akzeptierte Risiken
+  in die [Ausnahmeliste](#ausnahmen).
 - **2** – Ursache beheben (siehe [Rückgabewert](#rückgabewert)).
 
-Warnungen (Supportende, öffentlicher Dienst als root …) ändern den Rückgabewert nicht. Der Host selbst ist
-nicht Teil des Scans.
+Warnungen (Supportende, öffentlicher Dienst als root, Neustart für einen neuen Kernel nötig …) ändern den
+Rückgabewert nicht.
 
 ### 5. Code aktualisieren
 
@@ -151,8 +157,8 @@ nicht Teil des Scans.
 | Wert | Bedeutung |
 |---|---|
 | `0` | keine relevanten Schwachstellen |
-| `1` | relevante Schwachstellen oder [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) gefunden |
-| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar (z. B. unlesbare Verzeichnisse; während der Prüfung gelöschte oder geänderte Dateien zählen nicht), nginx- bzw. Apache-Konfiguration nicht lesbar (im Container oder eines Proxys auf dem Host), Distribution ohne aktuelle Sicherheitsdaten (EOL), Ausnahmeliste fehlerhaft. |
+| `1` | relevante Schwachstellen, [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) oder erreichbare [Einstellungen der Webserver](#einstellungen-der-webserver) gefunden |
+| `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar (z. B. unlesbare Verzeichnisse; während der Prüfung gelöschte oder geänderte Dateien zählen nicht), nginx- bzw. Apache-Konfiguration nicht lesbar (im Container oder eines Proxys auf dem Host), Distribution ohne aktuelle Sicherheitsdaten (EOL), Ausnahmeliste fehlerhaft; beim Host: nicht als root, Prozesse oder Dateien des Hosts nicht vollständig lesbar, mit Containern: Docker eingerichtet, aber nicht erreichbar. |
 
 **Relevant** ist P1 CRITICAL/HIGH und P2 CRITICAL (anpassbar über `RELEVANT` am Anfang des Skripts), dazu
 **jede aktiv ausgenutzte Lücke** aus dem [KEV-Katalog der CISA](https://www.cisa.gov/known-exploited-vulnerabilities-catalog),
@@ -167,15 +173,17 @@ Ausnahmeliste und Funde, die laut Titel nur Windows betreffen (siehe [Bewertung]
 | | Bedeutung |
 |---|---|
 | **P1** | genutzt von einem erreichbaren Dienst (Intranet oder Internet, siehe [Erreichbarkeit](#erreichbarkeit)) |
-| **P2** | genutzt von einem Dienst mit internem Port |
+| **P2** | genutzt von einem Dienst mit internem Port; auf dem Host auch der laufende Kernel |
 | **P3** | genutzt nur von einem Prozess ohne offenen Port |
 | **P4** | installiert, aber nicht in Benutzung erkannt; oder Entwicklungsabhängigkeit (dev) |
 
 „Genutzt von“ wird über `/proc` ermittelt: Programm und geladene Bibliotheken, geöffnete Dateien (JARs),
 offene TCP/UDP-Ports; für npm/Composer/PyPI über das Projektverzeichnis (Arbeitsverzeichnis, Skriptpfad,
 venv, Docroot aus der nginx-/Apache-Konfiguration). Welche Pakete eine Anwendung tatsächlich importiert,
-ist von außen nicht sichtbar. Lässt sich ein veröffentlichter Port keinem Prozess zuordnen, werden
-vorsichtshalber alle Komponenten des Containers als öffentlich genutzt gewertet (mit Warnung).
+ist von außen nicht sichtbar. Mehrere Webserver hintereinander im selben Container bzw. auf dem Host
+(nginx → Apache → php-fpm über `127.0.0.1`) zählen wie einer: Was php-fpm nutzt, ist über nginx erreichbar (P1).
+Lässt sich ein veröffentlichter Port keinem Prozess zuordnen, werden vorsichtshalber alle Komponenten des
+Containers als öffentlich genutzt gewertet (mit Warnung).
 
 ### Erreichbarkeit
 
@@ -206,6 +214,19 @@ Loopback)`. Sonst gilt er als erreichbar, wenn eine der folgenden Bedingungen zu
 Die Prozesse auf dem Host liest das Skript nur als root vollständig; sonst warnt es (`Host: WARNUNG: Prozesse
 auf dem Host nicht vollständig lesbar`), da ein Proxy auf dem Host unerkannt bleiben könnte. Ist die
 Konfiguration eines Proxys auf dem Host nicht lesbar, ist die Prüfung unvollständig (Rückgabewert 2).
+
+#### Erreichbarkeit auf dem Host
+
+Beim [Scan des Hosts](#scan-des-hosts) ist ein Port erreichbar, wenn er nicht nur auf Loopback lauscht, an einer
+Schnittstelle außer Loopback und Container-Netzen (`docker0`, `br-…`, `veth…`, `cni…` u. a.) liegt und
+**firewalld** ihn dort durchlässt. Ausgewertet wird die Runtime-Konfiguration: Zone der Schnittstelle bzw.
+Standardzone, Zonen mit Quellen, Policies zum Host; Dienste (auch `includes`), Ports und Portbereiche,
+Protokolle, Quellports, Forward-Ports, Rich Rules mit `accept`, Target `ACCEPT`. Eine Freigabe nur für
+bestimmte Quellen (Rich Rule mit `source`, Zone mit Quellen) zählt als erreichbar. Im Zweifel erreichbar:
+ohne firewalld (nftables/iptables direkt werden nicht ausgewertet, mit Hinweis), firewalld nicht abfragbar,
+Adresse keiner Schnittstelle zuordenbar. Ports von `docker-proxy` gelten immer als erreichbar: Docker leitet
+an firewalld vorbei weiter. Ob ein Port aus dem Internet oder nur aus dem Intranet erreichbar ist, entscheidet
+die Firewall vor dem Server; das ist auch hier nicht erkennbar.
 
 ### Bewertung der Funde
 
@@ -270,6 +291,31 @@ Nicht geprüft werden allgemeine Härtung (no-new-privileges, `cap_drop: ALL`, r
 an bestimmte IPs) und der Docker-Daemon. Geprüft werden die gescannten (laufenden) Container, mit
 `--alle-container` (so im Wrapper) also alle, mit `--oeffentliche` nur die erreichbaren und deren Ziele.
 
+### Webadressen
+
+Aus der Konfiguration von nginx (`listen`, `server_name`, `ssl`) und Apache (vHosts aus `httpd -S` samt
+`ServerAlias`, `SSLEngine`, `Listen` des Hauptservers) bildet das Skript je Website die Webadressen, z. B.
+`https://www.example.org/`; ohne Namen den Namen des Hosts bzw. im Container `*`, im Container mit dem
+veröffentlichten Port. Leitet ein Webserver einen Pfad an einen anderen Dienst im selben Container bzw. auf dem
+Host weiter (`location /app/ { proxy_pass http://127.0.0.1:8080/; }`, `ProxyPass`, `SetHandler proxy:fcgi://…`),
+erscheint die Adresse mit Pfad auch beim Ziel, über mehrere Stufen: `https://www.example.org/app/ (\.php$)` bei
+php-fpm hinter Apache hinter nginx. Je Adresse steht im Bericht, ob sie erreichbar ist (wie der Port, über den
+die Anfrage hereinkommt), auf der Konsole je Dienst eine Zeile `Webadressen …`, bei jedem Fund die Adressen
+der Dienste, die die Komponente nutzen (Bibliotheken im Docroot: nur die Websites mit diesem Docroot). Die
+Adressen stammen aus der Konfiguration, nicht aus dem DNS.
+
+### Einstellungen der Webserver
+
+Einstellungen von nginx und Apache, die Informationen preisgeben. Sie sind **relevant** (Rückgabewert 1), wenn
+der Webserver erreichbar ist, auch über einen Proxy davor; sonst stehen sie unter „Nicht gezählt“. Paket für die
+[Ausnahmeliste](#ausnahmen): der erste Name der Website, sonst das Programm.
+
+| Kennung | Befund |
+|---|---|
+| `WEB-STATUS` | Statusseite ohne Zugriffsbeschränkung: nginx `stub_status` ohne `deny all`, `auth_basic`, `internal`; Apache `SetHandler server-status`/`server-info` ohne `Require` (Modul geladen). Auch „nur localhost“ (`Require local`, SLES-Standard), wenn ein Proxy auf derselben Maschine die Anfragen weiterleitet: Sie kommen dann von `127.0.0.1` |
+| `WEB-AUTOINDEX` | Verzeichnisliste: nginx `autoindex on`, Apache `Options Indexes` (nicht für Verzeichnisse der Pakete unter `/usr/share/apache2` und auf dem Host nicht für Verzeichnisse, die es nicht gibt, z. B. `/home/*/public_html`) |
+| `WEB-TLS-ALT` | nur auf dem Host: ein erreichbarer TLS-Port nimmt TLS 1.0 oder 1.1 an. Geprüft per Verbindungsaufbau zum eigenen Dienst (als `nobody`, ohne OpenSSL-Konfiguration des Systems auf Seite des Clients), denn ob die alten Versionen tatsächlich gehen, entscheiden Konfiguration, OpenSSL und systemweite Vorgaben (crypto-policies) zusammen: SLES 15 SP7 lehnt TLS 1.0 auch bei `ssl_protocols TLSv1` ab |
+
 ### Ausnahmen
 
 Für Fehlalarme und bewusst akzeptierte Risiken, die die automatische Bewertung nicht erkennt, z. B.
@@ -283,8 +329,8 @@ CVE-2024-8926     php           2027-06-30  betrifft nur PHP-CGI unter Windows (
 CVE-2026-107814   mariadb       2027-03-31  betrifft nur die RPM-Pakete von MariaDB, hier Ubuntu-Image
 ```
 
-- Kennung wie im Bericht (CVE, Kennung der Quelle oder `CONF-…`), Paket wie in der Spalte „Paket“ (bei
-  `CONF-…` der Containername) oder `*` für alle.
+- Kennung wie im Bericht (CVE, Kennung der Quelle, `CONF-…` oder `WEB-…`), Paket wie in der Spalte „Paket“
+  (bei `CONF-…` der Containername, bei `WEB-…` der erste Name der Website) oder `*` für alle.
 - Jede Ausnahme braucht ein Ablaufdatum und eine Begründung: Danach zählt der Fund wieder, mit Warnung im
   Bericht. So bleibt keine Ausnahme unbemerkt für immer.
 - Ausgenommene Funde stehen im Bericht unter „Nicht gezählt“ und in der Tabelle mit Begründung.
@@ -298,7 +344,8 @@ Datenstand, ohne ihn zu aktualisieren):
 ```bash
 C=/opt/container-security-scan/container-security-scan.py
 DB=/var/lib/container-security-scan/daten
-sudo python3 -I $C --db $DB --alle-container <ausgabeverzeichnis>    # wie der Wrapper, ohne Datenaktualisierung
+sudo python3 -I $C --db $DB --host --alle-container <ausgabeverzeichnis>  # wie der Wrapper, ohne Datenaktualisierung
+sudo python3 -I $C --db $DB --host <ausgabeverzeichnis>              # nur der Host
 sudo python3 -I $C --db $DB <container> <ausgabeverzeichnis>         # einzelner Container, ohne Datenaktualisierung
 sudo python3 -I $C --db $DB --alle <container> <ausgabeverzeichnis>  # alle Befunde in die Tabelle
 ```
@@ -307,6 +354,7 @@ sudo python3 -I $C --db $DB --alle <container> <ausgabeverzeichnis>  # alle Befu
 |---|---|
 | `--alle-container` | alle laufenden Container: zuerst die erreichbaren und die Backends hinter ihren Proxys (zählen als öffentlich, siehe [Erreichbarkeit](#erreichbarkeit)), dann alle übrigen – **empfohlen**, so im Wrapper. Ein Container, der zwischen Auflistung und Scan entfernt wurde (z. B. `docker run --rm`), wird übersprungen |
 | `--oeffentliche` | wie `--alle-container`, aber ohne die übrigen Container |
+| `--host` | den [Host selbst](#scan-des-hosts) prüfen, vor den Containern; mit `--alle-container`/`--oeffentliche` danach die Container (Ziele der Proxys auf dem Host zuerst), ohne Docker nur den Host – so im Wrapper. Nur als root vollständig |
 | `--nur-behebbare` | für den Rückgabewert nur Funde zählen, für die es einen Fix gibt – **empfohlen** für die Alarmierung, sonst melden Container mit offenen, noch unbehobenen CVEs dauerhaft `1` |
 | `--alle` | alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV) |
 | `--ausnahmen DATEI` | Ausnahmeliste: passende Funde zählen nicht als relevant, jede Ausnahme mit Begründung und Ablaufdatum (siehe [Ausnahmen](#ausnahmen)) |
@@ -316,10 +364,10 @@ sudo python3 -I $C --db $DB --alle <container> <ausgabeverzeichnis>  # alle Befu
 
 ## Ausgabe
 
-Auf der Konsole (beim Wrapper auch im Log, in der Mail und im Rundeck-Log) zuerst Reverse Proxys direkt auf
-dem Host mit ihren Zielen (`Host: nginx:443 auf dem Host – erreichbar; Ziele in Containern: app (3000)`), dann
-je Container Warnungen, eine Zusammenfassung mit dem Pfad des Berichts und darunter alle relevanten Funde,
-neue zuerst:
+Auf der Konsole (beim Wrapper auch im Log, in der Mail und im Rundeck-Log) zuerst der Host, dann je
+Container: Warnungen, eine Zusammenfassung mit dem Pfad des Berichts, die Webadressen je Dienst und alle
+relevanten Funde und Einstellungen, neue zuerst (ohne `--host` zum Host nur die Reverse Proxys dort mit ihren
+Zielen: `Host: nginx:443 auf dem Host – erreichbar; Ziele in Containern: app (3000)`):
 
 ```
 app-php: RELEVANTE SCHWACHSTELLEN – 1295 Befunde, davon 65 relevant (2 neu, 4 aktiv ausgenutzt); öffentlich: php-fpm:9000 – Bericht: …
@@ -338,18 +386,26 @@ Je Container im Ausgabeverzeichnis:
 - `scan_<name>_<zeit>.sha256` – Prüfsummen
 - `bekannt_<name>.json` – relevante Funde des letzten Laufs (für die Markierung „neu“)
 
+Für den Host ebenso `host_<rechner>_<zeit>.md`, `.cdx.json`, `.sha256` und `bekannt-host.json`; im Bericht
+zusätzlich Firewall, durchsuchte Verzeichnisse und die Prozesse außerhalb von Containern.
+
 Beispiele: [`beispiele/`](beispiele/) – ein Lauf `--alle-container --nur-behebbare` über die Testumgebung
 [`beispiele/umgebung/compose.yml`](beispiele/umgebung/compose.yml) ([Konsolenausgabe](beispiele/ausgabe.txt)):
 nginx als öffentlicher Reverse Proxy vor Node.js 22.22.0 (Node2Shell) und PHP 8.3.30 als PHP-FPM
 (PHP2Shell) mit Anwendung, `vendor/` und eingebettetem jQuery 1.12.4 im Volume; Traefik mit Docker-Socket
 (gefährliche Einstellung) und Ziel per Label. Berichte für alle vier Container, das SBOM als Beispiel des
 Formats nur für Node.js ([`scan_app-node.cdx.json`](beispiele/scan_app-node.cdx.json)), ohne `.sha256`.
+Dazu ein SLES-15-Server ohne Docker ([`beispiele/umgebung/host/`](beispiele/umgebung/host/), als Container mit
+firewalld), Lauf `--host --alle-container --nur-behebbare` ([Bericht](beispiele/host_web01.md),
+[Konsolenausgabe](beispiele/ausgabe-host.txt)): nginx (öffentlich) vor Apache (nur Loopback) vor php-fpm mit
+Composer-Paketen und jQuery, Statusseiten, Verzeichnisliste, eine Partner-Schnittstelle mit TLS 1.0 und ein
+Python-Webserver, den firewalld sperrt.
 
 ## Was erfasst wird
 
 | Bereich | Quelle im Container | Abgleich |
 |---|---|---|
-| OS-Pakete | dpkg (`status`, `status.d`), apk, rpm – inkl. Quellpaket | Debian, Ubuntu, Alpine (optional SUSE, openSUSE) |
+| OS-Pakete | dpkg (`status`, `status.d`), apk, rpm – inkl. Quellpaket | Debian, Ubuntu, Alpine, SUSE (SLES 15 und 16; optional openSUSE) |
 | npm | jede `package.json` mit Name und Version | npm |
 | Composer | `vendor/composer/installed.json` | Packagist |
 | PyPI | `*.dist-info/METADATA`, `*.egg-info` (alle site-packages, auch venvs) | PyPI |
@@ -362,10 +418,34 @@ Formats nur für Node.js ([`scan_app-node.cdx.json`](beispiele/scan_app-node.cdx
 Dateien, die zu einem OS-Paket gehören (z. B. `gosu` aus dem Ubuntu-Paket), werden wie bei Trivy nur
 über das OS-Paket geprüft.
 
+### Scan des Hosts
+
+Mit `--host` (so im Wrapper) ist der Server selbst ein weiteres Ziel, mit denselben Prioritäten:
+
+- **Prozesse** außerhalb von Containern (Wurzelverzeichnis des Hosts, nicht in der cgroup eines Containers),
+  direkt aus `/proc` gelesen; Ports mit allen Adressen, an die sie gebunden sind.
+- **OS-Pakete** per `rpm -qa` bzw. aus `/var/lib/dpkg`, Zuordnung zu Programmen und Bibliotheken über
+  `rpm -qa` mit Dateiliste. Der **Kernel** wird geprüft (im Container nicht): das Paket des laufenden Kernels
+  als genutzt (P2), andere installierte Kernel als P4; Warnung, wenn ein neuerer installiert ist (Neustart
+  nötig) oder Live-Patches installiert sind (Kernel-Funde können schon behoben sein).
+- **Anwendungen** (npm, Composer, PyPI, JARs, Go, JavaScript) wie im Container per `find`/`tar` (`-xdev`): `/`,
+  `/srv`, `/opt`, `/var/www`, `/usr/local`, Docroots der Webserver und das Verzeichnis darüber sowie die
+  Arbeitsverzeichnisse der Dienste, jeweils als eigenes Dateisystem (unter SLES mit btrfs sind `/srv`, `/opt`
+  u. a. eigene Subvolumes). Nie: `/var/lib/docker` und andere Daten von Containern, `/.snapshots`, `/proc`,
+  `/sys`, `/dev`, `/run`, `/tmp`, `/var/log`, `/var/cache`; Go-Programme nicht in den Verzeichnissen der
+  Distribution.
+- **Webserver:** nginx und Apache wie im Container, unter SLES `httpd-prefork`/`-worker`/`-event` mit den
+  Optionen des Hauptprozesses (`start_apache2`: `-DSYSCONFIG -C "Include …/loadmodule.conf" -f …`);
+  [Erreichbarkeit](#erreichbarkeit-auf-dem-host), [Webadressen](#webadressen),
+  [Einstellungen](#einstellungen-der-webserver) samt TLS-Prüfung.
+- **Warnungen:** öffentlicher Dienst als root (nicht `sshd`, `systemd`), Datenbank/Cache/Message Broker ohne
+  Beschränkung der Quelle erreichbar, Proxy-Ziele, die keinem Dienst und keinem Container zuordenbar sind
+  (anderer Server: dort gesondert scannen).
+
 ## Daten
 
-Der Branch [`daten`](https://github.com/dla-marbach/container-security-scan/tree/daten) enthält einen gekürzten Auszug aus den OSV-Exporten für Debian, Ubuntu, Alpine, npm, PyPI,
-Packagist, Maven, Go und Bitnami (ca. 360 MB, in Git komprimiert ca. 25 MB). Gekürzt heißt: nur die für den
+Der Branch [`daten`](https://github.com/dla-marbach/container-security-scan/tree/daten) enthält einen gekürzten Auszug aus den OSV-Exporten für Debian, Ubuntu, Alpine, SUSE, npm, PyPI,
+Packagist, Maven, Go und Bitnami (ca. 380 MB). Gekürzt heißt: nur die für den
 Abgleich nötigen Felder und Einträge; die Ergebnisse sind mit den vollständigen Exporten identisch
 (geprüft). Die GitHub Action [`.github/workflows/daten.yml`](.github/workflows/daten.yml) erzeugt die
 Daten täglich neu; die Ausgabe ist deterministisch, Commits enthalten nur echte Änderungen. Dazu kommen `eol-daten.json`
@@ -380,7 +460,15 @@ Einträge). Geprüft (11/2026): Solr und MariaDB (Ubuntu 22.04/24.04) mit identi
 ca. 5 statt 30 s; dazu je ca. 4000 Paketversionen für Ubuntu 14.04, 16.04 und 18.04 mit über 550 000
 identischen Funden.
 
-Ökosysteme, die nicht im Repository liegen (SUSE, openSUSE), lädt `--db-aktualisieren --oekosysteme …`
+SUSE: nur Einträge für SLES 15 und 16 (ca. 18 MB statt 300 MB). SUSE führt Lücken je Quellpaket; ein Eintrag
+nennt die Binärpakete des ganzen Updates, auch anderer Quellpakete (`libacl1` unter `attr`). Abgeglichen wird
+daher über das Quellpaket, und das Binärpaket muss für das Service Pack im Eintrag stehen: SLES 15 SP7 enthält
+z. B. `tiff` in zwei Versionszweigen (4.0.9 für `libtiff5`, 4.7 für `libtiff6`). Der Auszug behält die
+Binärpakete je Service Pack statt je Produkt. SUSE-Einträge haben keinen Schweregrad; er kommt über die CVE aus
+anderen Quellen (siehe [Bewertung](#bewertung-der-funde)), ohne CVE bleibt er `UNKNOWN`. Geprüft (11/2026):
+SLES 15 SP6 und SP7 mit identischen Funden aus Auszug und Gesamtexport.
+
+Ökosysteme, die nicht im Repository liegen (openSUSE), lädt `--db-aktualisieren --oekosysteme …`
 direkt von OSV nach `osv-db/`. Für Ökosysteme, die es im Branch `daten` schon gibt, ist das wirkungslos:
 Je Ökosystem gilt das erste Verzeichnis, das es enthält, und `daten/` (bzw. das erste `--db`) kommt vor
 `osv-db/`.
@@ -408,8 +496,8 @@ git -C css show $V:installation/installieren.sh > installieren.sh     # beides a
 sudo env REPO=$PWD/css.bundle DATEN= bash installieren.sh $V
 ```
 
-- **Erster Lauf:** die Gesamtexporte, zusammen ca. 1,2 GB (Stand 11/2026: Ubuntu 800 MB, npm 220 MB,
-  Debian 81 MB, PyPI 38 MB, die übrigen je ca. 10 MB; endoflife.date 3 MB, KEV-Katalog 2 MB).
+- **Erster Lauf:** die Gesamtexporte, zusammen ca. 1,25 GB (Stand 11/2026: Ubuntu 800 MB, npm 220 MB,
+  Debian 81 MB, SUSE 50 MB, PyPI 38 MB, die übrigen je ca. 10 MB; endoflife.date 3 MB, KEV-Katalog 2 MB).
 - **Danach inkrementell:** Das Skript liest die Änderungsliste `modified_id.csv` bis zum letzten
   bekannten Stand und lädt nur die geänderten Einträge einzeln. Den Gesamtexport eines Ökosystems lädt
   es neu, wenn seit dem letzten Lauf mehr als 2000 Einträge geändert wurden oder sich mehr als 10 000
@@ -478,6 +566,11 @@ Lücke aktiv ausgenutzt.
   Ebenso, wenn `find`/`tar` nur an fehlenden Rechten scheitern: Bei `cap_drop: ALL` darf auch root im Container
   nicht in Verzeichnisse anderer Benutzer (z. B. `/home/node`). Der Bericht nennt dann unter „Erfassung“ den Grund.
 - Der tar-Strom aus dem Container wird im Speicher gelesen; nichts wird auf dem Host entpackt.
+- Auf dem Host (`--host`): `/proc` und Dateien liest das Skript als root selbst bzw. per `find`/`tar` (fester
+  Suchpfad, leere Umgebung); `rpm -qa` und die TLS-Prüfung laufen als `nobody`, Versionsabfragen und
+  `nginx -T`/`httpd -S` mit dem Benutzer des jeweiligen Prozesses; `firewall-cmd` und `ip` nur mit Abfragen
+  (Runtime-Konfiguration, nichts wird geändert). Die TLS-Prüfung ist ein Verbindungsaufbau zum eigenen
+  Dienst (je TLS-Port, im Log des Webservers ggf. als abgebrochener Handshake sichtbar).
 - Getestet: `docker diff` zeigt vor und nach dem Scan keine Änderung im Container.
 - Es werden nur Daten **heruntergeladen** (GitHub bzw. OSV, endoflife.date und CISA); Paketlisten verlassen den Server nicht.
 - Berichte und SBOM enthalten Kommandozeilen der Prozesse (oft mit Passwörtern) und Konfigurationsauszüge;
@@ -486,7 +579,12 @@ Lücke aktiv ausgenutzt.
 ## Grenzen
 
 - Nicht erfasst: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung, Bundles ohne Kopfkommentar,
-  Programme direkt auf dem Host, UDP-Dienste nur bei offenem Socket.
+  UDP-Dienste nur bei offenem Socket.
+- Host: firewalld nur zur Laufzeit (nicht die permanente Konfiguration), direkte Regeln (`--direct`), nftables
+  bzw. iptables ohne firewalld werden nicht ausgewertet (im Zweifel erreichbar). Anwendungen außerhalb der
+  durchsuchten Verzeichnisse (z. B. unter `/home` auf eigenem Dateisystem ohne laufenden Dienst dort) fehlen.
+  Kernel-Live-Patches werden nicht berücksichtigt. TLS 1.0/1.1 nur auf dem Host geprüft, nicht im Container;
+  `.htaccess` (Apache) wird nicht ausgewertet.
 - Erreichbarkeit: Konfigurationen werden nur von nginx und Apache ausgewertet; andere Proxys machen alle
   Container in ihren Docker-Netzen „möglicherweise“ erreichbar (eher zu viel), auf dem Host alle Container.
   Ziele einer Anwendung, die selbst weiterleitet (API-Gateway), werden nur über Ziel-URLs in Umgebung bzw.
@@ -505,6 +603,11 @@ Lücke aktiv ausgenutzt.
   (Rückgabewert 2), da Proxy-Backends fehlen könnten.
 
 ## Validierung
+
+Scan des Hosts: getestet mit Python 3.6 auf SLES 15 SP7 ([Testumgebung](beispiele/umgebung/host/) mit
+nginx, Apache, php-fpm und firewalld 2.0 aus den SLES-Paketen; Integrationstest in `test_docker.py`) und mit
+Python 3.13 auf Ubuntu 24.04 mit Docker. Der Abgleich mit den SUSE-Daten wurde für SLES 15 SP6 (349 Funde) und
+SP7 gegen den vollständigen Export geprüft.
 
 Getestet mit Python 3.6 und 3.13 (auch `LANG=C`) an Debian-, Ubuntu-, Alpine-, openSUSE- und
 distroless-Containern (PHP/Apache, PHP-FPM, Node, Python, nginx, Solr, MariaDB), dazu eine unabhängige
@@ -543,7 +646,7 @@ Zum Ausprobieren und Entwickeln, **nur auf einem eigenen Testrechner** – auf S
 ```bash
 git clone https://github.com/dla-marbach/container-security-scan.git && cd container-security-scan
 ./container-security-scan.py --db-aktualisieren        # Branch daten nach daten/ holen (nicht als root)
-sudo ./container-security-scan.py --alle-container berichte/ --nur-behebbare
+sudo ./container-security-scan.py --host --alle-container berichte/ --nur-behebbare
 ```
 
 ```bash
@@ -558,7 +661,10 @@ Runners, mit dem auch die Daten erzeugt werden) aus, den Docker-Test nur bei Pul
 
 [Beispiele](beispiele/) neu erzeugen – nötig, wenn sich `VERSION` oder das Format der Berichte ändert, im
 selben Pull Request (ein Unit-Test prüft die Version). Startet die Testumgebung
-[`beispiele/umgebung/compose.yml`](beispiele/umgebung/compose.yml) (Ports 8080 und 8081) und scannt sie:
+[`beispiele/umgebung/compose.yml`](beispiele/umgebung/compose.yml) (Ports 8080 und 8081) und scannt sie,
+danach den SLES-Server aus [`beispiele/umgebung/host/`](beispiele/umgebung/host/) (Image wird gebaut, braucht
+`daten/SUSE`; Optionen für `docker build`, z. B. hinter einem Proxy, in `CSS_DOCKER_BUILD_ARGS`, ebenso für den
+Docker-Test):
 
 ```bash
 sudo bash beispiele/erzeugen.sh

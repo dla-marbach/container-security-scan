@@ -1,5 +1,6 @@
 """Webserver-Konfiguration (nginx, Apache), veröffentlichte Ports, Backends in anderen Containern."""
 import io
+import json
 import os
 import shutil
 import tempfile
@@ -555,3 +556,317 @@ class Backends(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+SLES_ARGV = ["/usr/sbin/httpd-prefork", "-DSYSCONFIG", "-C", "PidFile /run/httpd.pid", "-C",
+             "Include /etc/apache2/sysconfig.d//loadmodule.conf", "-f", "/etc/apache2/httpd.conf", "-c",
+             "Include /etc/apache2/sysconfig.d//include.conf", "-DFOREGROUND", "-k", "start"]
+
+
+class ApacheSles(unittest.TestCase):
+    def test_programmnamen(self):
+        for name in ("apache2", "httpd", "httpd-prefork", "httpd2-worker", "httpd-event"):
+            self.assertTrue(scanner.ist_apache(name) and scanner.ist_webserver(name), name)
+        self.assertFalse(scanner.ist_apache("httpd-helper"))
+        self.assertTrue(scanner.ist_webserver("nginx"))
+        self.assertIn("httpd-prefork", scanner.HOST_PROXYS)
+
+    def test_optionen_des_hauptprozesses(self):
+        # ohne sie zeigen -S/-M eine andere Konfiguration (ohne die Module aus /etc/sysconfig/apache2)
+        self.assertEqual(scanner.apache_optionen(SLES_ARGV), SLES_ARGV[1:11])
+        self.assertEqual(scanner.apache_optionen(["apache2", "-k", "start"]), [])
+        c = mock.Mock(has_sh=False, info={"Config": {"Env": []}, "HostConfig": {}, "NetworkSettings": {}})
+        c.exec.return_value = (0, "")
+        c.read_file.return_value = ""
+        procs = {"1": proc(1, "/usr/sbin/httpd-prefork", SLES_ARGV),
+                 "2": proc(2, "/usr/sbin/httpd-prefork", SLES_ARGV, user="30:8", ppid=1)}
+        with mock.patch.object(scanner, "run", return_value=(0, "")):
+            scanner.collect_web(c, procs)
+        self.assertEqual([x[0][0] for x in c.exec.call_args_list],
+                         [["/usr/sbin/httpd-prefork"] + SLES_ARGV[1:11] + a
+                          for a in (["-S"], ["-M"], ["-t", "-D", "DUMP_INCLUDES"])])
+
+    def test_vhosts_aus_S(self):
+        out = """VirtualHost configuration:
+*:443                  www.example.org (/etc/apache2/vhosts.d/www-ssl.conf:2)
+*:80                   is a NameVirtualHost
+         default server www.example.org (/etc/apache2/vhosts.d/www.conf:1)
+         port 80 namevhost www.example.org (/etc/apache2/vhosts.d/www.conf:1)
+                 alias example.org
+                 wild alias *.example.org
+         port 80 namevhost intranet (/etc/apache2/vhosts.d/intra.conf:1)
+127.0.0.1:8080         app.example.org (/etc/apache2/vhosts.d/app.conf:3)
+ServerRoot: "/srv/www"
+"""
+        self.assertEqual(scanner.apache_vhosts(out), [
+            {"adresse": "*", "port": "443", "name": "www.example.org", "aliase": [],
+             "datei": "/etc/apache2/vhosts.d/www-ssl.conf", "zeile": 2},
+            {"adresse": "*", "port": "80", "name": "www.example.org", "aliase": ["example.org", "*.example.org"],
+             "datei": "/etc/apache2/vhosts.d/www.conf", "zeile": 1},
+            {"adresse": "*", "port": "80", "name": "intranet", "aliase": [], "datei": "/etc/apache2/vhosts.d/intra.conf",
+             "zeile": 1},
+            {"adresse": "127.0.0.1", "port": "8080", "name": "app.example.org", "aliase": [],
+             "datei": "/etc/apache2/vhosts.d/app.conf", "zeile": 3}])
+
+    def apache(self, dateien, s_out, m_out=" status_module (shared)\n autoindex_module (shared)\n", host=False):
+        c = scanner.Host() if host else mock.Mock(has_sh=False, info={"Config": {"Env": []}})
+        antworten = {"-S": (0, s_out), "-M": (0, m_out),
+                     "-t": (0, "Included configuration files:\n" + "".join("  (*) %s\n" % d for d in dateien))}
+        w = scanner.web_leer()
+        with mock.patch.object(c, "exec", side_effect=lambda cmd, **kw: antworten[next(x for x in cmd if x in antworten)]), \
+                mock.patch.object(c, "read_file", side_effect=lambda p: dateien[p]):
+            scanner.parse_apache(c, "/usr/sbin/httpd-prefork", w)
+        return w
+
+    def test_websites_status_und_verzeichnislisten(self):
+        dateien = {"/etc/apache2/httpd.conf": """Listen 80
+<IfDefine SSL>
+    Listen 443
+</IfDefine>
+ServerName web01.example.com
+<Directory "/usr/share/apache2/icons">
+    Options Indexes MultiViews
+</Directory>
+<Location /server-status>
+    SetHandler server-status
+</Location>
+<Location /server-status>
+    Require local
+</Location>
+""", "/etc/apache2/vhosts.d/www.conf": """
+<VirtualHost *:443>
+    ServerName https://www.example.org:443
+    ServerAlias example.org
+    SSLEngine on
+    DocumentRoot /srv/www/htdocs
+    <Directory /srv/www/htdocs/downloads>
+        Options +Indexes
+    </Directory>
+    ProxyPass /api/ http://127.0.0.1:3000/ \\
+        retry=0
+    <Location /info>
+        SetHandler server-info
+    </Location>
+</VirtualHost>
+"""}
+        s_out = "VirtualHost configuration:\n*:443                  www.example.org (/etc/apache2/vhosts.d/www.conf:2)\n"
+        w = self.apache(dateien, s_out, " status_module (shared)\n autoindex_module (shared)\n info_module (shared)\n")
+        www, haupt = w["sites"]
+        self.assertEqual((www["namen"], www["listen"], www["roots"]), (
+            ["www.example.org"], [{"adresse": "*", "port": "443", "ssl": True}], ["/srv/www/htdocs"]))
+        self.assertEqual(www["weiter"], [("/api/", "http://127.0.0.1:3000/")])      # Fortsetzungszeile
+        self.assertEqual((haupt["namen"], haupt["listen"]), (["web01.example.com"], [
+            {"adresse": "*", "port": "80", "ssl": False}]))       # 443 gehört dem vHost
+        konf = {(k["id"], k["pfad"], k.get("nur_lokal")) for k in w["web_konf"]}
+        # Symbole aus dem Paket: kein Fund; server-status nur lokal (zwei Location-Blöcke), server-info offen
+        self.assertEqual(konf, {("WEB-AUTOINDEX", "/", None), ("WEB-STATUS", "/server-status", True),
+                                ("WEB-STATUS", "/info", False)})
+        idx = next(k for k in w["web_konf"] if k["id"] == "WEB-AUTOINDEX")
+        self.assertEqual((idx["verzeichnis"], idx["site"]), ("/srv/www/htdocs/downloads", www))
+        # Modul nicht geladen: kein Fund
+        w = self.apache(dateien, s_out, " ssl_module (shared)\n")
+        self.assertEqual(w["web_konf"], [])
+
+    def test_verzeichnis_nicht_vorhanden(self):
+        # SLES-Vorgabe mod_userdir: /home/*/public_html mit Indexes – auf dem Host nur, wenn es das Verzeichnis gibt
+        dateien = {"/etc/apache2/mod_userdir.conf": "<Directory /home/*/public_html>\n Options MultiViews Indexes\n"
+                                                    "</Directory>\n"}
+        with mock.patch.object(scanner.glob, "glob", return_value=[]):
+            self.assertEqual(self.apache(dateien, "", host=True)["web_konf"], [])
+        with mock.patch.object(scanner.glob, "glob", return_value=["/home/anna/public_html"]):
+            self.assertEqual(len(self.apache(dateien, "", host=True)["web_konf"]), 1)
+
+
+NGINX_SITES = """# configuration file /etc/nginx/nginx.conf:
+http {
+    server { listen 80; server_name localhost; root /srv/www/htdocs/; }
+    include /etc/nginx/vhosts.d/*.conf;
+}
+stream { server { listen 5432; proxy_pass db:5432; } }
+# configuration file /etc/nginx/vhosts.d/www.conf:
+server {
+    listen 80;
+    listen [::]:443 ssl http2;
+    listen 127.0.0.1:8443 ssl;
+    server_name www.example.org .example.net ~^(?<sub>.+)\\.example\\.com$;
+    root /srv/www/htdocs;
+    location /app/ { proxy_pass http://127.0.0.1:8080/; }
+    location ~ \\.php$ { fastcgi_pass unix:/run/php-fpm.sock; }
+    location /nginx_status { stub_status; }
+    location /intern_status { stub_status; allow 127.0.0.1; deny all; }
+    location /dateien/ { autoindex on; }
+}
+server { listen 8080; ssl on; server_name _; }
+"""
+
+
+class NginxSites(unittest.TestCase):
+    def setUp(self):
+        self.w = scanner.web_leer()
+        scanner.parse_nginx(NGINX_SITES, self.w, "/usr/sbin/nginx")
+
+    def test_sites(self):
+        lokal, www, alt = self.w["sites"]          # stream-Server: keine Website
+        self.assertEqual((lokal["namen"], lokal["datei"], lokal["roots"]),
+                         (["localhost"], "/etc/nginx/nginx.conf", ["/srv/www/htdocs/"]))
+        self.assertEqual(www["datei"], "/etc/nginx/vhosts.d/www.conf")
+        self.assertEqual(www["listen"], [{"adresse": "*", "port": "80", "ssl": False, "udp": False},
+                                         {"adresse": "::", "port": "443", "ssl": True, "udp": False},
+                                         {"adresse": "127.0.0.1", "port": "8443", "ssl": True, "udp": False}])
+        self.assertEqual(www["weiter"], [("/app/", "http://127.0.0.1:8080/"), ("~ \\.php$", "unix:/run/php-fpm.sock")])
+        self.assertEqual((alt["namen"], alt["listen"][0]["ssl"]), ([], True))      # ssl on; "_" ist kein Name
+        self.assertIn("db:5432", self.w["backends"]["/usr/sbin/nginx"])
+
+    def test_einstellungen(self):
+        konf = [(k["id"], k["pfad"]) for k in self.w["web_konf"]]
+        self.assertEqual(konf, [("WEB-AUTOINDEX", "/dateien/"), ("WEB-STATUS", "/nginx_status")])
+
+    def test_webadressen_einer_site(self):
+        www = self.w["sites"][1]
+        self.w["fqdn"] = "web01.example.com"
+        self.assertEqual(scanner.site_urls(www, self.w), [
+            "http://www.example.org/", "http://example.net/", "http://*.example.net/", "https://www.example.org/",
+            "https://example.net/", "https://*.example.net/", "https://www.example.org:8443/",
+            "https://example.net:8443/", "https://*.example.net:8443/"])
+        # ohne Namen: Name des Hosts; im Container: veröffentlichter Port statt des Ports im Container
+        self.assertEqual(scanner.site_urls(self.w["sites"][2], self.w), ["https://web01.example.com:8080/"])
+        w = web(published={"8080": ["0.0.0.0:18080", "127.0.0.1:9000 (nur lokal – vermutlich hinter …)"]})
+        self.assertEqual(scanner.site_urls(self.w["sites"][2], w), ["https://*:18080/"])
+        self.assertEqual(scanner.url_pfad("https://a/", "/app/"), "https://a/app/")
+        self.assertEqual(scanner.url_pfad("https://a/", "= /x"), "https://a/x")
+        self.assertEqual(scanner.url_pfad("https://a/", "~* \\.php$"), "https://a/ (\\.php$)")
+
+
+def dienst(label, exe, ports, exposed=False, frontends=()):
+    return {"label": label, "name": os.path.basename(exe), "exe": exe, "exposed": exposed, "frontends": list(frontends),
+            "ports": scanner.OrderedDict((p, ("…", exposed)) for p in ports), "backends": [], "unresolved": [],
+            "unklar": [], "endpoints": [], "description": ""}
+
+
+class Webadressen(unittest.TestCase):
+    """nginx (öffentlich) -> Apache (Loopback) -> php-fpm auf demselben Host."""
+
+    def setUp(self):
+        self.w = web(self="Host", ist_host=True, fqdn="web01.example.com",
+                     sites=[{"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["www.example.org"], "datei": "www.conf",
+                             "roots": ["/srv/www/htdocs"], "listen": [{"adresse": "*", "port": "443", "ssl": True}],
+                             "weiter": [("/app/", "http://127.0.0.1:8080/"), ("/api/", "http://10.0.0.7:3000/")]},
+                            {"exe": "/usr/sbin/httpd-prefork", "art": "apache", "namen": ["app.example.org"],
+                             "datei": "app.conf:1", "roots": ["/srv/www/app/public"],
+                             "listen": [{"adresse": "127.0.0.1", "port": "8080", "ssl": False}],
+                             "weiter": [("~ \\.php$", "fcgi://127.0.0.1:9000")]}])
+        self.services = [dienst("nginx:443", "/usr/sbin/nginx", ["443"], exposed=True),
+                         dienst("httpd-prefork:8080", "/usr/sbin/httpd-prefork", ["8080"], frontends=["nginx:443"]),
+                         dienst("php-fpm:9000", "/usr/sbin/php-fpm", ["9000"], frontends=["httpd-prefork:8080"])]
+        scanner.webadressen(self.services, self.w)
+
+    def urls(self, i):
+        return [(e["url"], e["erreichbar"]) for e in self.services[i]["webadressen"]]
+
+    def test_kette(self):
+        self.assertEqual(self.urls(0), [("https://www.example.org/", True)])
+        self.assertEqual(self.urls(1), [("https://www.example.org/app/", True), ("http://app.example.org:8080/", False)])
+        self.assertEqual(self.urls(2), [("https://www.example.org/app/ (\\.php$)", True),
+                                        ("http://app.example.org:8080/ (\\.php$)", False)])
+        self.assertEqual(self.services[2]["webadressen"][0]["weg"], "nginx:443 → httpd-prefork:8080 → php-fpm:9000")
+
+    def test_komponenten(self):
+        def C(typ, ort, aktiv):
+            c = scanner.comp(typ, "x", "1", ort)
+            c["aktiv"] = aktiv
+            return c
+        js_www = C("js-lib", "/srv/www/htdocs/js/jquery.js", ["nginx:443"])
+        js_app = C("js-lib", "/srv/www/app/public/js/jquery.js",
+                   ["httpd-prefork:8080", "nginx:443 (über httpd-prefork)", "php-fpm:9000"])
+        comp = C("composer", "/srv/www/app", ["php-fpm:9000", "httpd-prefork:8080 (über php-fpm)",
+                                             "httpd-prefork:8080", "nginx:443 (über httpd-prefork)"])
+        ssl = C("os-paket", "", ["nginx:443"])
+        scanner.komponenten_webadressen([js_www, js_app, comp, ssl], self.services)
+        self.assertEqual(js_www["webadressen"], ["https://www.example.org/"])
+        # nicht die Adressen von php-fpm (nur *.php): php-fpm liefert die Datei nicht aus
+        self.assertEqual(js_app["webadressen"], ["https://www.example.org/app/", "http://app.example.org:8080/"])
+        self.assertEqual(js_app["webadressen_erreichbar"], ["https://www.example.org/app/"])
+        self.assertEqual(comp["webadressen_erreichbar"], ["https://www.example.org/app/"])
+        self.assertEqual(ssl["webadressen"], ["https://www.example.org/"])
+
+    def test_einstellungen(self):
+        nginx_site, apache_site = self.w["sites"]
+        self.w["web_konf"] = [
+            {"id": "WEB-STATUS", "exe": "/usr/sbin/httpd-prefork", "site": None, "pfad": "/server-status",
+             "nur_lokal": True, "text": "Apache: server-status nur für localhost"},
+            {"id": "WEB-AUTOINDEX", "exe": "/usr/sbin/nginx", "site": nginx_site, "pfad": "/dateien/", "text": "x"},
+            {"id": "WEB-AUTOINDEX", "exe": "/usr/sbin/httpd-prefork", "site": apache_site, "pfad": "/",
+             "verzeichnis": "/srv/www/app/public/downloads", "text": "y"}]
+        funde = scanner.webserver_pruefen(self.services, self.w)
+        status, idx, idx_apache = funde
+        # "nur localhost" hinter einem Proxy auf derselben Maschine: Anfragen kommen von 127.0.0.1
+        self.assertTrue(status["erreichbar"])
+        self.assertIn("damit greift die Beschränkung nicht", status["text"])
+        self.assertIn("https://www.example.org/app/server-status", status["text"])
+        self.assertEqual((idx["pkg"], idx["erreichbar"], idx["art"]), ("www.example.org", True, "web"))
+        self.assertIn("Webadressen: https://www.example.org/dateien/", idx["text"])
+        self.assertIn("http://app.example.org:8080/downloads/", idx_apache["text"])
+        # ohne Proxy davor: "nur localhost" ist kein Fund; Webserver nicht erreichbar: zählt nicht
+        self.services[0]["ports"]["443"] = ("…", False)
+        self.services[0]["exposed"] = False
+        scanner.webadressen(self.services, self.w)
+        funde = scanner.webserver_pruefen(self.services, self.w)
+        self.assertEqual([(k["id"], k["erreichbar"]) for k in funde], [("WEB-AUTOINDEX", False), ("WEB-AUTOINDEX", False)])
+        self.assertFalse(scanner.konf_zaehlt(funde[0]))
+
+
+class Tls(unittest.TestCase):
+    def setUp(self):
+        self.w = web(self="Host", ist_host=True, sites=[
+            {"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["partner.example.org"], "datei": "p.conf", "roots": [],
+             "weiter": [], "listen": [{"adresse": "*", "port": "8443", "ssl": True},
+                                      {"adresse": "*", "port": "80", "ssl": False}]}])
+        self.services = [dienst("nginx:80,8443", "/usr/sbin/nginx", ["80", "8443"], exposed=True)]
+        scanner.webadressen(self.services, self.w)
+
+    def test_alte_versionen_angenommen(self):
+        h = mock.Mock()
+        h.exec.return_value = (0, '{"TLSv1": "angenommen", "TLSv1.1": "abgelehnt"}')
+        funde, warnungen = scanner.tls_pruefen(h, self.services, self.w, python="/usr/bin/python3")
+        cmd = h.exec.call_args[0][0]
+        self.assertEqual(cmd[:5], ["env", "OPENSSL_CONF=/dev/null", "/usr/bin/python3", "-I", "-c"])
+        self.assertEqual(cmd[6:], ["127.0.0.1", "8443", "partner.example.org"])
+        self.assertEqual(h.exec.call_args[1]["user"], scanner.NOBODY)
+        self.assertEqual(h.exec.call_count, 1)              # nur der TLS-Port
+        self.assertEqual(warnungen, [])
+        self.assertEqual((funde[0]["id"], funde[0]["pkg"], funde[0]["quelle"]),
+                         ("WEB-TLS-ALT", "partner.example.org", "127.0.0.1:8443"))
+        self.assertIn("nimmt TLS 1.0 an", funde[0]["text"])
+        self.assertIn("https://partner.example.org:8443/", funde[0]["text"])
+
+    def test_abgelehnt_und_nicht_pruefbar(self):
+        h = mock.Mock()
+        h.exec.return_value = (0, '{"TLSv1": "abgelehnt", "TLSv1.1": "abgelehnt"}')
+        self.assertEqual(scanner.tls_pruefen(h, self.services, self.w), ([], []))
+        # 127.0.0.1 nicht erreichbar (nur IPv6): dann ::1
+        h.exec.side_effect = [(0, '{"TLSv1": "nicht prüfbar: [Errno 111] Connection refused", "TLSv1.1": '
+                                  '"nicht prüfbar: [Errno 111] Connection refused"}'),
+                              (0, '{"TLSv1": "angenommen", "TLSv1.1": "angenommen"}')]
+        funde, _ = scanner.tls_pruefen(h, self.services, self.w)
+        self.assertEqual(h.exec.call_args[0][0][6], "::1")
+        self.assertIn("TLS 1.0 und TLS 1.1", funde[0]["text"])
+        h.exec.side_effect = None
+        h.exec.return_value = (0, '{"TLSv1": "nicht prüfbar: NO_PROTOCOLS_AVAILABLE", "TLSv1.1": "abgelehnt"}')
+        funde, warnungen = scanner.tls_pruefen(h, self.services, self.w)
+        self.assertEqual(funde, [])
+        self.assertIn("TLS-Versionen an Port 8443 (nginx:80,8443) nicht prüfbar", warnungen[0])
+        # nicht erreichbar: keine Prüfung
+        self.services[0]["ports"]["8443"] = ("…", False)
+        h.reset_mock()
+        self.assertEqual(scanner.tls_pruefen(h, self.services, self.w), ([], []))
+        h.exec.assert_not_called()
+
+    def test_pruefprogramm_echt(self):
+        # das Prüfprogramm selbst (ohne Server: nicht prüfbar, kein Absturz) – mit diesem Python
+        import subprocess
+        import sys
+        out = subprocess.run([sys.executable, "-I", "-c", scanner.TLS_PRUEFUNG, "127.0.0.1", "9", ""],
+                             stdout=subprocess.PIPE, env={"OPENSSL_CONF": "/dev/null"}, timeout=60).stdout
+        ergebnis = json.loads(out.decode())
+        self.assertEqual(sorted(ergebnis), ["TLSv1", "TLSv1.1"])
+        self.assertTrue(all(v.startswith("nicht prüfbar") for v in ergebnis.values()), ergebnis)

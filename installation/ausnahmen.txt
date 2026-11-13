@@ -1,8 +1,10 @@
 # Ausnahmeliste für container-security-scan (README: Ausnahmen). Je Zeile: Kennung wie im Bericht,
-# Paket wie in der Spalte "Paket" (bei CONF-… der Containername) oder *, gültig bis, Begründung.
+# Paket wie in der Spalte "Paket" (bei CONF-… der Containername, bei WEB-… der erste Name der Website) oder *,
+# gültig bis, Begründung.
 # Beispiele: zum Verwenden "# " am Zeilenanfang entfernen und anpassen.
 #
 # Kennung         Paket oder *  gültig bis  Begründung
 # CVE-2024-8926   php           2027-06-30  betrifft nur PHP-CGI unter Windows (geprüft 2026-11-05)
 # CVE-2026-107814 mariadb       2027-03-31  betrifft nur die RPM-Pakete von MariaDB, hier Ubuntu-Image
 # CONF-SOCKET     traefik       2027-03-31  Docker-Provider liest Labels über den Socket; Socket-Proxy geplant
+# WEB-AUTOINDEX   downloads.example.org  2027-06-30  Verzeichnisliste gewollt, nur öffentliche Dateien

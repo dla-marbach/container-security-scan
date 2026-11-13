@@ -38,6 +38,15 @@ class Ziel(unittest.TestCase):
         self.assertTrue(t[0] == "SUSE" and t[1]("SUSE:Linux Enterprise Server 15 SP6") and t[1]("SUSE:Linux Enterprise Server 15 SP6-LTSS"))
         t = scanner.osv_target(C("os-paket", "openssl", "3.0"), {"id": "opensuse-leap", "version": "15.6"})
         self.assertTrue(t[0] == "openSUSE" and t[1]("openSUSE:Leap 15.6"))
+        # SUSE über das Quellpaket (libopenssl3 aus openssl-3); SLES 16: "… 16.0"
+        ssl = C("os-paket", "libopenssl3", "3.1.4-150600.5.30.1", src="openssl-3", srcver="3.1.4-150600.5.30.1")
+        t = scanner.osv_target(ssl, {"id": "sles", "version": "15.7"})
+        self.assertEqual((t[2], t[3]), ({"openssl-3"}, "3.1.4-150600.5.30.1"))
+        self.assertTrue(t[1]("SUSE:Linux Enterprise Module for Basesystem 15 SP7") and not t[1]("SUSE:Linux Micro 6.1"))
+        t = scanner.osv_target(ssl, {"id": "sles", "version": "16.0"})
+        self.assertTrue(t[1]("SUSE:Linux Enterprise Server 16.0") and not t[1]("SUSE:Linux Enterprise Server 15 SP6"))
+        t = scanner.osv_target(ssl, {"id": "sles", "version": "15"})
+        self.assertTrue(t[1]("SUSE:Linux Enterprise Server 15-LTSS") and not t[1]("SUSE:Linux Enterprise Server 15 SP1"))
         self.assertIsNone(scanner.osv_target(pkg, {"id": "fedora", "version": "40"}))
 
     def test_anwendungspakete(self):
@@ -215,6 +224,50 @@ class Datenformat(Tmp):
             ergebnisse.append((sorted((f["comp"]["name"], f["id"], f["sev"], f["fix"]) for f in findings), missing, neuester))
         self.assertEqual(ergebnisse[0], ergebnisse[1])
         self.assertEqual(ergebnisse[1][0], [("libssl3", "CVE-2026-1", "HIGH", "3.0.2-0ubuntu1.20")])
+
+    def test_suse_gekuerzt_wie_vollstaendig(self):
+        """SUSE: Abgleich über das Quellpaket, das Binärpaket muss im Eintrag stehen (zwei Versionszweige von tiff in
+        SLES 15 SP7: 4.0.9 mit libtiff5, 4.7 mit libtiff6); gekürzt mit denselben Funden wie vollständig."""
+        def aff(eco, name, fixed, binaries):
+            return {"package": {"ecosystem": eco, "name": name},
+                    "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": fixed}]}],
+                    "ecosystem_specific": {"binaries": [{b: fixed for b in binaries}]}}
+        eco = "SUSE:Linux Enterprise Module for Basesystem 15 SP7"
+        recs = [{"id": "SUSE-SU-2025:3941-1", "upstream": ["CVE-2025-9900"], "published": "2025-11-01T00:00:00Z",
+                 "affected": [aff(eco, "tiff", "4.0.9-150000.45.60.1", ["libtiff5"])]},
+                {"id": "SUSE-SU-2025:3957-1", "upstream": ["CVE-2025-9900"], "published": "2025-11-02T00:00:00Z",
+                 "affected": [aff(eco, "tiff", "4.7.1-150600.3.23.1", ["libtiff6", "libtiff-devel"]),
+                              aff("SUSE:Linux Enterprise Server 12 SP5", "tiff", "4.0.9-44.1", ["libtiff5"])]},
+                # ein Update für zwei Quellpakete: die Binärpakete gelten für beide (libacl1 gehört zu acl)
+                {"id": "SUSE-SU-2026:100-1", "upstream": ["CVE-2026-100"], "published": "2026-10-01T00:00:00Z",
+                 "affected": [aff(eco, "attr", "2.4.48-150000.3.5.1", ["libacl1", "libattr1"]),
+                              aff(eco, "acl", "2.2.52-150000.4.20.1", ["libacl1", "libattr1"])]},
+                {"id": "openSUSE-SU-2026:1-1", "published": "2026-10-01T00:00:00Z",
+                 "affected": [aff("openSUSE:Leap 15.6", "acl", "9", ["libacl1"])]}]
+        voll, kurz = os.path.join(self.tmp, "voll"), os.path.join(self.tmp, "kurz")
+        os.makedirs(voll)
+        with zipfile.ZipFile(os.path.join(voll, "SUSE.zip"), "w") as z:
+            for r in recs:
+                z.writestr(r["id"] + ".json", json.dumps(r))
+        kompakt = [scanner.osv_compact(r, "SUSE") for r in recs]
+        self.assertIsNone(kompakt[3])                                          # openSUSE
+        self.assertEqual([a["package"]["ecosystem"] for a in kompakt[1]["affected"]], [eco])   # nicht SLES 12
+        self.assertEqual(kompakt[1]["binaries"], {"15 SP7": ["libtiff-devel", "libtiff6"]})   # je Service Pack
+        self.assertNotIn("ecosystem_specific", kompakt[0]["affected"][0])
+        schreibe_jsonl(kurz, "SUSE", [x for x in kompakt if x])
+        osinfo = {"id": "sles", "version": "15.7", "pretty": "SLES 15 SP7"}
+        comps = [C("os-paket", "libtiff5", "4.0.9-150000.45.75.1", src="tiff", srcver="4.0.9-150000.45.75.1"),
+                 C("os-paket", "libtiff6", "4.7.1-150600.3.20.1", src="tiff", srcver="4.7.1-150600.3.20.1"),
+                 C("os-paket", "libacl1", "2.2.52-150000.4.10.1", src="acl", srcver="2.2.52-150000.4.10.1"),
+                 C("os-paket", "libattr1", "2.4.47-2.19", src="attr", srcver="2.4.47-2.19")]
+        ergebnisse = []
+        for d in (voll, kurz):
+            findings, _, missing, neuester = scanner.osv_scan(comps, osinfo, [d])
+            ergebnisse.append((sorted((f["comp"]["name"], f["id"], f["fix"]) for f in findings), missing, neuester))
+        self.assertEqual(ergebnisse[0], ergebnisse[1])
+        self.assertEqual(ergebnisse[1][0], [("libacl1", "CVE-2026-100", "2.2.52-150000.4.20.1"),
+                                            ("libattr1", "CVE-2026-100", "2.4.48-150000.3.5.1"),
+                                            ("libtiff6", "CVE-2025-9900", "4.7.1-150600.3.23.1")])
 
     def test_osv_records_zip_mit_ueberlagerung(self):
         with zipfile.ZipFile(os.path.join(self.tmp, "npm.zip"), "w") as z:
