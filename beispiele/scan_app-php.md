@@ -2,8 +2,8 @@
 
 - Image: php:8.3.30-fpm-bookworm (sha256:e7ca6c7f5a59)  
 - OS: Debian GNU/Linux 12 (bookworm)  
-- Zeitpunkt: 2026-11-13 11:39  
-- Scanner: container-security-scan 0.2.2  
+- Zeitpunkt: 2026-11-13 12:14  
+- Scanner: container-security-scan 0.3.0  
 - Datenbank: OSV, Stand 2026-11-13 03:23 UTC (daten)  
 - Erfassung: OS-Pakete dpkg; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer); 1 Kernel-Pakete nicht geprüft (Container nutzen den Kernel des Hosts)
 
@@ -643,10 +643,10 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 
 | Typ | Name | Version | Fundort | Genutzt von |
 |---|---|---|---|---|
-| host | linux-kernel | 6.12.8+ | Host | Host |
-| host | docker-engine | 29.1.3 | Host | Host |
-| host | containerd | 2.2.1 | Host | Host |
-| host | runc | 1.3.4-0ubuntu1~24.04.1 | Host | Host |
+| host | linux-kernel | 6.18.44-fc-v445 | Host | Host |
+| host | docker-engine | 29.9.2 | Host | Host |
+| host | containerd | v2.4.2 | Host | Host |
+| host | runc | 1.5.2 | Host | Host |
 | host | docker-init | 0.19.0 | Host | Host |
 
 ## Anhang
@@ -665,20 +665,20 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        fa4605275d002063f7962fd3b3efedd93865b1c917b19bd7068fedcc783dc7b3
-Gestartet: 2026-11-13T11:39:10.050665811Z
+ID:        95ec90a8c6ad721d233a12b0b1c9b272e35261becb86c55dde5fc17b09565f14
+Gestartet: 2026-11-13T12:14:02.899580427Z
 Kommando:  ["docker-php-entrypoint"] ["php-fpm"]
-Mounts:    /workspaces/container-security-scan/dla-marbach/container-security-scan/beispiele/umgebung/php->/srv/app
-Host:      Kernel 6.12.8+
+Mounts:    /home/user/container-security-scan/beispiele/umgebung/php->/srv/app
+Host:      Kernel 6.18.44-fc-v445
 ```
 
 ### Laufende Prozesse
 
 ```
 PID                 USER                COMMAND
-3297                root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
-3517                www-data            php-fpm: pool www
-3518                www-data            php-fpm: pool www
+28792               root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
+28836               www-data            php-fpm: pool www
+28837               www-data            php-fpm: pool www
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

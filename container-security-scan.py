@@ -79,7 +79,7 @@ from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "0.2.2"
+VERSION = "0.3.0"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
@@ -723,24 +723,38 @@ def stream_tar(cmd, files, extra, prefix="", input=None, timeout=1800, meldungen
 def collect_files(c):
     """Liefert (Dateien, weitere Komponenten, Beschreibung, Probleme)."""
     files, extra, problems = {}, [], []
+    grund = ""
     if c.has_find_tar:
         meldungen = []
         ok = stream_tar(["docker", "exec", "-i", "-w", "/", "-u", c.user or "0", "-e", "PATH=" + SAFE_PATH,
                          c.id, "sh", "-s", "--"] + c.mounts,
                         files, extra, input=FIND_SH, meldungen=meldungen)
         meldungen = list(OrderedDict.fromkeys(meldungen))    # beide find-Läufe melden dasselbe
-        if not ok:
+        if ok:
+            return files, extra, "find/tar im Container (inkl. %d Volumes)" % len(c.mounts), problems
+        if not (meldungen and all("Permission denied" in m for m in meldungen)):
             problems.append("Dateien im Container nicht vollständig lesbar (%s)" % (
                 "; ".join(meldungen[:3]) + (" … und %d weitere" % (len(meldungen) - 3) if len(meldungen) > 3 else "")
                 if meldungen else "Fehler oder Zeitüberschreitung"))
-        return files, extra, "find/tar im Container (inkl. %d Volumes)" % len(c.mounts), problems
+            return files, extra, "find/tar im Container (inkl. %d Volumes)" % len(c.mounts), problems
+        # Nur fehlende Rechte: root im Container ohne CAP_DAC_OVERRIDE/CAP_DAC_READ_SEARCH (cap_drop: ALL) darf
+        # nicht in Verzeichnisse anderer Benutzer. Dann wie ohne Werkzeuge passiv von außen lesen (ohne Rechte
+        # im Container); das Teilergebnis von find/tar wird verworfen.
+        files, extra = {}, []
+        grund = ", da find/tar im Container ohne Leserechte (%d Meldungen, z. B. %s)" % (len(meldungen), meldungen[0])
     if not stream_tar(["docker", "export", c.id], files, extra):
         problems.append("docker export fehlgeschlagen")
-    for dest in c.mounts:   # Volumes sind nicht im Export enthalten -> einzeln per docker cp lesen
+    # Volumes sind nicht im Export enthalten -> einzeln per docker cp lesen, äußere vor inneren. Der Export enthält
+    # dafür Dateien des Images, die im laufenden Container unter dem Mount verdeckt sind: vorher entfernen
+    for dest in sorted(c.mounts, key=lambda d: d.rstrip("/").count("/")):
+        unter = dest.rstrip("/") + "/"
+        for p in [p for p in files if p == dest or p.startswith(unter)]:
+            del files[p]
+        extra[:] = [x for x in extra if not (x.get("datei") == dest or (x.get("datei") or "").startswith(unter))]
         if not stream_tar(["docker", "cp", "-L", "%s:%s" % (c.id, dest), "-"], files, extra,
                           prefix=posixpath.dirname(dest.rstrip("/"))):
             problems.append("Volume %s nicht lesbar" % dest)
-    return files, extra, "docker export und docker cp (%d Volumes)" % len(c.mounts), problems
+    return files, extra, "docker export und docker cp (%d Volumes)%s" % (len(c.mounts), grund), problems
 
 
 def text(data):
