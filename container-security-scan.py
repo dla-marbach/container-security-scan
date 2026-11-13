@@ -744,7 +744,13 @@ def collect_files(c):
         grund = ", da find/tar im Container ohne Leserechte (%d Meldungen, z. B. %s)" % (len(meldungen), meldungen[0])
     if not stream_tar(["docker", "export", c.id], files, extra):
         problems.append("docker export fehlgeschlagen")
-    for dest in c.mounts:   # Volumes sind nicht im Export enthalten -> einzeln per docker cp lesen
+    # Volumes sind nicht im Export enthalten -> einzeln per docker cp lesen, äußere vor inneren. Der Export enthält
+    # dafür Dateien des Images, die im laufenden Container unter dem Mount verdeckt sind: vorher entfernen
+    for dest in sorted(c.mounts, key=lambda d: d.rstrip("/").count("/")):
+        unter = dest.rstrip("/") + "/"
+        for p in [p for p in files if p == dest or p.startswith(unter)]:
+            del files[p]
+        extra[:] = [x for x in extra if not (x.get("datei") == dest or (x.get("datei") or "").startswith(unter))]
         if not stream_tar(["docker", "cp", "-L", "%s:%s" % (c.id, dest), "-"], files, extra,
                           prefix=posixpath.dirname(dest.rstrip("/"))):
             problems.append("Volume %s nicht lesbar" % dest)

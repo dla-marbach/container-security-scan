@@ -358,6 +358,33 @@ class Dateisuche(unittest.TestCase):
         self.assertTrue(how.startswith("docker export und docker cp (2 Volumes), da find/tar im Container ohne "
                                        "Leserechte (2 Meldungen, z. B. find: /home/node: Permission denied)"), how)
 
+    def test_passiv_ohne_vom_mount_verdeckte_dateien(self):
+        # docker export enthält Dateien des Images unter einem Mount, die im laufenden Container verdeckt sind
+        for werkzeuge in (False, True):
+            c = mock.Mock(has_find_tar=werkzeuge, user="0", id="abc", mounts=["/app/keys", "/app"])
+            reihenfolge = []
+
+            def stream(cmd, files, extra, input=None, meldungen=None, prefix="", **kw):
+                if cmd[:2] == ["docker", "exec"]:
+                    meldungen.append("find: /home/node: Permission denied")
+                    return False
+                if cmd[:2] == ["docker", "export"]:
+                    files.update({"/app/node_modules/alt/package.json": b"{}", "/app/keys/x.json": b"{}",
+                                  "/apple/package.json": b"{}", "/app": b"{}"})
+                    extra += [{"datei": "/app/js/jquery.js"}, {"datei": "/apple/jquery.js"}]
+                    return True
+                dest = cmd[3].split(":", 1)[1]
+                reihenfolge.append(dest)
+                files[dest + "/package.json"] = b"{}"
+                extra.append({"datei": dest + "/lib.jar"})
+                return True
+            with mock.patch.object(scanner, "stream_tar", side_effect=stream):
+                files, extra, _, problems = scanner.collect_files(c)
+            self.assertEqual(problems, [])
+            self.assertEqual(reihenfolge, ["/app", "/app/keys"])        # äußere vor inneren
+            self.assertEqual(sorted(files), ["/app/keys/package.json", "/app/package.json", "/apple/package.json"])
+            self.assertEqual(sorted(x["datei"] for x in extra), ["/app/keys/lib.jar", "/app/lib.jar", "/apple/jquery.js"])
+
     def test_ohne_rechte_und_export_fehlgeschlagen(self):
         problems = self.lesen_ohne_rechte(export_ok=False, cp_ok=False)[0][3]
         self.assertEqual(problems, ["docker export fehlgeschlagen", "Volume /app/config.json nicht lesbar",
