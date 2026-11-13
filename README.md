@@ -3,7 +3,7 @@
 Schwachstellen-Scan für **laufende Docker-Container** – mit Fokus auf das, was tatsächlich läuft und
 von außen erreichbar ist. Ein einzelnes Python-Skript, nur Standardbibliothek, ab Python 3.6 (SLES 15),
 rein lesend. Die Schwachstellendaten (gekürzter Auszug aus [OSV](https://osv.dev), dazu Supportende und
-aktiv ausgenutzte Lücken) liegen im Branch [`daten`](https://github.com/felixlohmeier/container-security-scan/tree/daten) und werden täglich per GitHub
+aktiv ausgenutzte Lücken) liegen im Branch [`daten`](https://github.com/dla-marbach/container-security-scan/tree/daten) und werden täglich per GitHub
 Action aktualisiert; Paketlisten verlassen den Server nie.
 
 Nach der [Einrichtung](#installation-und-betrieb) (einmalig, wenige Minuten):
@@ -48,12 +48,12 @@ Voraussetzungen: Linux mit Docker, Python ≥ 3.6 (SLES 15: `python3`), `git`, `
 RPM-Container ohne eigenes `rpm`).
 
 Das Installscript [`installation/installieren.sh`](installation/installieren.sh) (zum Einrichten und
-Aktualisieren) aus dem [aktuellen Release](https://github.com/felixlohmeier/container-security-scan/releases/latest)
+Aktualisieren) aus dem [aktuellen Release](https://github.com/dla-marbach/container-security-scan/releases/latest)
 holen, lesen und mit dessen Version ausführen:
 
 ```bash
 V=vX.Y.Z      # Version des Releases
-curl -fsSO https://raw.githubusercontent.com/felixlohmeier/container-security-scan/$V/installation/installieren.sh
+curl -fsSO https://raw.githubusercontent.com/dla-marbach/container-security-scan/$V/installation/installieren.sh
 less installieren.sh
 sudo bash installieren.sh $V
 ```
@@ -70,7 +70,7 @@ prüft, gibt den Commit mit; das Installscript bricht ab, wenn der Tag auf einen
 
 ```bash
 # Schlüssel des Maintainers vorher importieren: https://github.com/felixlohmeier.gpg
-git clone -q https://github.com/felixlohmeier/container-security-scan.git /tmp/css && cd /tmp/css \
+git clone -q https://github.com/dla-marbach/container-security-scan.git /tmp/css && cd /tmp/css \
   && git verify-tag $V && git checkout -q $V \
   && sudo bash installation/installieren.sh $V "$(git rev-parse HEAD)"
 ```
@@ -364,13 +364,13 @@ Dateien, die zu einem OS-Paket gehören (z. B. `gosu` aus dem Ubuntu-Paket), wer
 
 ## Daten
 
-Der Branch [`daten`](https://github.com/felixlohmeier/container-security-scan/tree/daten) enthält einen gekürzten Auszug aus den OSV-Exporten für Debian, Ubuntu, Alpine, npm, PyPI,
+Der Branch [`daten`](https://github.com/dla-marbach/container-security-scan/tree/daten) enthält einen gekürzten Auszug aus den OSV-Exporten für Debian, Ubuntu, Alpine, npm, PyPI,
 Packagist, Maven, Go und Bitnami (ca. 360 MB, in Git komprimiert ca. 25 MB). Gekürzt heißt: nur die für den
 Abgleich nötigen Felder und Einträge; die Ergebnisse sind mit den vollständigen Exporten identisch
 (geprüft). Die GitHub Action [`.github/workflows/daten.yml`](.github/workflows/daten.yml) erzeugt die
 Daten täglich neu; die Ausgabe ist deterministisch, Commits enthalten nur echte Änderungen. Dazu kommen `eol-daten.json`
 ([Supportende](#supportende-eol)) und `kev.json` ([aktiv ausgenutzte Lücken](#aktiv-ausgenutzte-lücken-kev)).
-Quellen und Lizenzen: [`QUELLEN.md` im Branch `daten`](https://github.com/felixlohmeier/container-security-scan/blob/daten/QUELLEN.md).
+Quellen und Lizenzen: [`QUELLEN.md` im Branch `daten`](https://github.com/dla-marbach/container-security-scan/blob/daten/QUELLEN.md).
 
 Ubuntu ist am stärksten gekürzt: Der Export ist entpackt rund 8 GB groß (als ZIP ca. 800 MB), der
 Auszug ca. 190 MB. Weggelassen wird nur, was der Abgleich nie liest: die Listen der Binärpakete (abgeglichen
@@ -403,7 +403,7 @@ Darf der Server `github.com` gar nicht erreichen, auf einem anderen Rechner den 
 übertragen und das Installscript daraus installieren lassen:
 
 ```bash
-git clone -q https://github.com/felixlohmeier/container-security-scan.git css && git -C css bundle create ../css.bundle $V
+git clone -q https://github.com/dla-marbach/container-security-scan.git css && git -C css bundle create ../css.bundle $V
 git -C css show $V:installation/installieren.sh > installieren.sh     # beides auf den Server kopieren, dort:
 sudo env REPO=$PWD/css.bundle DATEN= bash installieren.sh $V
 ```
@@ -424,7 +424,7 @@ sudo env REPO=$PWD/css.bundle DATEN= bash installieren.sh $V
 ### Supportende (EOL)
 
 `eol-daten.json` im Branch `daten` enthält einen Auszug aus [endoflife.date](https://endoflife.date) (MIT-Lizenz, siehe
-[`EOL-LIZENZ.txt`](https://github.com/felixlohmeier/container-security-scan/blob/daten/EOL-LIZENZ.txt)), den die Action täglich aus dem vollständigen API-Export
+[`EOL-LIZENZ.txt`](https://github.com/dla-marbach/container-security-scan/blob/daten/EOL-LIZENZ.txt)), den die Action täglich aus dem vollständigen API-Export
 (`/api/v1/products/full/`) erzeugt. Geprüft werden:
 
 - **Pakete** mit npm-, Composer-, PyPI- oder Maven-Kennung bei endoflife.date (z. B. Laravel, Vue,
@@ -539,7 +539,7 @@ Zum Ausprobieren und Entwickeln, **nur auf einem eigenen Testrechner** – auf S
 [Installation und Betrieb](#installation-und-betrieb):
 
 ```bash
-git clone https://github.com/felixlohmeier/container-security-scan.git && cd container-security-scan
+git clone https://github.com/dla-marbach/container-security-scan.git && cd container-security-scan
 ./container-security-scan.py --db-aktualisieren        # Branch daten nach daten/ holen (nicht als root)
 sudo ./container-security-scan.py --alle-container berichte/ --nur-behebbare
 ```

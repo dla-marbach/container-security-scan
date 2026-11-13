@@ -1,16 +1,16 @@
 {
  "bomFormat": "CycloneDX",
  "specVersion": "1.5",
- "serialNumber": "urn:uuid:cb68d00b-9e63-4674-a899-1585aeab63dd",
+ "serialNumber": "urn:uuid:3eaa8aa5-4dc6-4ffd-a5fc-c1ebb0daeb97",
  "version": 1,
  "metadata": {
-  "timestamp": "2026-11-07T22:08:00Z",
+  "timestamp": "2026-11-13T11:40:15Z",
   "tools": {
    "components": [
     {
      "type": "application",
      "name": "container-security-scan.py",
-     "version": "0.2.1"
+     "version": "0.2.2"
     }
    ]
   },
@@ -26,7 +26,7 @@
     },
     {
      "name": "container-security-scan:container-id",
-     "value": "75b762c33f8e174d706f031a94b591fc1293c51ca3545d92e8d6e8e2b83781a5"
+     "value": "26a90a97afc5e812e50a7cd2c8d983fd0888d38285c4b6ce9bbeec86395645b2"
     },
     {
      "name": "container-security-scan:repo-digest",
@@ -4726,7 +4726,7 @@
    "bom-ref": "c256",
    "type": "platform",
    "name": "linux-kernel",
-   "version": "6.18.44-fc-v310",
+   "version": "6.12.8+",
    "properties": [
     {
      "name": "container-security-scan:typ",
@@ -4738,7 +4738,7 @@
     },
     {
      "name": "container-security-scan:hinweis",
-     "value": "Ubuntu 24.04.5 LTS"
+     "value": "Ubuntu 24.04.3 LTS"
     },
     {
      "name": "container-security-scan:aktiv",
@@ -4750,9 +4750,9 @@
    "bom-ref": "c257",
    "type": "library",
    "name": "docker-engine",
-   "version": "29.9.2",
-   "purl": "pkg:generic/docker-engine@29.9.2",
-   "cpe": "cpe:2.3:a:docker:docker:29.9.2:*:*:*:*:*:*:*",
+   "version": "29.1.3",
+   "purl": "pkg:generic/docker-engine@29.1.3",
+   "cpe": "cpe:2.3:a:docker:docker:29.1.3:*:*:*:*:*:*:*",
    "properties": [
     {
      "name": "container-security-scan:typ",
@@ -4772,9 +4772,9 @@
    "bom-ref": "c258",
    "type": "library",
    "name": "containerd",
-   "version": "v2.4.2",
-   "purl": "pkg:generic/containerd@v2.4.2",
-   "cpe": "cpe:2.3:a:linuxfoundation:containerd:2.4.2:*:*:*:*:*:*:*",
+   "version": "2.2.1",
+   "purl": "pkg:generic/containerd@2.2.1",
+   "cpe": "cpe:2.3:a:linuxfoundation:containerd:2.2.1:*:*:*:*:*:*:*",
    "properties": [
     {
      "name": "container-security-scan:typ",
@@ -4794,9 +4794,9 @@
    "bom-ref": "c259",
    "type": "library",
    "name": "runc",
-   "version": "1.5.2",
-   "purl": "pkg:generic/runc@1.5.2",
-   "cpe": "cpe:2.3:a:linuxfoundation:runc:1.5.2:*:*:*:*:*:*:*",
+   "version": "1.3.4-0ubuntu1~24.04.1",
+   "purl": "pkg:generic/runc@1.3.4-0ubuntu1~24.04.1",
+   "cpe": "cpe:2.3:a:linuxfoundation:runc:1.3.4-0ubuntu1~24.04.1:*:*:*:*:*:*:*",
    "properties": [
     {
      "name": "container-security-scan:typ",
