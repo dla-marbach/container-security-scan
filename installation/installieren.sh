@@ -7,8 +7,8 @@
 set -euo pipefail
 VERSION=${1:-}
 COMMIT=${2:-}
-REPO=${REPO:-https://github.com/felixlohmeier/container-security-scan.git}   # Code; auch ein Bundle (README)
-DATEN=${DATEN-https://github.com/felixlohmeier/container-security-scan.git}  # Daten; leer: nicht holen (README)
+REPO=${REPO:-https://github.com/dla-marbach/container-security-scan.git}   # Code; auch ein Bundle (README)
+DATEN=${DATEN-https://github.com/dla-marbach/container-security-scan.git}  # Daten; leer: nicht holen (README)
 D=/var/lib/container-security-scan
 
 fehler() { echo "FEHLER: $*" >&2; exit 2; }

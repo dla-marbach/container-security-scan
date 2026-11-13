@@ -2,9 +2,9 @@
 
 - Image: traefik:v3.6 (sha256:31267173a15b)  
 - OS: Alpine Linux v3.24  
-- Zeitpunkt: 2026-11-07 22:07  
-- Scanner: container-security-scan 0.2.1  
-- Datenbank: OSV, Stand 2026-11-07 14:13 UTC (daten)  
+- Zeitpunkt: 2026-11-13 11:40  
+- Scanner: container-security-scan 0.2.2  
+- Datenbank: OSV, Stand 2026-11-13 03:23 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 0 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
 ## Ergebnis
@@ -53,7 +53,7 @@ Nicht gezählt (wären sonst relevant):
 - CVE-2026-88007 (CRITICAL) in github.com/traefik/traefik/v3 v3.6.25 – betrifft laut Titel nur Windows
 - CVE-2026-56857 (CRITICAL*) in stdlib 1.26.5 – betrifft laut Titel nur Windows
 
-Hinweis: 9 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit ansehen.
+Hinweis: 10 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit ansehen.
 
 ## Laufende Dienste
 
@@ -65,12 +65,12 @@ Hinweis: 9 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit a
 
 | Priorität | CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN |
 |---|---|---|---|---|---|
-| P1 Dienst mit veröffentlichtem Port | 6 | 28 | 16 | 4 | 9 |
+| P1 Dienst mit veröffentlichtem Port | 6 | 28 | 16 | 4 | 10 |
 | P2 Dienst intern | 0 | 0 | 0 | 0 | 0 |
 | P3 Prozess ohne Port | 0 | 0 | 0 | 0 | 0 |
 | P4 nicht genutzt / dev | 5 | 17 | 2 | 0 | 0 |
 
-## Befunde (85 von 87; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
+## Befunde (86 von 88; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
 
 | P | Schwere | ID | Paket | Installiert | Behoben in | Genutzt von | Titel |
 |---|---|---|---|---|---|---|---|
@@ -137,6 +137,7 @@ Hinweis: 9 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit a
 | 1 | UNKNOWN | CVE-2026-78661 | golang.org/x/net | v0.57.0 | 0.62.0 | traefik:80 | Avoid quadratic complexity when coalescing text nodes in html in golang.org/x/net |
 | 1 | UNKNOWN | CVE-2026-97045 | golang.org/x/net | v0.57.0 | 0.62.0 | traefik:80 | Check all ancestor namespace transitions when rendering raw text in html in golang.org/x/n |
 | 1 | UNKNOWN | CVE-2026-56851 | golang.org/x/text | v0.40.0 | 0.41.0 | traefik:80 | Panic parsing crafted input in x/text/secure/precis in golang.org/x/text |
+| 1 | UNKNOWN | CVE-2026-97054 | stdlib | 1.26.5 | 1.26.11 | traefik:80 | HTTP/1 server crash due to MaxBytesReader header race in net/http |
 | 4 | CRITICAL | CVE-2026-63073 | libcrypto3 | 3.5.7-r0 | 3.5.8-r0 | – | Issue summary: OpenSSL CMP response validation passed an unexpected response |
 | 4 | CRITICAL | CVE-2026-75803 | libcrypto3 | 3.5.7-r0 | 3.5.8-r0 | – | Issue summary: ChaCha20-Poly1305 and AES-OCB decryption with an empty |
 | 4 | CRITICAL | CVE-2026-63073 | libssl3 | 3.5.7-r0 | 3.5.8-r0 | – | Issue summary: OpenSSL CMP response validation passed an unexpected response |
@@ -170,10 +171,10 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 
 | Typ | Name | Version | Fundort | Genutzt von |
 |---|---|---|---|---|
-| host | linux-kernel | 6.18.44-fc-v310 | Host | Host |
-| host | docker-engine | 29.9.2 | Host | Host |
-| host | containerd | v2.4.2 | Host | Host |
-| host | runc | 1.5.2 | Host | Host |
+| host | linux-kernel | 6.12.8+ | Host | Host |
+| host | docker-engine | 29.1.3 | Host | Host |
+| host | containerd | 2.2.1 | Host | Host |
+| host | runc | 1.3.4-0ubuntu1~24.04.1 | Host | Host |
 | host | docker-init | 0.19.0 | Host | Host |
 
 ## Anhang
@@ -189,18 +190,21 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        b8252e4c68288f5e6969836485750ca48033597a195f49b02da8d5533809cf28
-Gestartet: 2026-11-07T22:07:07.107896621Z
+ID:        efb458d18a86808f754ca5b1bafe89954d4b0a725eb5c1574d2237fac8cc4112
+Gestartet: 2026-11-13T11:39:10.041981021Z
 Kommando:  ["/entrypoint.sh"] ["--providers.docker=true", "--providers.docker.exposedbydefault=false", "--entrypoints.web.address=:80"]
 Mounts:    /var/run/docker.sock->/var/run/docker.sock
-Host:      Kernel 6.18.44-fc-v310
+Host:      Kernel 6.12.8+
 ```
 
 ### Laufende Prozesse
 
 ```
 PID                 USER                COMMAND
-16810               root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
+3302                root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
+7327                nobody              timeout 50 mariadbd --version
+7368                nobody              timeout 50 mysqld --version
+7409                nobody              timeout 50 postgres --version
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

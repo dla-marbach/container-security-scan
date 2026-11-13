@@ -2,9 +2,9 @@
 
 - Image: php:8.3.30-fpm-bookworm (sha256:e7ca6c7f5a59)  
 - OS: Debian GNU/Linux 12 (bookworm)  
-- Zeitpunkt: 2026-11-07 22:07  
-- Scanner: container-security-scan 0.2.1  
-- Datenbank: OSV, Stand 2026-11-07 14:12 UTC (daten)  
+- Zeitpunkt: 2026-11-13 11:39  
+- Scanner: container-security-scan 0.2.2  
+- Datenbank: OSV, Stand 2026-11-13 03:23 UTC (daten)  
 - Erfassung: OS-Pakete dpkg; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer); 1 Kernel-Pakete nicht geprüft (Container nutzen den Kernel des Hosts)
 
 ## Ergebnis
@@ -50,6 +50,8 @@ Gefährliche Einstellungen des Containers (privileged, Docker-Socket, pid=host �
 Nicht gezählt (wären sonst relevant):
 - CVE-2026-17545 (HIGH) in php 8.3.30 – betrifft laut Titel nur Windows
 
+Hinweis: 29 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit ansehen.
+
 ## Laufende Dienste
 
 | Dienst | Programm | Ports / Konfiguration |
@@ -60,12 +62,12 @@ Nicht gezählt (wären sonst relevant):
 
 | Priorität | CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN |
 |---|---|---|---|---|---|
-| P1 Dienst mit veröffentlichtem Port | 25 | 100 | 102 | 70 | 0 |
+| P1 Dienst mit veröffentlichtem Port | 25 | 124 | 122 | 74 | 29 |
 | P2 Dienst intern | 0 | 0 | 0 | 0 | 0 |
 | P3 Prozess ohne Port | 0 | 0 | 0 | 0 | 0 |
-| P4 nicht genutzt / dev | 32 | 156 | 165 | 645 | 0 |
+| P4 nicht genutzt / dev | 32 | 156 | 152 | 662 | 5 |
 
-## Befunde (486 von 1295; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
+## Befunde (563 von 1381; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
 
 | P | Schwere | ID | Paket | Installiert | Behoben in | Genutzt von | Titel |
 |---|---|---|---|---|---|---|---|
@@ -176,6 +178,30 @@ Nicht gezählt (wären sonst relevant):
 | 1 | HIGH | CVE-2026-94266 | libcurl4 | 7.88.1-10+deb12u14 | kein Fix | php-fpm:9000 | libcurl could accidentally return a URL for `curl_easy_getinfo()`'s `CURLINFO_EFFECTIVE_UR |
 | 1 | HIGH | CVE-2026-102010 | libgcc-s1 | 12.2.0-14+deb12u1 | kein Fix | php-fpm:9000 | A flaw was found in GCC. When an application calls the erase_if function on a binary heap  |
 | 1 | HIGH | CVE-2026-95619 | libgcc-s1 | 12.2.0-14+deb12u1 | kein Fix | php-fpm:9000 | A flaw was found in libstdc++. An integer overflow can occur when processing large inputs  |
+| 1 | HIGH | CVE-2026-112314 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | clnttcp_call() in lib/rpc/clnt_tcp.c in MIT Kerberos 5 (aka krb5) does not free the RPC re |
+| 1 | HIGH | CVE-2026-112320 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The GSS-RPC transport layer in MIT Kerberos 5 (aka krb5) 1.4 and later does not release th |
+| 1 | HIGH | CVE-2026-112321 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The AUTH_GSSAPI handler in lib/rpc/svc_auth_gssapi.c in MIT Kerberos 5 (aka krb5) does not |
+| 1 | HIGH | CVE-2026-112322 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | clean_client() in lib/rpc/svc_auth_gssapi.c in MIT Kerberos 5 (aka krb5) restarts its scan |
+| 1 | HIGH | CVE-2026-112323 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The AUTH_GSSAPI handler in lib/rpc/svc_auth_gssapi.c in MIT Kerberos 5 (aka krb5) 1.5.2 an |
+| 1 | HIGH | CVE-2026-119079 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | decode_sequence_of() in lib/krb5/asn.1/asn1_encode.c in MIT Kerberos 5 (aka krb5) 1.11 and |
+| 1 | HIGH | CVE-2026-112314 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | clnttcp_call() in lib/rpc/clnt_tcp.c in MIT Kerberos 5 (aka krb5) does not free the RPC re |
+| 1 | HIGH | CVE-2026-112320 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The GSS-RPC transport layer in MIT Kerberos 5 (aka krb5) 1.4 and later does not release th |
+| 1 | HIGH | CVE-2026-112321 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The AUTH_GSSAPI handler in lib/rpc/svc_auth_gssapi.c in MIT Kerberos 5 (aka krb5) does not |
+| 1 | HIGH | CVE-2026-112322 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | clean_client() in lib/rpc/svc_auth_gssapi.c in MIT Kerberos 5 (aka krb5) restarts its scan |
+| 1 | HIGH | CVE-2026-112323 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The AUTH_GSSAPI handler in lib/rpc/svc_auth_gssapi.c in MIT Kerberos 5 (aka krb5) 1.5.2 an |
+| 1 | HIGH | CVE-2026-119079 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | decode_sequence_of() in lib/krb5/asn.1/asn1_encode.c in MIT Kerberos 5 (aka krb5) 1.11 and |
+| 1 | HIGH | CVE-2026-112314 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | clnttcp_call() in lib/rpc/clnt_tcp.c in MIT Kerberos 5 (aka krb5) does not free the RPC re |
+| 1 | HIGH | CVE-2026-112320 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The GSS-RPC transport layer in MIT Kerberos 5 (aka krb5) 1.4 and later does not release th |
+| 1 | HIGH | CVE-2026-112321 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The AUTH_GSSAPI handler in lib/rpc/svc_auth_gssapi.c in MIT Kerberos 5 (aka krb5) does not |
+| 1 | HIGH | CVE-2026-112322 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | clean_client() in lib/rpc/svc_auth_gssapi.c in MIT Kerberos 5 (aka krb5) restarts its scan |
+| 1 | HIGH | CVE-2026-112323 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The AUTH_GSSAPI handler in lib/rpc/svc_auth_gssapi.c in MIT Kerberos 5 (aka krb5) 1.5.2 an |
+| 1 | HIGH | CVE-2026-119079 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | decode_sequence_of() in lib/krb5/asn.1/asn1_encode.c in MIT Kerberos 5 (aka krb5) 1.11 and |
+| 1 | HIGH | CVE-2026-112314 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | clnttcp_call() in lib/rpc/clnt_tcp.c in MIT Kerberos 5 (aka krb5) does not free the RPC re |
+| 1 | HIGH | CVE-2026-112320 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The GSS-RPC transport layer in MIT Kerberos 5 (aka krb5) 1.4 and later does not release th |
+| 1 | HIGH | CVE-2026-112321 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The AUTH_GSSAPI handler in lib/rpc/svc_auth_gssapi.c in MIT Kerberos 5 (aka krb5) does not |
+| 1 | HIGH | CVE-2026-112322 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | clean_client() in lib/rpc/svc_auth_gssapi.c in MIT Kerberos 5 (aka krb5) restarts its scan |
+| 1 | HIGH | CVE-2026-112323 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The AUTH_GSSAPI handler in lib/rpc/svc_auth_gssapi.c in MIT Kerberos 5 (aka krb5) 1.5.2 an |
+| 1 | HIGH | CVE-2026-119079 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | decode_sequence_of() in lib/krb5/asn.1/asn1_encode.c in MIT Kerberos 5 (aka krb5) 1.11 and |
 | 1 | HIGH | CVE-2023-2953 | libldap-2.5-0 | 2.5.13+dfsg-5 | kein Fix | php-fpm:9000 | A vulnerability was found in openldap. This security flaw causes a null pointer dereferenc |
 | 1 | HIGH | CVE-2026-112060 | librtmp1 | 2.4+20151223.gitfa8646d.1-2+b2 | kein Fix | php-fpm:9000 | librtmp in RTMPDump through 2.6 contains an out-of-bounds read and heap out-of-bounds writ |
 | 1 | HIGH | CVE-2026-11824 | libsqlite3-0 | 3.40.1-2+deb12u2 | kein Fix | php-fpm:9000 | SQLite before 3.53.2 contains a heap-based buffer overflow vulnerability in the FTS5 full- |
@@ -241,6 +267,7 @@ Nicht gezählt (wären sonst relevant):
 | 1 | MEDIUM | CVE-2026-91769 | php | 8.3.30 | 8.3.35 | php-fpm:9000 | TLS Hostname Verification Falls Back to CN After SAN Mismatch |
 | 1 | MEDIUM | CVE-2026-92842 | php | 8.3.30 | 8.3.35 | php-fpm:9000 | OOB read / info leak in convert.* stream filters when line-break-chars contains NUL |
 | 1 | MEDIUM | CVE-2026-93682 | php | 8.3.30 | 8.3.35 | php-fpm:9000 | Out-of-bounds read in the HTTP stream wrapper when following a redirect with an empty Loca |
+| 1 | MEDIUM | CVE-2026-115819 | libc-bin | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | Calling the wide scanf family of functions (swscanf, fwscanf, wscanf, vswscanf, vfwscanf a |
 | 1 | MEDIUM | CVE-2026-18374 | libc-bin | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | Passing an effectively empty string to the `,ccs=` syntax extension of the mode argument i |
 | 1 | MEDIUM | CVE-2026-19542 | libc-bin | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | Calling tdelete on a sufficiently deep tree in the GNU C Library version 2.1 to 2.44 may w |
 | 1 | MEDIUM | CVE-2026-6238 | libc-bin | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | The deprecated functions ns_printrrf, ns_printrr and fp_nquery in the GNU C Library versio |
@@ -250,6 +277,7 @@ Nicht gezählt (wären sonst relevant):
 | 1 | MEDIUM | CVE-2026-8674 | libc-bin | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | Initializing the DNS stub resolver from an /etc/resolv.conf file, or a LOCALDOMAIN environ |
 | 1 | MEDIUM | CVE-2026-86805 | libc-bin | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | A time-of-check to time-of-use (TOCTOU) race condition in the dynamic loader (ld.so) of th |
 | 1 | MEDIUM | CVE-2026-89092 | libc-bin | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | The nscd service in the GNU C Library 2.3.4 onwards may crash due to a  stack overflow whe |
+| 1 | MEDIUM | CVE-2026-115819 | libc6 | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | Calling the wide scanf family of functions (swscanf, fwscanf, wscanf, vswscanf, vfwscanf a |
 | 1 | MEDIUM | CVE-2026-18374 | libc6 | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | Passing an effectively empty string to the `,ccs=` syntax extension of the mode argument i |
 | 1 | MEDIUM | CVE-2026-19542 | libc6 | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | Calling tdelete on a sufficiently deep tree in the GNU C Library version 2.1 to 2.44 may w |
 | 1 | MEDIUM | CVE-2026-6238 | libc6 | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | The deprecated functions ns_printrrf, ns_printrr and fp_nquery in the GNU C Library versio |
@@ -267,15 +295,34 @@ Nicht gezählt (wären sonst relevant):
 | 1 | MEDIUM | CVE-2026-8458 | libcurl4 | 7.88.1-10+deb12u14 | kein Fix | php-fpm:9000 | libcurl might in some circumstances reuse the wrong connection when asked to do Negotiate- |
 | 1 | MEDIUM | CVE-2026-114690 | libgcc-s1 | 12.2.0-14+deb12u1 | kein Fix | php-fpm:9000 | A flaw was found in GCC. An out-of-bounds memory access vulnerability exists in the libstd |
 | 1 | MEDIUM | CVE-2026-114691 | libgcc-s1 | 12.2.0-14+deb12u1 | kein Fix | php-fpm:9000 | A flaw was found in the libstdc++ component of GCC. An attacker who can provide an excessi |
-| 1 | MEDIUM | CVE-2026-115455 | libgcc-s1 | 12.2.0-14+deb12u1 | kein Fix | php-fpm:9000 | A flaw was found in GCC libstdc++. When an application extracts data into a bitset from a  |
 | 1 | MEDIUM | CVE-2026-107708 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | MIT krb5 through 1.22.2 contains a NULL pointer dereference vulnerability in the KDC's get |
 | 1 | MEDIUM | CVE-2026-107778 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | MIT Kerberos 5 (krb5) through 1.22.2 contains a NULL pointer dereference in make_cred_list |
+| 1 | MEDIUM | CVE-2026-112315 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The RPCSEC_GSS authentication routines in lib/rpc/authgss_prot.c in MIT Kerberos 5 (aka kr |
+| 1 | MEDIUM | CVE-2026-112316 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | xdr_krb5_tl_data() in lib/kadm5/kadm_rpc_xdr.c in MIT Kerberos 5 (aka krb5) does not free  |
+| 1 | MEDIUM | CVE-2026-112317 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | krb5_ktkdb_get_entry() in lib/kdb/keytab.c in MIT Kerberos 5 (aka krb5) 1.2.8 and later do |
+| 1 | MEDIUM | CVE-2026-112318 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The policy RPC stubs in kadmin/server/server_stubs.c in MIT Kerberos 5 (aka krb5) 1.5.3 an |
+| 1 | MEDIUM | CVE-2026-112319 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The GSS-RPC layer in MIT Kerberos 5 (aka krb5) does not enforce size limits on XDR-decoded |
 | 1 | MEDIUM | CVE-2026-107708 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | MIT krb5 through 1.22.2 contains a NULL pointer dereference vulnerability in the KDC's get |
 | 1 | MEDIUM | CVE-2026-107778 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | MIT Kerberos 5 (krb5) through 1.22.2 contains a NULL pointer dereference in make_cred_list |
+| 1 | MEDIUM | CVE-2026-112315 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The RPCSEC_GSS authentication routines in lib/rpc/authgss_prot.c in MIT Kerberos 5 (aka kr |
+| 1 | MEDIUM | CVE-2026-112316 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | xdr_krb5_tl_data() in lib/kadm5/kadm_rpc_xdr.c in MIT Kerberos 5 (aka krb5) does not free  |
+| 1 | MEDIUM | CVE-2026-112317 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | krb5_ktkdb_get_entry() in lib/kdb/keytab.c in MIT Kerberos 5 (aka krb5) 1.2.8 and later do |
+| 1 | MEDIUM | CVE-2026-112318 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The policy RPC stubs in kadmin/server/server_stubs.c in MIT Kerberos 5 (aka krb5) 1.5.3 an |
+| 1 | MEDIUM | CVE-2026-112319 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The GSS-RPC layer in MIT Kerberos 5 (aka krb5) does not enforce size limits on XDR-decoded |
 | 1 | MEDIUM | CVE-2026-107708 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | MIT krb5 through 1.22.2 contains a NULL pointer dereference vulnerability in the KDC's get |
 | 1 | MEDIUM | CVE-2026-107778 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | MIT Kerberos 5 (krb5) through 1.22.2 contains a NULL pointer dereference in make_cred_list |
+| 1 | MEDIUM | CVE-2026-112315 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The RPCSEC_GSS authentication routines in lib/rpc/authgss_prot.c in MIT Kerberos 5 (aka kr |
+| 1 | MEDIUM | CVE-2026-112316 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | xdr_krb5_tl_data() in lib/kadm5/kadm_rpc_xdr.c in MIT Kerberos 5 (aka krb5) does not free  |
+| 1 | MEDIUM | CVE-2026-112317 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | krb5_ktkdb_get_entry() in lib/kdb/keytab.c in MIT Kerberos 5 (aka krb5) 1.2.8 and later do |
+| 1 | MEDIUM | CVE-2026-112318 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The policy RPC stubs in kadmin/server/server_stubs.c in MIT Kerberos 5 (aka krb5) 1.5.3 an |
+| 1 | MEDIUM | CVE-2026-112319 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The GSS-RPC layer in MIT Kerberos 5 (aka krb5) does not enforce size limits on XDR-decoded |
 | 1 | MEDIUM | CVE-2026-107708 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | MIT krb5 through 1.22.2 contains a NULL pointer dereference vulnerability in the KDC's get |
 | 1 | MEDIUM | CVE-2026-107778 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | MIT Kerberos 5 (krb5) through 1.22.2 contains a NULL pointer dereference in make_cred_list |
+| 1 | MEDIUM | CVE-2026-112315 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The RPCSEC_GSS authentication routines in lib/rpc/authgss_prot.c in MIT Kerberos 5 (aka kr |
+| 1 | MEDIUM | CVE-2026-112316 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | xdr_krb5_tl_data() in lib/kadm5/kadm_rpc_xdr.c in MIT Kerberos 5 (aka krb5) does not free  |
+| 1 | MEDIUM | CVE-2026-112317 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | krb5_ktkdb_get_entry() in lib/kdb/keytab.c in MIT Kerberos 5 (aka krb5) 1.2.8 and later do |
+| 1 | MEDIUM | CVE-2026-112318 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The policy RPC stubs in kadmin/server/server_stubs.c in MIT Kerberos 5 (aka krb5) 1.5.3 an |
+| 1 | MEDIUM | CVE-2026-112319 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | The GSS-RPC layer in MIT Kerberos 5 (aka krb5) does not enforce size limits on XDR-decoded |
 | 1 | MEDIUM | CVE-2026-58055 | libnghttp2-14 | 1.52.0-1+deb12u2 | kein Fix | php-fpm:9000 | nghttp2's nghttpx proxy through 1.69.0 forwards an HTTP/1.1 Upgrade request that also carr |
 | 1 | MEDIUM | CVE-2026-13757 | libp11-kit0 | 0.24.1-2 | kein Fix | php-fpm:9000 | A flaw was found in p11-kit. The RPC message attribute parsing functions p11_rpc_message_g |
 | 1 | MEDIUM | CVE-2026-18938 | libp11-kit0 | 0.24.1-2 | kein Fix | php-fpm:9000 | A flaw was found in p11-kit. A local attacker, or one with equivalent access to a reachabl |
@@ -292,7 +339,6 @@ Nicht gezählt (wären sonst relevant):
 | 1 | MEDIUM | CVE-2026-50813 | libsqlite3-0 | 3.40.1-2+deb12u2 | kein Fix | php-fpm:9000 | An issue in SQLite before Fossil check-in 869a51ae84df allows a local attacker to obtain s |
 | 1 | MEDIUM | CVE-2026-114690 | libstdc++6 | 12.2.0-14+deb12u1 | kein Fix | php-fpm:9000 | A flaw was found in GCC. An out-of-bounds memory access vulnerability exists in the libstd |
 | 1 | MEDIUM | CVE-2026-114691 | libstdc++6 | 12.2.0-14+deb12u1 | kein Fix | php-fpm:9000 | A flaw was found in the libstdc++ component of GCC. An attacker who can provide an excessi |
-| 1 | MEDIUM | CVE-2026-115455 | libstdc++6 | 12.2.0-14+deb12u1 | kein Fix | php-fpm:9000 | A flaw was found in GCC libstdc++. When an application extracts data into a bitset from a  |
 | 1 | MEDIUM | CVE-2023-50495 | libtinfo6 | 6.4-4 | kein Fix | php-fpm:9000 | NCurse v6.4-20230418 was discovered to contain a segmentation fault via the component _nc_ |
 | 1 | MEDIUM | CVE-2026-76781 | libxml2 | 2.9.14+dfsg-1.3~deb12u5 | kein Fix | php-fpm:9000 | A flaw was found in libxml2. A local user or an attacker providing a specially crafted XML |
 | 1 | MEDIUM | CVE-2026-27171 | zlib1g | 1:1.2.13.dfsg-1 | kein Fix | php-fpm:9000 | zlib before 1.3.2 allows CPU consumption via crc32_combine64 and crc32_combine_gen64 becau |
@@ -310,6 +356,7 @@ Nicht gezählt (wären sonst relevant):
 | 1 | LOW | CVE-2019-1010024 | libc-bin | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | GNU Libc current is affected by: Mitigation bypass. The impact is: Attacker may bypass ASL |
 | 1 | LOW | CVE-2019-1010025 | libc-bin | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | GNU Libc current is affected by: Mitigation bypass. The impact is: Attacker may guess the  |
 | 1 | LOW | CVE-2019-9192 | libc-bin | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | In the GNU C Library (aka glibc or libc6) through 2.29, check_dst_limits_calc_pos_1 in pos |
+| 1 | LOW | CVE-2026-100290 | libc-bin | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | The regcomp and regexec functions in the GNU C Library version 2.3 to version 2.44 may rea |
 | 1 | LOW | CVE-2026-95818 | libc-bin | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | A stack-based buffer overflow in the dynamic loader (ld.so) of the GNU C Library (glibc) v |
 | 1 | LOW | CVE-2026-97399 | libc-bin | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | The strncasecmp function in the GNU C Library 2.24 and later optimized for the Power8 arch |
 | 1 | LOW | CVE-2010-4756 | libc6 | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | The glob implementation in the GNU C Library (aka glibc or libc6) allows remote authentica |
@@ -319,6 +366,7 @@ Nicht gezählt (wären sonst relevant):
 | 1 | LOW | CVE-2019-1010024 | libc6 | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | GNU Libc current is affected by: Mitigation bypass. The impact is: Attacker may bypass ASL |
 | 1 | LOW | CVE-2019-1010025 | libc6 | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | GNU Libc current is affected by: Mitigation bypass. The impact is: Attacker may guess the  |
 | 1 | LOW | CVE-2019-9192 | libc6 | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | In the GNU C Library (aka glibc or libc6) through 2.29, check_dst_limits_calc_pos_1 in pos |
+| 1 | LOW | CVE-2026-100290 | libc6 | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | The regcomp and regexec functions in the GNU C Library version 2.3 to version 2.44 may rea |
 | 1 | LOW | CVE-2026-95818 | libc6 | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | A stack-based buffer overflow in the dynamic loader (ld.so) of the GNU C Library (glibc) v |
 | 1 | LOW | CVE-2026-97399 | libc6 | 2.36-9+deb12u13 | kein Fix | php-fpm:9000 | The strncasecmp function in the GNU C Library 2.24 and later optimized for the Power8 arch |
 | 1 | LOW | CVE-2024-2379 | libcurl4 | 7.88.1-10+deb12u14 | kein Fix | php-fpm:9000 | libcurl skips the certificate verification for a QUIC connection under certain conditions, |
@@ -330,6 +378,7 @@ Nicht gezählt (wären sonst relevant):
 | 1 | LOW | CVE-2026-87866 | libcurl4 | 7.88.1-10+deb12u14 | kein Fix | php-fpm:9000 | When built with wolfSSL, curl can successfully validate a pinned public key hash against a |
 | 1 | LOW | CVE-2026-9547 | libcurl4 | 7.88.1-10+deb12u14 | kein Fix | php-fpm:9000 | When a libcurl-based application performs transfers via `SCP://` or `SFTP://` and utilizes |
 | 1 | LOW | CVE-2022-27943 | libgcc-s1 | 12.2.0-14+deb12u1 | kein Fix | php-fpm:9000 | libiberty/rust-demangle.c in GNU GCC 11.2 allows stack consumption in demangle_const, as d |
+| 1 | LOW | CVE-2026-115456 | libgcc-s1 | 12.2.0-14+deb12u1 | kein Fix | php-fpm:9000 | A flaw was found in gcc. An attacker could cause a Denial of Service (DoS) by passing a st |
 | 1 | LOW | CVE-2011-3389 | libgnutls30 | 3.7.9-2+deb12u6 | kein Fix | php-fpm:9000 | The SSL protocol, as used in certain configurations in Microsoft Windows and Microsoft Int |
 | 1 | LOW | CVE-2026-67693 | libgnutls30 | 3.7.9-2+deb12u6 | kein Fix | php-fpm:9000 | GnuTLS v3.8.13 does not reject end-entity X.509 certificates that contain a contradictory  |
 | 1 | LOW | CVE-2026-88647 | libgnutls30 | 3.7.9-2+deb12u6 | kein Fix | php-fpm:9000 | GnuTLS v3.8.13 can perhaps unexpectedly trust a certificate on the basis of Common Name wh |
@@ -364,8 +413,38 @@ Nicht gezählt (wären sonst relevant):
 | 1 | LOW | CVE-2026-119377 | libsqlite3-0 | 3.40.1-2+deb12u2 | kein Fix | php-fpm:9000 | SQLite before 3.54.0 contains an authorization bypass vulnerability in lookupName() that i |
 | 1 | LOW | CVE-2025-27587 | libssl3 | 3.0.19-1~deb12u2 | kein Fix | php-fpm:9000 | OpenSSL 3.0.0 through 3.3.2 on the PowerPC architecture is vulnerable to a Minerva attack, |
 | 1 | LOW | CVE-2022-27943 | libstdc++6 | 12.2.0-14+deb12u1 | kein Fix | php-fpm:9000 | libiberty/rust-demangle.c in GNU GCC 11.2 allows stack consumption in demangle_const, as d |
+| 1 | LOW | CVE-2026-115456 | libstdc++6 | 12.2.0-14+deb12u1 | kein Fix | php-fpm:9000 | A flaw was found in gcc. An attacker could cause a Denial of Service (DoS) by passing a st |
 | 1 | LOW | CVE-2025-6141 | libtinfo6 | 6.4-4 | kein Fix | php-fpm:9000 | A vulnerability has been found in GNU ncurses up to 6.5-20250322 and classified as problem |
 | 1 | LOW | CVE-2026-11979 | libxml2 | 2.9.14+dfsg-1.3~deb12u5 | kein Fix | php-fpm:9000 | libxml2 is vulnerable to multiple stack-based buffer overflows in the xmlcatalog utility w |
+| 1 | UNKNOWN | CVE-2026-107364 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-107884 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-111423 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-118380 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-71199 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-71200 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-107364 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-107884 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-111423 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-118380 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-71199 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-71200 | libk5crypto3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-107364 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-107884 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-111423 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-118380 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-71199 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-71200 | libkrb5-3 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-107364 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-107884 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-111423 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-118380 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-71199 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-71200 | libkrb5support0 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 |  |
+| 1 | UNKNOWN | CVE-2026-107496 | libssl3 | 3.0.19-1~deb12u2 | kein Fix | php-fpm:9000 | Issue summary: Encrypting a CMS message to an EC certificate whose group order is 1 may ca |
+| 1 | UNKNOWN | CVE-2026-88822 | libssl3 | 3.0.19-1~deb12u2 | kein Fix | php-fpm:9000 | Issue summary: QUIC, when performing automated peer detection, may allow uninitialized sta |
+| 1 | UNKNOWN | CVE-2026-88823 | libssl3 | 3.0.19-1~deb12u2 | kein Fix | php-fpm:9000 | Issue summary: The AES-GCM-SIV implementation treats a zero-length Additional Authenticate |
+| 1 | UNKNOWN | CVE-2026-95691 | libssl3 | 3.0.19-1~deb12u2 | kein Fix | php-fpm:9000 | Issue summary: A retransmitted QUIC CRYPTO frame can release packet storage while the TLS  |
+| 1 | UNKNOWN | CVE-2026-95692 | libssl3 | 3.0.19-1~deb12u2 | kein Fix | php-fpm:9000 | Issue summary: Setting an AES-GCM-SIV IV shorter than the expected nonce length via EVP_Ci |
 | 4 | CRITICAL | CVE-2026-12087 | libperl5.36 | 5.36.0-7+deb12u3 | 5.36.0-7+deb12u4 | – | Socket versions before 2.041 for Perl have an out-of-bounds heap read.  In Socket.xs, pack |
 | 4 | CRITICAL | CVE-2026-13221 | libperl5.36 | 5.36.0-7+deb12u3 | 5.36.0-7+deb12u4 | – | Perl versions before 5.40.5-RC1, from 5.41.0 before 5.42.3-RC1, from 5.43.0 before 5.43.10 |
 | 4 | CRITICAL | CVE-2026-42496 | libperl5.36 | 5.36.0-7+deb12u3 | 5.36.0-7+deb12u4 | – | Archive::Tar versions before 3.08 for Perl extract symlinks with attacker controlled targe |
@@ -564,10 +643,10 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 
 | Typ | Name | Version | Fundort | Genutzt von |
 |---|---|---|---|---|
-| host | linux-kernel | 6.18.44-fc-v310 | Host | Host |
-| host | docker-engine | 29.9.2 | Host | Host |
-| host | containerd | v2.4.2 | Host | Host |
-| host | runc | 1.5.2 | Host | Host |
+| host | linux-kernel | 6.12.8+ | Host | Host |
+| host | docker-engine | 29.1.3 | Host | Host |
+| host | containerd | 2.2.1 | Host | Host |
+| host | runc | 1.3.4-0ubuntu1~24.04.1 | Host | Host |
 | host | docker-init | 0.19.0 | Host | Host |
 
 ## Anhang
@@ -586,20 +665,20 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        13ce94a908d143626c065ef8bb09c7ffd46d8cbad1d1f1c4592ad3399621964c
-Gestartet: 2026-11-07T22:07:06.994444132Z
+ID:        fa4605275d002063f7962fd3b3efedd93865b1c917b19bd7068fedcc783dc7b3
+Gestartet: 2026-11-13T11:39:10.050665811Z
 Kommando:  ["docker-php-entrypoint"] ["php-fpm"]
-Mounts:    /home/user/container-security-scan/beispiele/umgebung/php->/srv/app
-Host:      Kernel 6.18.44-fc-v310
+Mounts:    /workspaces/container-security-scan/dla-marbach/container-security-scan/beispiele/umgebung/php->/srv/app
+Host:      Kernel 6.12.8+
 ```
 
 ### Laufende Prozesse
 
 ```
 PID                 USER                COMMAND
-16750               root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
-16793               www-data            php-fpm: pool www
-16794               www-data            php-fpm: pool www
+3297                root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
+3517                www-data            php-fpm: pool www
+3518                www-data            php-fpm: pool www
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher
