@@ -2763,9 +2763,12 @@ def dienst_sites(svc, web):
 
 def adresse_zufuegen(liste, eintrag):
     """Webadresse in eine Liste übernehmen: neu anhängen bzw. eine vorhandene durch einen erreichbaren Weg
-    ersetzen (der erste erreichbare Weg bleibt). Liefert, ob sich die Liste geändert hat."""
+    ersetzen (der erste erreichbare Weg bleibt). Zusammengeführt wird nur bei gleicher URL, Website, gleichem
+    Eingangsport und gleicher Herkunft (lokal), sonst gingen Docroot-Zuordnung bzw. Umgehung von "nur
+    localhost" verloren. Liefert, ob sich die Liste geändert hat."""
     for i, e in enumerate(liste):
-        if e["url"] == eintrag["url"]:
+        if e["url"] == eintrag["url"] and e.get("site") is eintrag.get("site") and \
+                e.get("port") == eintrag.get("port") and e.get("lokal") == eintrag.get("lokal"):
             if eintrag["erreichbar"] and not e["erreichbar"]:
                 liste[i] = eintrag
                 return True
@@ -2817,15 +2820,15 @@ def webadressen(services, web):
             for site in dienst_sites(front, web):
                 eintraege = [e for e in front["webadressen"] if fuer_site(e, site)]
                 for pfad, ziel in site["weiter"]:
-                    loopback = bool(re.match(r"(localhost|127\.|::1$)", split_target(ziel)[0]))
+                    # über dasselbe Loopback (Host-Netzwerk, gemeinsamer Netzwerk-Namespace; auch über upstream-Blöcke)
+                    # kommt die Anfrage von 127.0.0.1, über Container-IP bzw. veröffentlichten Port nicht
+                    ueber_loopback = set(backend_containers(ziel, web, nur_loopback=True))
                     backs = []
                     for ct, port in backend_containers(ziel, web):
                         if ct == web["self"]:
                             backs.append((ziel_von.get(port), port))
                         elif port != "*":
-                            # über dasselbe Loopback (Host-Netzwerk, gemeinsamer Netzwerk-Namespace) kommt die Anfrage
-                            # von 127.0.0.1, über Container-IP bzw. veröffentlichten Port nicht
-                            lokal = loopback and ct in web.get("loopback", [])
+                            lokal = (ct, port) in ueber_loopback
                             liste = web["ziel_urls"].setdefault((ct, port), [])
                             for e in eintraege:
                                 adresse_zufuegen(liste, {"url": url_pfad(e["url"], pfad), "erreichbar": e["erreichbar"],
@@ -4426,8 +4429,9 @@ def abschliessen(z, prefix, basisname, known_name, a, comps, pkgs, osinfo, servi
         ", ".join(public) or "nichts", base))
     for svc in services:          # Webadressen der Dienste, erreichbare zuerst
         if svc.get("webadressen"):
-            offen = [e["url"] for e in svc["webadressen"] if e["erreichbar"]]
-            intern = [e["url"] for e in svc["webadressen"] if not e["erreichbar"]]
+            offen = list(OrderedDict.fromkeys(e["url"] for e in svc["webadressen"] if e["erreichbar"]))
+            intern = list(OrderedDict.fromkeys(e["url"] for e in svc["webadressen"]
+                                               if not e["erreichbar"] and e["url"] not in offen))
             print("%s:   Webadressen %s: %s" % (prefix, svc["label"], "; ".join(
                 x for x in ("erreichbar: " + webadressen_text(offen, 8) if offen else "",
                             "nicht von außen: " + webadressen_text(intern, 4) if intern else "") if x)))

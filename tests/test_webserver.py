@@ -829,6 +829,32 @@ class Webadressen(unittest.TestCase):
         self.assertFalse(scanner.adresse_zufuegen(liste, {"url": "u", "erreichbar": False, "weg": "c"}))
         self.assertEqual(liste, [{"url": "u", "erreichbar": True, "weg": "b"}])
 
+    def test_gleiche_url_eigene_website_und_proxy(self):
+        # dieselbe URL vom Proxy übernommen und als eigene Website: beide bleiben (Website für den Docroot), ebenso
+        # bei anderer Herkunft (lokal); die Konsole nennt die URL nur einmal
+        site = {"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["www.example.org"], "datei": "www.conf",
+                "roots": ["/var/www/html"], "listen": [{"adresse": "*", "port": "80", "ssl": False}], "weiter": []}
+        via = [{"url": "http://www.example.org/", "erreichbar": True, "weg": "nginx:443 auf dem Host", "lokal": False},
+               {"url": "http://www.example.org/", "erreichbar": True, "weg": "haproxy:80 auf dem Host", "lokal": True}]
+        nginx = dienst("nginx:80", "/usr/sbin/nginx", ["80"], exposed=True)
+        scanner.webadressen([nginx], web(self="app", sites=[site], via_urls={"80": via}))
+        self.assertEqual(sorted((e["site"] is site, e["lokal"]) for e in nginx["webadressen"]),
+                         [(False, False), (False, True), (True, False)])
+        js = scanner.comp("js-lib", "jquery", "1.12.4", "/var/www/html/js/jquery.js")
+        js["aktiv"] = ["nginx:80"]
+        scanner.komponenten_webadressen([js], [nginx])
+        self.assertEqual(js["webadressen"], ["http://www.example.org/"])
+
+    def test_lokal_ueber_upstream(self):
+        # upstream mit 127.0.0.1 im Host-Netzwerk: Anfrage kommt über Loopback (lokal), über die Container-IP nicht
+        w = dict(self.w, containers={"172.18.0.5": "api"}, loopback=["hostapp"],
+                 upstreams={"status": ["127.0.0.1:8080"], "api": ["172.18.0.5:3000"]})
+        w["sites"] = [dict(w["sites"][0], weiter=[("/status/", "http://status/"), ("/api/", "http://api/")])]
+        services = [dienst("nginx:443", "/usr/sbin/nginx", ["443"], exposed=True)]
+        scanner.webadressen(services, w)
+        self.assertEqual([e["lokal"] for e in w["ziel_urls"][("hostapp", "8080")]], [True])
+        self.assertEqual([e["lokal"] for e in w["ziel_urls"][("api", "3000")]], [False])
+
     def test_nur_localhost_hinter_proxy_von_ausserhalb(self):
         # Apache-Statusseite "nur localhost": ein Proxy auf dem Host vor der Container-IP umgeht sie nicht, einer
         # über dasselbe Loopback schon
