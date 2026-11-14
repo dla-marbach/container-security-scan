@@ -18,8 +18,8 @@ Was Image-Scanner wie Trivy oder Grype nicht sehen:
 sudo /usr/local/sbin/container-security-scan-lauf
 ```
 
-Ausschnitt aus dem Lauf über die [Testumgebung](beispiele/umgebung/compose.yml) (nginx vor PHP-FPM und Node.js,
-Traefik mit Docker-Socket; vollständig: [Konsolenausgabe](beispiele/ausgabe.txt)):
+Ausschnitt aus dem Lauf über die [Testumgebung](beispiele/umgebung/compose.yml) (nginx vor PHP-FPM und Node.js;
+vollständig: [Konsolenausgabe](beispiele/ausgabe.txt)):
 
 ```
 app-php: RELEVANTE SCHWACHSTELLEN – 1384 Befunde, davon 65 relevant (65 neu, 4 aktiv ausgenutzt), … öffentlich: php-fpm:9000 – Bericht: …/scan_app-php.md
@@ -27,7 +27,7 @@ app-php:   Webadressen php-fpm:9000: erreichbar: http://shop.example.org:8080/ (
 app-php:   CVE-2026-109618 (CRITICAL KEV) in php 8.3.30 – behoben in 8.3.36 – genutzt von php-fpm:9000 – Webadressen: http://shop.example.org:8080/ (\.php$) – aktiv ausgenutzt (KEV seit 2026-10-26)
 app-php:   CVE-2022-29248 (HIGH) in guzzlehttp/guzzle 7.4.0 – behoben in 7.4.3 – genutzt von php-fpm:9000 (Docroot unbekannt)
 …
-app-traefik:   CONF-SOCKET: /var/run/docker.sock eingebunden als /var/run/docker.sock: Zugriff auf die Container-Laufzeit = root auf dem Host (auch schreibgeschützt)
+app-node: WARNUNG: Öffentlicher Dienst node:3000 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image
 …
 ERGEBNIS: FUNDE (Rückgabewert 1) – <rechner>
 ```
@@ -35,8 +35,8 @@ ERGEBNIS: FUNDE (Rückgabewert 1) – <rechner>
 - Von 1384 Befunden sind 65 **relevant**: php-fpm ist über nginx erreichbar (Priorität P1), die Lücken sind
   schwer bzw. aktiv ausgenutzt (`KEV`), und es gibt einen Fix.
 - `Webadressen` zeigt, über welche Adresse die Komponente erreichbar ist.
-- `CONF-SOCKET` ist eine [gefährliche Einstellung](#gefährliche-einstellungen-des-containers): Wer Traefik
-  übernimmt, ist root auf dem Host.
+- [Warnungen](#warnungen) wie „läuft als root“ ändern den Rückgabewert nicht, [gefährliche
+  Einstellungen](#gefährliche-einstellungen-des-containers) wie ein eingebundener `docker.sock` schon.
 - Der Bericht je Container ([Beispiel](beispiele/scan_app-php.md)) enthält alle Befunde, Dienste und Ports.
 
 Weitere Beispiele: SLES-15-Server mit nginx → Apache → php-fpm und firewalld ([Bericht](beispiele/host_web01.md),
@@ -246,8 +246,9 @@ mit `--nur-behebbare`:
 | `CONF-SECCOMP-UNCONFINED`, `CONF-APPARMOR-UNCONFINED` | Schutzprofil abgeschaltet |
 | `CONF-HOST-PFAD` | Systempfad des Hosts beschreibbar eingebunden: `/etc` (oder Teile wie `shadow`, `sudoers`, `cron*`), `/root`, `/boot`, `/bin`, `/sbin`, `/lib*`, `/usr`, `/proc`, `/sys`, `/dev`, `/home` bzw. `~/.ssh`, `/var/lib/docker` |
 
-Typischer Fall ist Traefik mit `docker.sock`: besser einen Socket-Proxy mit Lesezugriff vorschalten (z. B.
-`tecnativa/docker-socket-proxy`), sonst eine [Ausnahme](#ausnahmen) mit dem Containernamen.
+Typischer Fall ist ein Werkzeug für Monitoring oder Deployment mit `docker.sock`: besser einen Socket-Proxy mit
+Lesezugriff vorschalten (z. B. `tecnativa/docker-socket-proxy`), sonst eine [Ausnahme](#ausnahmen) mit dem
+Containernamen.
 
 ### Einstellungen der Webserver
 
@@ -283,7 +284,7 @@ für root beschreibbar; anfangs nur auskommentierte [Beispiele](installation/aus
 ```
 # Kennung       Paket oder *  gültig bis  Begründung
 CVE-2024-8926   php           2027-06-30  betrifft nur PHP-CGI unter Windows (geprüft 2026-11-05)
-CONF-SOCKET     traefik       2027-03-31  liest nur Labels, Umstieg auf Socket-Proxy geplant
+CONF-SOCKET     monitoring    2027-03-31  liest nur den Status der Container, Socket-Proxy geplant
 WEB-AUTOINDEX   downloads.example.org  2027-06-30  Verzeichnisliste gewollt, nur öffentliche Dateien
 ```
 
