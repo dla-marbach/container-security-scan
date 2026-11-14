@@ -855,6 +855,38 @@ class Webadressen(unittest.TestCase):
         self.assertEqual([e["lokal"] for e in w["ziel_urls"][("hostapp", "8080")]], [True])
         self.assertEqual([e["lokal"] for e in w["ziel_urls"][("api", "3000")]], [False])
 
+    def test_nur_loopback_je_weg(self):
+        # Dienst nur auf Loopback, Port erreichbar über einen Proxy mit demselben Loopback: die Adresse eines
+        # zweiten Proxys über die Container-IP erreicht ihn trotzdem nicht
+        node = dienst("node:3000", "/usr/local/bin/node", ["3000"], exposed=True)
+        node["bindungen"] = {"3000": "localhost"}
+        via = [{"url": "https://a.example/", "erreichbar": True, "weg": "nginx:443 in proxy", "lokal": True},
+               {"url": "https://b.example/", "erreichbar": True, "weg": "nginx:443 auf dem Host", "lokal": False}]
+        scanner.webadressen([node], web(self="app", via_urls={"3000": via}))
+        self.assertEqual([(e["url"], e["erreichbar"]) for e in node["webadressen"]],
+                         [("https://a.example/", True), ("https://b.example/", False)])
+
+    def test_eingangsport_bei_komponenten_und_einstellungen(self):
+        # Websites an 80 (/srv/a) und 8080 (/srv/b); weitergeleitet nur an Port 80: gilt nicht für jQuery im Docroot
+        # von 8080 und umgeht dort nicht "nur localhost"
+        a = {"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["a.example"], "datei": "a.conf", "roots": ["/srv/a"],
+             "listen": [{"adresse": "*", "port": "80", "ssl": False}], "weiter": []}
+        b = dict(a, namen=["b.example"], datei="b.conf", roots=["/srv/b"],
+                 listen=[{"adresse": "*", "port": "8080", "ssl": False}])
+        e = {"url": "https://public.example/app/", "erreichbar": True, "weg": "nginx:443 auf dem Host", "lokal": True}
+        nginx = dienst("nginx:80,8080", "/usr/sbin/nginx", ["80", "8080"], exposed=True)
+        konf = [{"id": "WEB-STATUS", "exe": "/usr/sbin/nginx", "site": site, "pfad": "/status", "nur_lokal": True,
+                 "text": "nginx: stub_status nur für localhost"} for site in (a, b)]
+        w = web(self="app", sites=[a, b], via_urls={"80": [e]}, web_konf=konf)
+        scanner.webadressen([nginx], w)
+        js_a, js_b = (scanner.comp("js-lib", "jquery", "1.12.4", r + "/js/jquery.js") for r in ("/srv/a", "/srv/b"))
+        for js in (js_a, js_b):
+            js["aktiv"] = ["nginx:80,8080"]
+        scanner.komponenten_webadressen([js_a, js_b], [nginx])
+        self.assertIn("https://public.example/app/", js_a["webadressen"])
+        self.assertEqual(js_b["webadressen"], ["http://b.example:8080/"])
+        self.assertEqual([k["pkg"] for k in scanner.webserver_pruefen([nginx], w)], ["a.example"])
+
     def test_nur_localhost_hinter_proxy_von_ausserhalb(self):
         # Apache-Statusseite "nur localhost": ein Proxy auf dem Host vor der Container-IP umgeht sie nicht, einer
         # über dasselbe Loopback schon

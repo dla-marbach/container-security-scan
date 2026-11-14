@@ -2460,6 +2460,7 @@ def mark_usage(comps, procs, owners, web):
                                        for port in p["ports"] for e in web["published"].get(port, [])],
                          "exposed": exposed, "unklar": unklar, "frontends": list(p.get("frontends", ())),
                          "ports": OrderedDict((port, port_erreichbar(p, port, addr, web)) for port, addr in p["ports"].items()),
+                         "bindungen": OrderedDict(p["ports"]),     # Port -> Adresse (alle, localhost, IP)
                          # Backends eines öffentlichen Dienstes, die keinem Container zugeordnet werden können
                          # (variable Ziele: siehe unklar)
                          "unresolved": [b for b in backends if wirkt[label] and not backend_containers(b, web)
@@ -2777,6 +2778,13 @@ def adresse_zufuegen(liste, eintrag):
     return True
 
 
+def fuer_site(e, site):
+    """Gilt eine Webadresse für diese Website: ihre eigene bzw. eine weitergeleitete, die an einem ihrer Ports
+    ankommt (Port unbekannt, z.B. Unix-Socket: für alle)?"""
+    return e["site"] is site or (e["site"] is None and (e.get("port") is None or
+                                                        any(l["port"] == e["port"] for l in site["listen"])))
+
+
 def webadressen(services, web):
     """Webadressen je Dienst (svc["webadressen"] = [{"url", "erreichbar", "weg", "site", "port", "lokal"}]): die
     eigenen Websites (an Ports, an denen er lauscht), die Pfade, die ein Webserver im selben Container bzw. auf
@@ -2792,8 +2800,11 @@ def webadressen(services, web):
         for port in svc.get("ports", {}):
             offen = svc["ports"][port][1]
             for e in web.get("via_urls", {}).get(port, []):
+                # nur auf Loopback: erreicht nur ein Proxy über dasselbe Loopback, auch wenn ein anderer Weg den Port
+                # erreichbar macht
+                weg_offen = offen and (e.get("lokal", False) or not nur_lokal(svc.get("bindungen", {}).get(port, "")))
                 adresse_zufuegen(svc["webadressen"], {
-                    "url": e["url"], "erreichbar": e["erreichbar"] and offen, "weg": e["weg"] + " → " + svc["label"],
+                    "url": e["url"], "erreichbar": e["erreichbar"] and weg_offen, "weg": e["weg"] + " → " + svc["label"],
                     "site": None, "port": port, "lokal": e.get("lokal", False)})
         for site in dienst_sites(svc, web):
             for l in site["listen"]:
@@ -2811,9 +2822,6 @@ def webadressen(services, web):
     web["ziel_urls"] = OrderedDict()
     wo = " auf dem Host" if web.get("ist_host") else " in " + web["self"]
 
-    def fuer_site(e, site):
-        return e["site"] is site or (e["site"] is None and (e["port"] is None or
-                                                            any(l["port"] == e["port"] for l in site["listen"])))
     for _ in range(3):       # Weiterleitungen, auch über mehrere Stufen
         neu = False
         for front in services:
@@ -2868,7 +2876,9 @@ def komponenten_webadressen(comps, services):
             treffer = []
             for s in svcs:
                 eigen = [e for e in s.get("webadressen", []) if e["site"] is not None and passt(c, e["site"], genau)]
-                treffer += eigen + ([e for e in s.get("webadressen", []) if e["site"] is None] if eigen else [])
+                # weitergeleitete Adressen nur, wenn sie an einem Port einer dieser Websites ankommen
+                treffer += eigen + [e for e in s.get("webadressen", []) if e["site"] is None
+                                    and any(fuer_site(e, x["site"]) for x in eigen)]
         else:
             treffer = [e for s in svcs for e in s.get("webadressen", [])]
         for e in treffer:
@@ -2890,7 +2900,8 @@ def webserver_pruefen(services, web):
     for k in web.get("web_konf", []):
         svcs = [s for s in services if s.get("exe") == k["exe"]]
         eigen = [e for s in svcs for e in s.get("webadressen", []) if k["site"] is None or e["site"] is k["site"]]
-        ueber_proxy = [e for s in svcs for e in s.get("webadressen", []) if e["site"] is None and e["erreichbar"]]
+        ueber_proxy = [e for s in svcs for e in s.get("webadressen", []) if e["site"] is None and e["erreichbar"]
+                       and (k["site"] is None or fuer_site(e, k["site"]))]
         # "nur localhost" umgeht nur ein Proxy, dessen Anfragen von dieser Maschine bzw. über dasselbe Loopback kommen
         lokal_proxy = [e for e in ueber_proxy if e.get("lokal", True)]
         erreichbar = any(e["erreichbar"] for e in eigen) or bool(ueber_proxy) or (

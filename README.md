@@ -315,7 +315,11 @@ einen Pfad an einen Container weiter (per Container-IP, Name oder veröffentlich
 `proxy_pass http://127.0.0.1:7776/`), erscheint die Adresse beim Dienst im Container. Je Adresse steht im Bericht, ob sie erreichbar ist (wie der Port, über den
 die Anfrage hereinkommt), auf der Konsole je Dienst eine Zeile `Webadressen …`, bei jedem Fund die Adressen
 der Dienste, die die Komponente nutzen (Bibliotheken im Docroot: nur die Websites mit diesem Docroot). Die
-Adressen stammen aus der Konfiguration, nicht aus dem DNS.
+Adressen stammen aus der Konfiguration, nicht aus dem DNS. Grenzen: Eine weitergeleitete Adresse gilt für alle
+Websites am Port des Ziels (welche antwortet, entscheidet der Host-Header; im Zweifel eine Adresse zu viel), und
+über mehrere Stufen werden die Pfade aneinandergehängt. Das stimmt, wenn das Ziel den Pfad `/` hat
+(`location /app/ { proxy_pass http://mitte/; }`), sonst nicht: mit `proxy_pass http://mitte/dienst/` und dort
+`location /dienst/api/` ergibt sich `/app/dienst/api/` statt `/app/api/`.
 
 ### Einstellungen der Webserver
 
