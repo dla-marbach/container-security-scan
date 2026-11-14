@@ -1,6 +1,7 @@
 #!/bin/bash
 # Beispiele neu erzeugen (README: Releases): Testumgebung starten, alle Container scannen, Berichte nach
-# beispiele/ schreiben; danach ein SLES-Server ohne Docker (beispiele/umgebung/host/, als Container) mit --host.
+# beispiele/ schreiben, dazu ein Einzelscan (nur Konsole); danach ein SLES-Server ohne Docker
+# (beispiele/umgebung/host/, als Container) mit --host.
 # Voraussetzungen: Docker mit Compose, freie Ports 8080 und 8081, Daten unter daten/ (mit SUSE;
 # ./container-security-scan.py --db-aktualisieren). Als root, wie im Betrieb (sonst Warnung zum Host):
 #   sudo bash beispiele/erzeugen.sh
@@ -38,6 +39,18 @@ for f in beispiele/scan_*; do
 done
 find beispiele -maxdepth 1 -name 'scan_*.cdx.json' ! -name scan_app-node.cdx.json -delete
 sed -E -i 's/(scan_[A-Za-z0-9_.-]+)_[0-9]{8}_[0-9]{6}/\1/g' beispiele/ausgabe.txt beispiele/scan_*.md
+
+# Einzelscan eines Containers wie über den Wrapper mit Containername (container-security-scan-lauf app-proxy):
+# nur die Konsolenausgabe, Pfad des Berichts wie im Betrieb (der Bericht selbst entspricht scan_app-proxy.md)
+EINZELN=$(mktemp -d)
+rc_einzeln=0
+python3 -I container-security-scan.py --db daten --nur-behebbare app-proxy "$EINZELN" \
+    > beispiele/ausgabe-einzeln.txt 2>&1 || rc_einzeln=$?
+rm -rf "$EINZELN"
+[ "$rc_einzeln" -le 1 ] \
+    || { cat beispiele/ausgabe-einzeln.txt; echo "FEHLER: Rückgabewert $rc_einzeln (Einzelscan)" >&2; exit 2; }
+sed -E -i "s#$EINZELN/(scan_[A-Za-z0-9_.-]+)_[0-9]{8}_[0-9]{6}#/var/log/container-security-scan/berichte/\1#g" \
+    beispiele/ausgabe-einzeln.txt
 "${COMPOSE[@]}" down
 
 # SLES-Server ohne Docker: Dienste aus den SLES-Paketen, Scan mit --host im Container (root mit den Rechten wie

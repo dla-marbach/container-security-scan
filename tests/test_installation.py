@@ -107,6 +107,11 @@ class BeispieleTest(unittest.TestCase):
             self.assertEqual([t.get("version") for t in tools], [scanner.VERSION], n)
         self.assertTrue(lesen(os.path.join(BEISPIELE, "ausgabe.txt")).startswith(
             "container-security-scan %s\n" % scanner.VERSION))
+        # Einzelscan wie über den Wrapper mit Containername: aktuelle Version, keine Zeilen für den Host
+        einzeln = lesen(os.path.join(BEISPIELE, "ausgabe-einzeln.txt"))
+        self.assertIn("\ncontainer-security-scan %s\n" % scanner.VERSION, einzeln)
+        self.assertNotRegex(einzeln, r"(?m)^Host:")
+        self.assertRegex(einzeln, r"(?m)^app-proxy: .* – Bericht: /var/log/container-security-scan/berichte/scan_app-proxy\.md$")
 
     def test_links_im_readme(self):
         for md in ("README.md", os.path.join("tests", "README.md")):

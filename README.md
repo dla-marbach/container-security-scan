@@ -411,6 +411,8 @@ nginx als öffentlicher Reverse Proxy vor Node.js 22.22.0 (Node2Shell) und PHP 8
 (PHP2Shell) mit Anwendung, `vendor/` und eingebettetem jQuery 1.12.4 im Volume; Traefik mit Docker-Socket
 (gefährliche Einstellung) und Ziel per Label. Berichte für alle vier Container, das SBOM als Beispiel des
 Formats nur für Node.js ([`scan_app-node.cdx.json`](beispiele/scan_app-node.cdx.json)), ohne `.sha256`.
+Ein Einzelscan wie über den Wrapper mit Containername (`container-security-scan-lauf app-proxy`):
+[Konsolenausgabe](beispiele/ausgabe-einzeln.txt), ohne Zeilen für den Host.
 Dazu ein SLES-15-Server ohne Docker ([`beispiele/umgebung/host/`](beispiele/umgebung/host/), als Container mit
 firewalld), Lauf `--host --alle-container --nur-behebbare` ([Bericht](beispiele/host_web01.md),
 [Konsolenausgabe](beispiele/ausgabe-host.txt)): nginx (öffentlich) vor Apache (nur Loopback) vor php-fpm mit
