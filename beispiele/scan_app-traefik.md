@@ -2,9 +2,9 @@
 
 - Image: traefik:v3.6 (sha256:31267173a15b)  
 - OS: Alpine Linux v3.24  
-- Zeitpunkt: 2026-11-13 22:58  
-- Scanner: container-security-scan 0.4.0  
-- Datenbank: OSV, Stand 2026-11-13 03:23 UTC (daten)  
+- Zeitpunkt: 2026-11-14 08:09  
+- Scanner: container-security-scan 0.5.0  
+- Datenbank: OSV, Stand 2026-11-14 07:57 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 0 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
 ## Ergebnis
@@ -67,12 +67,12 @@ Hinweis: 10 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit 
 
 | Priorität | CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN |
 |---|---|---|---|---|---|
-| P1 Dienst mit veröffentlichtem Port | 6 | 28 | 16 | 4 | 10 |
+| P1 Dienst mit veröffentlichtem Port | 6 | 28 | 19 | 4 | 10 |
 | P2 Dienst intern | 0 | 0 | 0 | 0 | 0 |
 | P3 Prozess ohne Port | 0 | 0 | 0 | 0 | 0 |
 | P4 nicht genutzt / dev | 5 | 17 | 2 | 0 | 0 |
 
-## Befunde (86 von 88; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
+## Befunde (89 von 91; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
 
 | P | Schwere | ID | Paket | Installiert | Behoben in | Genutzt von | Webadressen | Titel |
 |---|---|---|---|---|---|---|---|---|
@@ -118,7 +118,10 @@ Hinweis: 10 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit 
 | 1 | MEDIUM | CVE-2026-88878 | github.com/traefik/traefik/v3 | v3.6.25 | 3.7.12 | traefik:80 | – | Traefik: respondingTimeouts.readTimeout is not applied to HTTP/3, leaving slow-body upload |
 | 1 | MEDIUM | CVE-2026-88879 | github.com/traefik/traefik/v3 | v3.6.25 | 3.7.12 | traefik:80 | – | Traefik: ForwardAuth identity spoofing via dot-form header alias |
 | 1 | MEDIUM | CVE-2026-81871 | go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc | v0.20.0 | 0.21.0 | traefik:80 | – | OpenTelemetry-Go: Log gRPC exporter ignores env TLS certs, bypassing mTLS/pinning |
+| 1 | MEDIUM | CVE-2026-128085 | go.opentelemetry.io/otel/sdk | v1.44.0 | 1.47.0 | traefik:80 | – | opentelemetry-go: AttributeValueLengthLimit is fully bypassed by attribute values composed |
+| 1 | MEDIUM | CVE-2026-128085 | go.opentelemetry.io/otel/sdk/log | v0.20.0 | 1.47.0 | traefik:80 | – | opentelemetry-go: AttributeValueLengthLimit is fully bypassed by attribute values composed |
 | 1 | MEDIUM | CVE-2026-81872 | go.opentelemetry.io/otel/sdk/log | v0.20.0 | 0.21.0 | traefik:80 | – | OpenTelemetry-Go: BatchProcessor can busy-spin when export buffer is full |
+| 1 | MEDIUM | CVE-2026-128085 | go.opentelemetry.io/otel/trace | v1.44.0 | 1.47.0 | traefik:80 | – | opentelemetry-go: AttributeValueLengthLimit is fully bypassed by attribute values composed |
 | 1 | MEDIUM | CVE-2026-84303 | google.golang.org/grpc | v1.82.1 | 1.83.1 | traefik:80 | – | gRPC-Go: xDS RBAC HTTP Filter bypass via mixed-case Header Matching and gRFC A41 validatio |
 | 1 | MEDIUM | CVE-2026-54462 | knative.dev/pkg | v0.0.0-20241021183759-9b9d535af5ad | 0.0.0-20260531000007-52dbd5ece63f | traefik:80 | – | knative.dev/pkg admission webhooks allow unbounded request-body memory exhaustion |
 | 1 | MEDIUM* | CVE-2026-111943 | stdlib | 1.26.5 | 1.26.10 | traefik:80 | – | Distrust compromised intermediate certificates in crypto/x509 |
@@ -173,7 +176,7 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 
 | Typ | Name | Version | Fundort | Genutzt von |
 |---|---|---|---|---|
-| host | linux-kernel | 6.18.44-fc-v445 | Host | Host |
+| host | linux-kernel | 6.18.44-fc-v470 | Host | Host |
 | host | docker-engine | 29.9.2 | Host | Host |
 | host | containerd | v2.4.2 | Host | Host |
 | host | runc | 1.5.2 | Host | Host |
@@ -192,27 +195,28 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        296152fbbe72842935a7bf8c7038d8316484f10a086e959d5528c6d2a8f1dfca
-Gestartet: 2026-11-13T22:57:43.163241144Z
+ID:        fb2f9b0f4c914b49bdf55d1b5db66af03c9c08f04e3b0e887abfa1d4c701f917
+Gestartet: 2026-11-14T08:08:57.576819351Z
 Kommando:  ["/entrypoint.sh"] ["--providers.docker=true", "--providers.docker.exposedbydefault=false", "--entrypoints.web.address=:80"]
 Mounts:    /var/run/docker.sock->/var/run/docker.sock
-Host:      Kernel 6.18.44-fc-v445
+Host:      Kernel 6.18.44-fc-v470
 ```
 
 ### Laufende Prozesse
 
 ```
 PID                 USER                COMMAND
-16922               root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
-19784               nobody              timeout 50 python -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-19814               nobody              timeout 50 python -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-19844               nobody              timeout 50 nginx -v
-19874               nobody              timeout 50 httpd -v
-19903               nobody              timeout 50 apache2 -v
-19933               nobody              timeout 50 java -XX:-UsePerfData -version
-19963               nobody              timeout 50 mariadbd --version
-19993               nobody              timeout 50 mysqld --version
-20022               nobody              timeout 50 postgres --version
+7355                root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
+10183               nobody              timeout 50 python3 -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+10213               nobody              timeout 50 python -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+10243               nobody              timeout 50 python -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+10273               nobody              timeout 50 nginx -v
+10303               nobody              timeout 50 httpd -v
+10333               nobody              timeout 50 apache2 -v
+10363               nobody              timeout 50 java -XX:-UsePerfData -version
+10392               nobody              timeout 50 mariadbd --version
+10423               nobody              timeout 50 mysqld --version
+10453               nobody              timeout 50 postgres --version
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher
