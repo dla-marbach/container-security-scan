@@ -767,6 +767,25 @@ class Webadressen(unittest.TestCase):
                                         ("http://app.example.org:8080/ (\\.php$)", False)])
         self.assertEqual(self.services[2]["webadressen"][0]["weg"], "nginx:443 → httpd-prefork:8080 → php-fpm:9000")
 
+    def test_ziele_in_containern(self):
+        # nginx auf dem Host leitet Pfade an Container weiter (veröffentlichter Port auf Loopback bzw. Container-IP):
+        # deren Webadressen gehen an den Scan des Containers, mit dem Port im Container
+        w = dict(self.w, containers={"172.18.0.5": "api"}, loopback_ziele={("127.0.0.1", "7776"): [("regdido", "3000")]})
+        w["sites"] = [dict(w["sites"][0], weiter=[("/regdido/", "http://127.0.0.1:7776/"),
+                                                  ("/api/", "http://172.18.0.5:8080")])]
+        services = [dienst("nginx:443", "/usr/sbin/nginx", ["443"], exposed=True)]
+        scanner.webadressen(services, w)
+        self.assertEqual(list(w["ziel_urls"]), [("regdido", "3000"), ("api", "8080")])
+        self.assertEqual(w["ziel_urls"][("regdido", "3000")], [
+            {"url": "https://www.example.org/regdido/", "erreichbar": True, "weg": "nginx:443 auf dem Host"}])
+        # im Scan des Containers: Webadressen des Dienstes an diesem Port
+        node = dienst("node:3000", "/usr/local/bin/node", ["3000"], exposed=True)
+        cw = web(self="regdido", via_urls={"3000": w["ziel_urls"][("regdido", "3000")]})
+        scanner.webadressen([node], cw)
+        self.assertEqual([(e["url"], e["erreichbar"], e["weg"]) for e in node["webadressen"]], [
+            ("https://www.example.org/regdido/", True, "nginx:443 auf dem Host → node:3000")])
+        self.assertEqual(cw["ziel_urls"], {})
+
     def test_komponenten(self):
         def C(typ, ort, aktiv):
             c = scanner.comp(typ, "x", "1", ort)

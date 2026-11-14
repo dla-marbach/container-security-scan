@@ -488,7 +488,7 @@ class Gesamtlauf(unittest.TestCase):
                 mock.patch.object(scanner.Host, "name", "web01.example.com"), \
                 mock.patch.object(scanner.os, "geteuid", return_value=0), \
                 mock.patch.object(scanner, "log"), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
-            code, ziele, base = scanner.scan_host(a)
+            code, ziele, base, self.ziel_urls = scanner.scan_host(a)
         return code, ziele, base, stdout.getvalue()
 
     def test_scan_host(self):

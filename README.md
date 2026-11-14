@@ -310,7 +310,9 @@ Aus der Konfiguration von nginx (`listen`, `server_name`, `ssl`) und Apache (vHo
 veröffentlichten Port. Leitet ein Webserver einen Pfad an einen anderen Dienst im selben Container bzw. auf dem
 Host weiter (`location /app/ { proxy_pass http://127.0.0.1:8080/; }`, `ProxyPass`, `SetHandler proxy:fcgi://…`),
 erscheint die Adresse mit Pfad auch beim Ziel, über mehrere Stufen: `https://www.example.org/app/ (\.php$)` bei
-php-fpm hinter Apache hinter nginx. Je Adresse steht im Bericht, ob sie erreichbar ist (wie der Port, über den
+php-fpm hinter Apache hinter nginx. Leitet ein Proxy auf dem Host (mit `--host`) bzw. in einem anderen Container
+einen Pfad an einen Container weiter (per Container-IP, Name oder veröffentlichtem Port, z. B.
+`proxy_pass http://127.0.0.1:7776/`), erscheint die Adresse beim Dienst im Container. Je Adresse steht im Bericht, ob sie erreichbar ist (wie der Port, über den
 die Anfrage hereinkommt), auf der Konsole je Dienst eine Zeile `Webadressen …`, bei jedem Fund die Adressen
 der Dienste, die die Komponente nutzen (Bibliotheken im Docroot: nur die Websites mit diesem Docroot). Die
 Adressen stammen aus der Konfiguration, nicht aus dem DNS.
@@ -452,7 +454,8 @@ Mit `--host` (so im Wrapper) ist der Server selbst ein weiteres Ziel, mit densel
   Optionen des Hauptprozesses (`start_apache2`: `-DSYSCONFIG -C "Include …/loadmodule.conf" -f …`);
   [Erreichbarkeit](#erreichbarkeit-auf-dem-host), [Webadressen](#webadressen),
   [Einstellungen](#einstellungen-der-webserver) samt TLS-Prüfung.
-- **Warnungen:** öffentlicher Dienst als root (nicht `sshd`, `systemd`), Datenbank/Cache/Message Broker ohne
+- **Warnungen:** öffentlicher Dienst als root (nicht `sshd`, `systemd`, `docker-proxy` – der Dienst dahinter
+  wird im Container bewertet), Datenbank/Cache/Message Broker ohne
   Beschränkung der Quelle erreichbar, Proxy-Ziele, die keinem Dienst und keinem Container zuordenbar sind
   (anderer Server: dort gesondert scannen).
 

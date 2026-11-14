@@ -89,7 +89,7 @@ from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
@@ -2763,11 +2763,20 @@ def dienst_sites(svc, web):
 
 def webadressen(services, web):
     """Webadressen je Dienst (svc["webadressen"] = [{"url", "erreichbar", "weg", "site"}]): die eigenen Websites
-    (an Ports, an denen er lauscht) und die Pfade, die ein Webserver im selben Container bzw. auf demselben Host an
-    ihn weiterleitet (auch mehrstufig: nginx -> Apache -> php-fpm). "erreichbar" wie der Port, über den die Anfrage
-    hereinkommt; "site" nur bei eigenen Websites."""
+    (an Ports, an denen er lauscht), die Pfade, die ein Webserver im selben Container bzw. auf demselben Host an
+    ihn weiterleitet (auch mehrstufig: nginx -> Apache -> php-fpm), und die, die ein Proxy auf dem Host bzw. in
+    einem anderen Container an ihn weiterleitet (web["via_urls"]: {Port: [{"url", "erreichbar", "weg"}]}).
+    "erreichbar" wie der Port, über den die Anfrage hereinkommt; "site" nur bei eigenen Websites. Weiterleitungen
+    in andere Container: web["ziel_urls"] = {(Container, Port): [{"url", "erreichbar", "weg"}]}."""
     for svc in services:
         svc["webadressen"] = []
+        vorhanden = set()
+        for port in svc.get("ports", {}):
+            for e in web.get("via_urls", {}).get(port, []):
+                if e["url"] not in vorhanden:
+                    svc["webadressen"].append({"url": e["url"], "erreichbar": e["erreichbar"],
+                                               "weg": e["weg"] + " → " + svc["label"], "site": None})
+                    vorhanden.add(e["url"])
         for site in dienst_sites(svc, web):
             for l in site["listen"]:
                 if l["port"] not in svc["ports"]:
@@ -2780,12 +2789,22 @@ def webadressen(services, web):
         for port in svc.get("ports", {}):
             ziel_von.setdefault(port, svc)
     php = [svc for svc in services if svc.get("name", "").startswith("php-fpm")]
+    web["ziel_urls"] = OrderedDict()
+    wo = " auf dem Host" if web.get("ist_host") else " in " + web["self"]
     for _ in range(3):       # Weiterleitungen, auch über mehrere Stufen
         neu = False
         for front in services:
             for site in dienst_sites(front, web):
                 eintraege = [e for e in front["webadressen"] if e["site"] is site or e["site"] is None]
                 for pfad, ziel in site["weiter"]:
+                    for ct, port in backend_containers(ziel, web):
+                        if ct == web["self"] or port == "*":
+                            continue
+                        liste = web["ziel_urls"].setdefault((ct, port), [])
+                        for e in eintraege:
+                            url = url_pfad(e["url"], pfad)
+                            if url not in [x["url"] for x in liste]:
+                                liste.append({"url": url, "erreichbar": e["erreichbar"], "weg": e["weg"] + wo})
                     backs = [ziel_von.get(port) for ct, port in backend_containers(ziel, web) if ct == web["self"]]
                     if ziel.startswith("unix:") and "php" in ziel:
                         backs += php
@@ -3892,8 +3911,9 @@ def userns_aktiv(c):
     return rc == 0 and bool(re.search(r"name=(userns|rootless)\b", out))
 
 
-# Auf dem Host üblich als root an öffentlichen Ports: Privilegientrennung (sshd) bzw. Socket-Aktivierung (systemd)
-ROOT_DIENSTE_HOST = {"sshd", "systemd", "xinetd", "inetd"}
+# Auf dem Host üblich als root an öffentlichen Ports: Privilegientrennung (sshd), Socket-Aktivierung (systemd) bzw.
+# docker-proxy (leitet veröffentlichte Ports nur weiter; der Dienst dahinter wird im Container bewertet)
+ROOT_DIENSTE_HOST = {"sshd", "systemd", "xinetd", "inetd", "docker-proxy"}
 
 
 def root_dienste(c, procs, web):
@@ -4199,8 +4219,11 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
 
 
 # ===========================================================================
-def scan_container(name, a, via_proxy=None):
-    """Einen Container scannen. Liefert (Rückgabewert, öffentliche Backends [(Container, Port, Dienst)])."""
+def scan_container(name, a, via_proxy=None, via_urls=None):
+    """Einen Container scannen. via_proxy: {Port: [Grund]} (Ziel eines erreichbaren Proxys), via_urls: {Port:
+    [Webadresse]} (dessen Webadressen, siehe webadressen). Liefert (Rückgabewert, öffentliche Backends [(Container,
+    Port, Dienst)], Basis der Berichtsdateien, Webadressen der Ziele in anderen Containern {(Container, Port):
+    [Webadresse]})."""
     c = Container(name, a.user)
     log("Erfasse Container '%s' ..." % c.name)
     how = {}
@@ -4221,6 +4244,7 @@ def scan_container(name, a, via_proxy=None):
     problems.extend(web["problems"])
     web["self"] = c.name
     web["via_proxy"] = via_proxy or {}
+    web["via_urls"] = via_urls or {}
     web["venvs"] = {posixpath.dirname(f) for f in files if f.endswith("/pyvenv.cfg")}
     services = mark_usage(comps, procs, owners, web)
 
@@ -4294,7 +4318,8 @@ def scan_container(name, a, via_proxy=None):
     konf += [dict(k, nur_warnung=True) for k in webserver_pruefen(services, web)]
     code, base = abschliessen(c, c.name, "scan_" + c.name, "bekannt_%s.json" % c.name, a, comps, pkgs, osinfo,
                               services, procs, web, how, problems, konf)
-    return code, [(ct, port, "%s in %s" % (label, c.name)) for s in services for ct, port, label in s["backends"]], base
+    return code, [(ct, port, "%s in %s" % (label, c.name)) for s in services for ct, port, label in s["backends"]], \
+        base, web["ziel_urls"]
 
 
 def konf_zaehlt(k):
@@ -4655,7 +4680,7 @@ def scan_host(a, infos=()):
     """Den Host selbst scannen: Prozesse außerhalb von Containern, OS-Pakete (rpm/dpkg), Anwendungen in
     Docroots und Anwendungsverzeichnissen, Kernel; Erreichbarkeit über Schnittstellen und firewalld; Webadressen
     und Einstellungen der Webserver. Liefert (Rückgabewert, Ziele in Containern [(Container, Port, Grund)], Basis
-    der Berichtsdateien)."""
+    der Berichtsdateien, Webadressen der Ziele in Containern {(Container, Port): [Webadresse]})."""
     h = Host()
     log("Erfasse Host '%s' ..." % h.name)
     how, problems, warnings = {}, [], []
@@ -4711,7 +4736,7 @@ def scan_host(a, infos=()):
                               procs, web, how, problems, konf)
     ziele = [(ct, port, grund.replace(svc["label"], svc["label"] + " auf dem Host", 1))
              for svc in services for ct, port, grund in svc["backends"]]
-    return code, ziele, base
+    return code, ziele, base, web["ziel_urls"]
 
 
 def docker_vorhanden():
@@ -4843,10 +4868,10 @@ def main():
         elif mehrere:
             print("Docker nicht vorhanden – nur der Host wird geprüft.")
         try:
-            host_code, ziele, _ = scan_host(a, infos)
+            host_code, ziele, _, ziel_urls = scan_host(a, infos)
         except ScanError as e:
             log("FEHLER beim Host: %s" % e)
-            host_code, ziele = 2, []
+            host_code, ziele, ziel_urls = 2, [], {}
         if not mehrere:
             if docker_fehler:
                 print("Host: WARNUNG: Container nicht ermittelbar (%s) – Ziele von Proxys in Containern ggf. nicht "
@@ -4857,7 +4882,7 @@ def main():
         if not infos:
             return host_code
         public, rest, gruppen = container_liste(infos, netze)
-        return container_lauf(a, public, rest, gruppen, ziele, host_code)
+        return container_lauf(a, public, rest, gruppen, ziele, host_code, ziel_urls)
     if not mehrere:
         # auch ein Einzelscan kennt Proxys auf dem Host (ohne die in anderen Containern)
         try:
@@ -4885,9 +4910,27 @@ def main():
     return container_lauf(a, public, rest, gruppen, ziele, host_code)
 
 
-def container_lauf(a, public, rest, gruppen, ziele, host_code):
+def urls_zufuegen(urls, ziel_urls, gruppen):
+    """Webadressen der Ziele {(Container, Port): [Webadresse]} je Container sammeln: urls = {Container: {Port:
+    [Webadresse]}}, bei gemeinsamem Netzwerk-Namespace für jeden Container der Gruppe. Liefert die Container, deren
+    Webadressen sich geändert haben."""
+    neu = set()
+    for (ct, port), liste in ziel_urls.items():
+        for ziel in [ct] + gruppen.get(ct, []):
+            vorhanden = urls.setdefault(ziel, {}).get(port, [])
+            dazu = [e for e in liste if e["url"] not in [x["url"] for x in vorhanden]]
+            if dazu:           # neue Liste: die an einen früheren Scan übergebene bleibt unverändert
+                urls[ziel][port] = vorhanden + dazu
+                neu.add(ziel)
+    return neu
+
+
+def container_lauf(a, public, rest, gruppen, ziele, host_code, ziel_urls=None):
     """Erreichbare Container und ihre Ziele, mit --alle-container danach die übrigen. ziele: Ziele von Proxys auf
-    dem Host [(Container, Port, Grund)]; host_code: Ergebnis des Hosts (fließt in den Gesamtwert ein)."""
+    dem Host [(Container, Port, Grund)], ziel_urls: deren Webadressen {(Container, Port): [Webadresse]}; host_code:
+    Ergebnis des Hosts (fließt in den Gesamtwert ein)."""
+    urls = {}
+    urls_zufuegen(urls, ziel_urls or {}, gruppen)
 
     # Erreichbare Container, dabei (wiederholt) deren Backends in anderen Containern – vorgezogen, damit sie
     # schon mit ihrer Erreichbarkeit geprüft werden; mit --alle-container danach die übrigen
@@ -4911,20 +4954,26 @@ def container_lauf(a, public, rest, gruppen, ziele, host_code):
         vias[name] = via
         runs[name] += 1
         try:
-            codes[name], backends, base = scan_container(name, a, via)
+            codes[name], backends, base, ziel_urls = scan_container(name, a, via,
+                                                                    dict(urls[name]) if name in urls else None)
         except ScanError as e:
             if run(["docker", "ps", "-q"])[0] == 0 and run(["docker", "inspect", "--type", "container", name])[0] != 0:
                 print("%s: übersprungen – Container nicht mehr vorhanden (z.B. mit --rm beendet)" % name)
                 del vias[name]
                 continue
             log("FEHLER bei %s: %s" % (name, e))
-            codes[name], backends, base = 2, [], None
+            codes[name], backends, base, ziel_urls = 2, [], None, {}
         if reports.get(name) and reports[name] != base:   # erneute Prüfung ersetzt den ersten Bericht dieses Laufs
             # (bei gleichem Namen – Prüfung in derselben Sekunde – ist er schon überschrieben)
             for ext in (".md", ".cdx.json", ".sha256"):
                 if os.path.exists(reports[name] + ext):
                     os.remove(reports[name] + ext)
         reports[name] = base
+        # schon geprüfte Ziele mit neuen Webadressen erneut (wie bei neuen Gründen, höchstens dreimal)
+        for ziel in sorted(urls_zufuegen(urls, ziel_urls, gruppen)):
+            if ziel in vias and ziel not in queue and runs[ziel] < 3:
+                queue[ziel] = vias[ziel]
+                queue.move_to_end(ziel, last=False)
         for ct, port, reason in backends:
             # bei gemeinsamem Netzwerk-Namespace lauscht ggf. ein anderer Container der Gruppe auf dem Port
             for ziel in [ct] + gruppen.get(ct, []):

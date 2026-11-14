@@ -429,6 +429,16 @@ class RootDienste(unittest.TestCase):
         self.assertEqual(len(w), 1)
         self.assertIn("Öffentlicher Dienst node:3000 läuft als root", w[0])
 
+    def test_docker_proxy_auf_dem_host(self):
+        # docker-proxy leitet nur veröffentlichte Ports weiter (immer root); bewertet wird der Dienst im Container
+        host = scanner.Host()
+        procs = {"1": proc(1, "/usr/bin/docker-proxy", ports={"5432": "alle", "7778": "alle"}, user="0:0"),
+                 "2": proc(2, "/usr/local/bin/node", ports={"3000": "alle"}, user="0:0")}
+        w = web(self="Host", ist_host=True, interfaces=[("eth0", "203.0.113.10")], firewall={"aktiv": False})
+        warnungen = scanner.root_dienste(host, procs, w)
+        self.assertEqual(len(warnungen), 1)
+        self.assertIn("Öffentlicher Dienst node:3000 läuft als root", warnungen[0])
+
     def test_userns_remap_und_rootless(self):
         node = [proc(1, "/usr/local/bin/node", ports={"3000": "alle"}, user="0:0")]
         for opts in ('["name=seccomp","name=userns"]', '["name=seccomp","name=rootless"]'):

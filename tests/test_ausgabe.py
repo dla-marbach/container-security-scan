@@ -167,7 +167,8 @@ class Gesamtlauf(unittest.TestCase):
         self.problems = []
         self.info = {}
 
-    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, **web_kw):
+    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, via_urls=None, **web_kw):
+        """scan_container; liefert (Rückgabewert, Backends, Basis), Webadressen der Ziele in self.ziel_urls."""
         nginx = proc(1, "/usr/sbin/nginx", ports=ports or {"80": "alle"}, maps={"/usr/lib/x86_64-linux-gnu/libssl.so.3"})
         w = web(**dict({"published": {"80": ["0.0.0.0:80"]}}, **web_kw))
         container = FakeContainer()
@@ -185,12 +186,20 @@ class Gesamtlauf(unittest.TestCase):
         for p in patches:
             p.start()
         try:
-            ergebnis = scanner.scan_container("app", self.a, via)
+            ergebnis = scanner.scan_container("app", self.a, via, via_urls)
             self.konsole = scanner.sys.stdout.getvalue()
-            return ergebnis
+            self.ziel_urls = ergebnis[3]
+            return ergebnis[:3]
         finally:
             for p in reversed(patches):
                 p.stop()
+
+    def test_webadressen_eines_proxys_auf_dem_host(self):
+        # Pfad, den nginx auf dem Host an den Container weiterleitet: Webadresse des Dienstes im Container
+        e = {"url": "https://www.example.org/app/", "erreichbar": True, "weg": "nginx:443 auf dem Host"}
+        self.lauf(published={}, via={"80": ["nginx:443 auf dem Host"]}, via_urls={"80": [e]})
+        self.assertIn("app:   Webadressen nginx:80: erreichbar: https://www.example.org/app/", self.konsole)
+        self.assertEqual(self.ziel_urls, {})
 
     def test_relevanter_fund_ergibt_1(self):
         code, backends, base = self.lauf()
