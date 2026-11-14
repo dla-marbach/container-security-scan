@@ -50,6 +50,13 @@ jobs:
         continue-on-error: true
         run: python3 container-security-scan.py --kev-daten-erzeugen daten/kev.json
 
+      # SUSEs eigene CVSS-Bewertung je CVE (Schweregrad der Funde aus den SUSE-Daten). Ist sie älter als 7 Tage,
+      # warnt der Scanner und nutzt sie weiter; fehlt sie, warnt er und nimmt den Schweregrad aus anderen Quellen.
+      - name: Schweregrade von SUSE laden
+        id: suse
+        continue-on-error: true
+        run: python3 container-security-scan.py --suse-schweregrad-erzeugen daten/suse-schweregrad.json
+
       - name: Änderungen im Branch daten committen
         working-directory: daten
         run: |
@@ -59,7 +66,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "Keine Änderungen."
           else
-            git commit -q -m "OSV-, EOL- und KEV-Daten $(date -u +%F)"
+            git commit -q -m "OSV-, EOL-, KEV- und SUSE-Daten $(date -u +%F)"
             git push origin HEAD:daten
           fi
 
@@ -73,4 +80,10 @@ jobs:
         if: steps.kev.outcome == 'failure'
         run: |
           echo "::warning::KEV-Daten konnten nicht aktualisiert werden"
+          exit 1
+
+      - name: SUSE-Fehler melden
+        if: steps.suse.outcome == 'failure'
+        run: |
+          echo "::warning::Schweregrade von SUSE konnten nicht aktualisiert werden"
           exit 1

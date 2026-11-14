@@ -49,9 +49,11 @@ class Kommandozeile(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("--oeffentliche", out)
         self.assertIn("--alle-container", out)
+        self.assertIn("--host", out)
         self.assertIn("--ausnahmen", out)
         self.assertNotIn("--eol-daten-erzeugen", out)      # nur für die GitHub Action
         self.assertNotIn("--kev-daten-erzeugen", out)
+        self.assertNotIn("--suse-schweregrad-erzeugen", out)
 
     def test_fehlerhafte_ausnahmeliste_ergibt_2(self):
         os.mkdir(os.path.join(self.tmp, "db"))
@@ -279,6 +281,62 @@ class Kommandozeile(unittest.TestCase):
                     mock.patch.object(sys, "argv", ["x", "--db", db, ref, self.tmp]):
                 self.assertEqual(scanner.main(), 0)
             self.assertEqual(scan.call_args[0][2], {"3000": ["nginx:443 auf dem Host"]})
+
+    def host_lauf(self, args, docker=True, infos=([], {}), host=(1, [], None), docker_fehler=False, public=()):
+        """main() mit --host; liefert (Rückgabewert, gescannte Container, Ausgabe, Mock von scan_host)."""
+        db = os.path.join(self.tmp, "db")
+        os.makedirs(db, exist_ok=True)
+        gesehen = []
+
+        def scan(name, a, via=None):
+            gesehen.append((name, via))
+            return 0, [], None
+        lage = mock.Mock(side_effect=scanner.ScanError("docker nicht erreichbar")) if docker_fehler else \
+            mock.Mock(return_value=infos)
+        with mock.patch.object(scanner, "scan_container", side_effect=scan), \
+                mock.patch.object(scanner, "docker_vorhanden", return_value=docker), \
+                mock.patch.object(scanner, "docker_lage", lage), \
+                mock.patch.object(scanner, "container_liste", return_value=(list(public), ["db"], {})), \
+                mock.patch.object(scanner, "host_proxys") as host_proxys, \
+                mock.patch.object(scanner, "scan_host", return_value=host) as scan_host, \
+                mock.patch.object(scanner, "log"), mock.patch("sys.stdout", new_callable=io.StringIO) as out, \
+                mock.patch.object(sys, "argv", ["x", "--db", db] + args + [self.tmp]):
+            rc = scanner.main()
+        host_proxys.assert_not_called()        # mit --host bewertet scan_host die Proxys auf dem Host
+        return rc, gesehen, out.getvalue(), scan_host, lage
+
+    def test_host_ohne_docker(self):
+        # reiner Webserver: nur der Host, auch mit --alle-container (so im Wrapper); Docker wird nicht befragt
+        for args in (["--host"], ["--host", "--alle-container"]):
+            rc, gesehen, out, scan_host, lage = self.host_lauf(args, docker=False)
+            self.assertEqual((rc, gesehen), (1, []))
+            self.assertEqual(scan_host.call_args[0][0].ausgabe, self.tmp)       # erstes Argument: Ausgabeverzeichnis
+            self.assertEqual(scan_host.call_args[0][1], [])
+            lage.assert_not_called()
+        self.assertIn("Docker nicht vorhanden – nur der Host wird geprüft.", out)
+
+    def test_host_und_container(self):
+        # Ziele eines Proxys auf dem Host zuerst und als erreichbar; Ergebnis des Hosts zählt mit
+        infos = ([{"Id": "abc", "Name": "/app"}], {})
+        rc, gesehen, out, scan_host, _ = self.host_lauf(
+            ["--host", "--alle-container"], infos=infos, host=(1, [("app", "3000", "nginx:443 auf dem Host")], None),
+            public=["proxy"])
+        self.assertEqual(rc, 1)
+        self.assertEqual(scan_host.call_args[0][1], infos[0])
+        self.assertEqual(gesehen, [("app", {"3000": ["nginx:443 auf dem Host"]}), ("proxy", {}), ("db", {})])
+        self.assertIn("Gesamt: Host und 3 Container geprüft – RELEVANTE FUNDE", out)
+        rc, gesehen, out, _, _ = self.host_lauf(["--host", "--alle-container"], infos=infos, host=(2, [], None))
+        self.assertEqual(rc, 2)
+
+    def test_host_docker_nicht_erreichbar(self):
+        # Docker eingerichtet, aber nicht erreichbar: mit Containern unvollständig, nur der Host: Warnung
+        rc, gesehen, out, scan_host, _ = self.host_lauf(["--host", "--alle-container"], docker_fehler=True,
+                                                         host=(0, [], None))
+        self.assertEqual((rc, gesehen), (2, []))
+        scan_host.assert_called_once()
+        rc, gesehen, out, _, _ = self.host_lauf(["--host"], docker_fehler=True, host=(0, [], None))
+        self.assertEqual(rc, 0)
+        self.assertIn("Host: WARNUNG: Container nicht ermittelbar", out)
 
     def test_alle_container_ohne_container(self):
         rc, gesehen, out = self.mehrere("--alle-container", [], [], {}, {})

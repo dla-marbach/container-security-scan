@@ -23,7 +23,7 @@ def proc(pid, exe, argv=None, cwd="/", ports=None, maps=(), files=(), env=None, 
 
 def web(**kw):
     """Webserver-Kontext wie von collect_web geliefert (ohne Docker)."""
-    w = {"docroots": {}, "backends": {}, "vhosts": {}, "upstreams": {}, "modphp": set(), "raw": [],
+    w = {"docroots": {}, "backends": {}, "vhosts": {}, "upstreams": {}, "modphp": set(), "raw": [], "sites": [], "web_konf": [],
          "published": {}, "containers": {}, "via_proxy": {}, "problems": [], "host_network": False,
          "self": "app", "venvs": set(), "lan": [], "spender": None, "nachbarn": [], "netz_gruppe": [],
          "label_ziele": {}, "unlesbar": set()}

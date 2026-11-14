@@ -1,9 +1,10 @@
 #!/bin/bash
 # container-security-scan: Wrapper für den Betrieb, installiert von installieren.sh (README: Installation
 # und Betrieb). Eigene Änderungen ersetzt die nächste Installation.
-# Daten als csscan aktualisieren, dann als root mit dem installierten Code scannen.
+# Daten als csscan aktualisieren, dann als root mit dem installierten Code scannen: den Host selbst (Dienste direkt
+# auf dem Server) und alle laufenden Container, ohne Docker nur den Host.
 # Aufruf von Hand, per cron (--mail) oder per Rundeck (sudo, ohne Argumente).
-# Von Hand optional genau ein Container (Name oder ID) statt aller: ... [--mail] [container]
+# Von Hand optional genau ein Container (Name oder ID) statt Host und aller Container: ... [--mail] [container]
 # Ausgabe auf die Konsole und ins Log; letzte Zeile "ERGEBNIS: …"; Rückgabewert 0/1/2 wie das Skript.
 set -u
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -12,7 +13,7 @@ D=/var/lib/container-security-scan
 OUT=/var/log/container-security-scan
 AUSNAHMEN=/etc/container-security-scan/ausnahmen.txt   # wird verwendet, wenn vorhanden
 MAIL=nein; [ "${1:-}" = --mail ] && { MAIL=ja; shift; }
-ZIEL=(--alle-container)                 # Standard: alle laufenden Container
+ZIEL=(--host --alle-container)          # Standard: Host und alle laufenden Container
 if [ $# -gt 0 ]; then                   # Name/ID wie bei Docker, nie mit "-" am Anfang (sonst Option)
   [[ $# -eq 1 && $1 =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] \
       || { echo "FEHLER: Aufruf: $0 [--mail] [container]"; exit 2; }

@@ -1,9 +1,9 @@
 # Container-Scan: app-proxy
 
-- Image: nginx:1.31-alpine (sha256:713fc2ebfd92)  
+- Image: nginx:1.31-alpine (sha256:fed7e14be83c)  
 - OS: Alpine Linux v3.24  
-- Zeitpunkt: 2026-11-13 12:14  
-- Scanner: container-security-scan 0.3.0  
+- Zeitpunkt: 2026-11-13 22:57  
+- Scanner: container-security-scan 0.4.0  
 - Datenbank: OSV, Stand 2026-11-13 03:23 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
@@ -11,16 +11,26 @@
 
 **2 relevante Schwachstellen** (Kriterium: P1 CRITICAL, P1 HIGH, P2 CRITICAL; aktiv ausgenutzte (KEV) unabhängig von Priorität und Schweregrad; nur mit verfügbarem Fix)
 
-- **CVE-2026-4738** (HIGH) in zlib 1.3.2-r1 – behoben in 1.4-r0 – genutzt von nginx:80
+- **CVE-2026-4738** (HIGH) in zlib 1.3.2-r1 – behoben in 1.4-r0 – genutzt von nginx:80 – Webadressen: http://shop.example.org:8080/
 - **CVE-2026-125350** (HIGH KEV) in libxslt 1.1.43-r3 – behoben in 1.1.43-r4 – genutzt von – – **aktiv ausgenutzt** (KEV seit 2026-11-10)
 
 Gefährliche Einstellungen des Containers (privileged, Docker-Socket, pid=host …): keine gezählt.
+
+Einstellungen der Webserver (Statusseiten, Verzeichnislisten): keine gezählt.
 
 ## Laufende Dienste
 
 | Dienst | Programm | Ports / Konfiguration |
 |---|---|---|
 | nginx:80 | nginx 1.31.8 | Port 80/tcp (alle) veröffentlicht als 127.0.0.1:8080 (nur lokal – vermutlich hinter einem Reverse Proxy auf dem Host); Konfiguration: listen 80 server_name shop.example.org root /srv/app/public; Backend http://app-node:3000 -> Container app-node; Backend app-php:9000 -> Container app-php |
+
+## Webadressen
+
+Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen bzw. vHost, TLS); Pfade, die ein Proxy auf denselben Container weiterleitet, beim Ziel. „Erreichbar“ wie der Port, über den die Anfrage hereinkommt.
+
+| Webadresse | Erreichbar | Dienst | Weg | Website | Docroot / Ziel |
+|---|---|---|---|---|---|
+| http://shop.example.org:8080/ | ja | nginx:80 | nginx:80 | /etc/nginx/conf.d/default.conf | /srv/app/public |
 
 ## Übersicht (Anzahl Befunde)
 
@@ -33,13 +43,13 @@ Gefährliche Einstellungen des Containers (privileged, Docker-Socket, pid=host �
 
 ## Befunde (5 von 6; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
 
-| P | Schwere | ID | Paket | Installiert | Behoben in | Genutzt von | Titel |
-|---|---|---|---|---|---|---|---|
-| 1 | HIGH | CVE-2026-4738 | zlib | 1.3.2-r1 | 1.4-r0 | nginx:80 | Improper Restriction of Operations within the Bounds of a Memory Buffer vulnerability in O |
-| 1 | MEDIUM | CVE-2025-1695 | nginx | 1.31.8 | kein Fix | nginx:80 | NGINX Unit Java Vulnerability |
-| 4 | HIGH KEV | CVE-2026-125350 | libxslt | 1.1.43-r3 | 1.1.43-r4 | – | Use after free in XML in Google Chrome prior to 157.0.8103.50 allowed a remote attacker to |
-| 4 | HIGH | CVE-2026-87636 | libxslt | 1.1.43-r3 | 1.1.43-r4 | – | Type confusion in XML in Google Chrome prior to 153.0.8010.36 allowed a remote attacker to |
-| 4 | HIGH | CVE-2026-9947 | libxslt | 1.1.43-r3 | 1.1.43-r4 | – | Use after free in XML in Google Chrome prior to 148.0.7778.216 allowed a remote attacker t |
+| P | Schwere | ID | Paket | Installiert | Behoben in | Genutzt von | Webadressen | Titel |
+|---|---|---|---|---|---|---|---|---|
+| 1 | HIGH | CVE-2026-4738 | zlib | 1.3.2-r1 | 1.4-r0 | nginx:80 | http://shop.example.org:8080/ | Improper Restriction of Operations within the Bounds of a Memory Buffer vulnerability in O |
+| 1 | MEDIUM | CVE-2025-1695 | nginx | 1.31.8 | kein Fix | nginx:80 | http://shop.example.org:8080/ | NGINX Unit Java Vulnerability |
+| 4 | HIGH KEV | CVE-2026-125350 | libxslt | 1.1.43-r3 | 1.1.43-r4 | – | – | Use after free in XML in Google Chrome prior to 157.0.8103.50 allowed a remote attacker to |
+| 4 | HIGH | CVE-2026-87636 | libxslt | 1.1.43-r3 | 1.1.43-r4 | – | – | Type confusion in XML in Google Chrome prior to 153.0.8010.36 allowed a remote attacker to |
+| 4 | HIGH | CVE-2026-9947 | libxslt | 1.1.43-r3 | 1.1.43-r4 | – | – | Use after free in XML in Google Chrome prior to 148.0.7778.216 allowed a remote attacker t |
 
 KEV: im Katalog aktiv ausgenutzter Schwachstellen der CISA (Known Exploited Vulnerabilities).
 
@@ -68,8 +78,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        3e3810ffa71a9d172ad5db6810574e7014cc36df69633757afe254a79bf9d8f4
-Gestartet: 2026-11-13T12:14:03.284540725Z
+ID:        ba989ec20f7f381b889f8b13d4bc181305b0b8f2e430da41d5e8073bddf818a2
+Gestartet: 2026-11-13T22:57:43.316771064Z
 Kommando:  ["/docker-entrypoint.sh"] ["nginx", "-g", "daemon off;"]
 Mounts:    /home/user/container-security-scan/beispiele/umgebung/nginx.conf->/etc/nginx/conf.d/default.conf
 Host:      Kernel 6.18.44-fc-v445
@@ -79,18 +89,18 @@ Host:      Kernel 6.18.44-fc-v445
 
 ```
 PID                 USER                COMMAND
-29007               root                nginx: master process nginx -g daemon off;
-29074               redis               nginx: worker process
-29075               redis               nginx: worker process
-29076               redis               nginx: worker process
-29077               redis               nginx: worker process
-29708               nobody              timeout 50 nginx -v
-29738               nobody              timeout 50 httpd -v
-29767               nobody              timeout 50 apache2 -v
-29798               nobody              timeout 50 java -XX:-UsePerfData -version
-29828               nobody              timeout 50 mariadbd --version
-29859               nobody              timeout 50 mysqld --version
-29890               nobody              timeout 50 postgres --version
+17003               root                nginx: master process nginx -g daemon off;
+17077               redis               nginx: worker process
+17078               redis               nginx: worker process
+17079               redis               nginx: worker process
+17080               redis               nginx: worker process
+17715               nobody              timeout 50 nginx -v
+17744               nobody              timeout 50 httpd -v
+17773               nobody              timeout 50 apache2 -v
+17802               nobody              timeout 50 java -XX:-UsePerfData -version
+17831               nobody              timeout 50 mariadbd --version
+17862               nobody              timeout 50 mysqld --version
+17892               nobody              timeout 50 postgres --version
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

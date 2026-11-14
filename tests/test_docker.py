@@ -18,7 +18,13 @@ Szenario (Lauf mit --alle-container):
   hinein, der Scanner liest dann passiv von außen (docker export, docker cp) und ist trotzdem vollständig
 Geprüft werden Rückgabewert, Erreichbarkeit, Berichte, EOL-Warnungen und dass der Scan im Container nichts
 verändert (docker diff).
+
+Dazu (Klasse HostSles) ein SLES-15-Server ohne Docker als Container (beispiele/umgebung/host/), darin der Scan mit
+--host: nginx (öffentlich, firewalld) vor Apache (Loopback) vor php-fpm, Webadressen über die Kette, Einstellungen
+der Webserver (Statusseiten, Verzeichnisliste, TLS 1.0 am Dienst geprüft), Paketabgleich über SUSE-Daten (fehlen
+sie in daten/, werden sie für den Test von OSV geladen), von firewalld gesperrter Port.
 """
+import json
 import os
 import re
 import shutil
@@ -31,7 +37,7 @@ import unittest
 import urllib.request
 import uuid
 
-from _laden import SKRIPT
+from _laden import ROOT, SKRIPT, scanner
 
 AKTIV = os.environ.get("CSS_DOCKER_TESTS") == "1"
 NGINX_IMAGE = os.environ.get("CSS_NGINX_IMAGE", "nginx:1.27-alpine")
@@ -293,6 +299,109 @@ class Integration(unittest.TestCase):
         finally:
             docker("rm", "-f", name)
         self.assertEqual(rc, 2)
+
+
+@unittest.skipUnless(AKTIV, "Docker-Integrationstest: CSS_DOCKER_TESTS=1 setzen")
+class HostSles(unittest.TestCase):
+    """Scan des Hosts auf einem nachgebildeten SLES-15-Server (Container mit Diensten aus den SLES-Paketen)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        cls.name = "csstest-host-" + uuid.uuid4().hex[:8]
+        try:
+            cls.aufbauen()
+        except BaseException:
+            cls.tearDownClass()       # unittest ruft tearDownClass nach einem Fehler im Aufbau nicht auf
+            raise
+
+    @classmethod
+    def aufbauen(cls):
+        umgebung = os.path.join(ROOT, "beispiele", "umgebung")
+        # Proxy mit eigener Zertifizierungsstelle u.ä.: zusätzliche Optionen für docker build (z.B. --network host)
+        extra = os.environ.get("CSS_DOCKER_BUILD_ARGS", "").split()
+        rc = subprocess.run(["docker", "build", "-q", "-t", cls.name] + extra +
+                            ["-f", os.path.join(umgebung, "host", "Dockerfile"), umgebung], stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, timeout=1200, env=dict(os.environ, DOCKER_BUILDKIT="1"))
+        if rc.returncode != 0:
+            raise AssertionError("docker build fehlgeschlagen: " + rc.stdout.decode("utf-8", "replace")[-2000:])
+        daten = [os.path.join(ROOT, "daten")]
+        if not os.path.isdir(os.path.join(ROOT, "daten", "SUSE")):     # vor der ersten Aktualisierung des Branches
+            suse = os.path.join(cls.tmp, "suse")
+            os.makedirs(suse)
+            scanner.daten_erzeugen(suse, ["SUSE"])
+            daten.append(suse)
+        mounts = ["-v", "%s:/scan/container-security-scan.py:ro" % SKRIPT]
+        for i, d in enumerate(daten):
+            mounts += ["-v", "%s:/daten%d:ro" % (d, i)]
+        docker("run", "-d", "--name", cls.name, "--hostname", "web01.example.com", "--cap-add", "NET_ADMIN",
+               "--cap-add", "NET_RAW", "--cap-add", "SYS_PTRACE", *mounts, cls.name)   # root mit allen Rechten wie auf einem Host
+        for _ in range(90):
+            if subprocess.run(["docker", "exec", cls.name, "test", "-e", "/run/bereit"]).returncode == 0:
+                break
+            time.sleep(1)
+        else:
+            raise AssertionError("Testumgebung nicht bereit: " + docker("logs", cls.name))
+        time.sleep(2)
+        args = [x for i in range(len(daten)) for x in ("--db", "/daten%d" % i)]
+        p = subprocess.run(["docker", "exec", cls.name, "python3", "-I", "/scan/container-security-scan.py"] + args +
+                           ["--host", "--alle-container", "/out", "--nur-behebbare"],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=600)
+        cls.rc, cls.ausgabe = p.returncode, p.stdout.decode("utf-8", "replace")
+        cls.bericht = docker("exec", cls.name, "sh", "-c", "cat /out/host_web01_*.md")
+        cls.sbom = docker("exec", cls.name, "sh", "-c", "cat /out/host_web01_*.cdx.json")
+
+    @classmethod
+    def tearDownClass(cls):
+        docker("rm", "-f", cls.name)
+        docker("rmi", "-f", cls.name)
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_ergebnis(self):
+        # ohne Docker nur der Host; relevante Funde (Composer, jQuery) und Einstellungen, vollständig geprüft
+        self.assertEqual(self.rc, 1, self.ausgabe)
+        self.assertIn("Docker nicht vorhanden – nur der Host wird geprüft.", self.ausgabe)
+        self.assertIn("Host: RELEVANTE SCHWACHSTELLEN und EINSTELLUNGEN DER WEBSERVER", self.ausgabe)
+        self.assertIn("# Host-Scan: web01.example.com", self.bericht)
+        self.assertIn("SUSE Linux Enterprise Server 15", self.bericht)
+
+    def test_kette_und_webadressen(self):
+        self.assertIn("Host:   Webadressen nginx:", self.ausgabe)
+        self.assertRegex(self.bericht, r"\| https://www\.example\.org/app/ \| ja \| httpd-prefork:8080 \| nginx:[\d,]+ → "
+                                       r"httpd-prefork:8080 \|")
+        self.assertRegex(self.bericht, r"\| https://www\.example\.org/app/ \(\\\.php\$\) \| ja \| php-fpm:9000 \|")
+        self.assertIn("| http://app.example.org:8080/ | nein | httpd-prefork:8080 |", self.bericht)
+        # Composer der Anwendung hinter nginx -> Apache -> php-fpm: P1 mit öffentlicher Webadresse
+        self.assertRegex(self.ausgabe, r"in guzzlehttp/guzzle 7\.4\.0 – behoben in [\d.]+ – genutzt von php-fpm:9000.* – "
+                                       r"Webadressen: http://www\.example\.org/app/")
+        bom = json.loads(self.sbom)
+        nginx = next(s for s in bom["services"] if s["name"] == "nginx")
+        self.assertIn("https://www.example.org/", nginx["endpoints"])
+
+    def test_einstellungen_der_webserver(self):
+        self.assertRegex(self.ausgabe, r"WEB-STATUS: Apache: server-status unter /server-status nur für localhost "
+                                       r"freigegeben .* damit greift die Beschränkung nicht")
+        self.assertIn("WEB-STATUS: nginx: stub_status in location /nginx_status", self.ausgabe)
+        self.assertIn("WEB-AUTOINDEX: nginx: autoindex on (Verzeichnisliste) in location / – Webadressen: "
+                      "http://intranet.example.local/", self.ausgabe)
+        self.assertRegex(self.ausgabe, r"WEB-TLS-ALT: nginx:[\d,]+ nimmt TLS 1\.0 und TLS 1\.1 an .* geprüft an "
+                                       r"127\.0\.0\.1:8443")
+        # SLES-Vorgaben: Symbole unter /usr/share/apache2, /home/*/public_html ohne Benutzerverzeichnisse
+        self.assertNotIn("public_html", self.ausgabe)
+        self.assertNotIn("/usr/share/apache2/icons", self.ausgabe)
+
+    def test_pakete_ueber_suse_daten(self):
+        # nginx und Python aus SLES-Paketen: über die Distribution geprüft, nicht über Bitnami
+        self.assertNotRegex(self.ausgabe, r" in (nginx|python) \d")
+        self.assertIn("OS-Pakete rpm (Host)", self.bericht)
+        self.assertNotIn("Daten fehlen", self.ausgabe)
+
+    def test_firewalld(self):
+        self.assertIn("- Firewall: firewalld aktiv (Runtime), Standardzone public", self.bericht)
+        self.assertRegex(self.bericht, r"\| python3\.6:8000 \| [^|]+ \| Port 8000/tcp \(alle\) an allen Adressen, aber "
+                                       r"von firewalld gesperrt \(Zone public\)")
+        self.assertRegex(self.bericht, r"Port 443/tcp \(alle\) an allen Adressen, firewalld lässt durch: eth0: Zone public, "
+                                       r"Dienst https")
 
 
 if __name__ == "__main__":
