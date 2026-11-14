@@ -2761,29 +2761,45 @@ def dienst_sites(svc, web):
             and any(l["port"] in svc.get("ports", {}) for l in s["listen"])]
 
 
+def adresse_zufuegen(liste, eintrag):
+    """Webadresse in eine Liste übernehmen: neu anhängen bzw. eine vorhandene durch einen erreichbaren Weg
+    ersetzen (der erste erreichbare Weg bleibt). Liefert, ob sich die Liste geändert hat."""
+    for i, e in enumerate(liste):
+        if e["url"] == eintrag["url"]:
+            if eintrag["erreichbar"] and not e["erreichbar"]:
+                liste[i] = eintrag
+                return True
+            return False
+    liste.append(eintrag)
+    return True
+
+
 def webadressen(services, web):
-    """Webadressen je Dienst (svc["webadressen"] = [{"url", "erreichbar", "weg", "site"}]): die eigenen Websites
-    (an Ports, an denen er lauscht), die Pfade, die ein Webserver im selben Container bzw. auf demselben Host an
-    ihn weiterleitet (auch mehrstufig: nginx -> Apache -> php-fpm), und die, die ein Proxy auf dem Host bzw. in
-    einem anderen Container an ihn weiterleitet (web["via_urls"]: {Port: [{"url", "erreichbar", "weg"}]}).
-    "erreichbar" wie der Port, über den die Anfrage hereinkommt; "site" nur bei eigenen Websites. Weiterleitungen
-    in andere Container: web["ziel_urls"] = {(Container, Port): [{"url", "erreichbar", "weg"}]}."""
+    """Webadressen je Dienst (svc["webadressen"] = [{"url", "erreichbar", "weg", "site", "port", "lokal"}]): die
+    eigenen Websites (an Ports, an denen er lauscht), die Pfade, die ein Webserver im selben Container bzw. auf
+    demselben Host an ihn weiterleitet (auch mehrstufig: nginx -> Apache -> php-fpm), und die, die ein Proxy auf
+    dem Host bzw. in einem anderen Container an ihn weiterleitet (web["via_urls"]: {Port: [{"url", "erreichbar",
+    "weg", "lokal"}]}). "erreichbar" wie der Port, über den die Anfrage hereinkommt (von außerhalb zusätzlich nur,
+    wenn der Port des Dienstes für den Proxy erreichbar ist, siehe port_erreichbar); "site" nur bei eigenen Websites; "port": Port, an dem die Anfrage beim Dienst ankommt (None:
+    unbekannt, z.B. Unix-Socket) – weitergeleitete Adressen gelten nur für Websites an diesem Port; "lokal": die
+    Anfrage kommt von dieser Maschine bzw. über dasselbe Loopback (umgeht "nur localhost"). Weiterleitungen in
+    andere Container: web["ziel_urls"] = {(Container, Port): [{"url", "erreichbar", "weg", "lokal"}]}."""
     for svc in services:
         svc["webadressen"] = []
-        vorhanden = set()
         for port in svc.get("ports", {}):
+            offen = svc["ports"][port][1]
             for e in web.get("via_urls", {}).get(port, []):
-                if e["url"] not in vorhanden:
-                    svc["webadressen"].append({"url": e["url"], "erreichbar": e["erreichbar"],
-                                               "weg": e["weg"] + " → " + svc["label"], "site": None})
-                    vorhanden.add(e["url"])
+                adresse_zufuegen(svc["webadressen"], {
+                    "url": e["url"], "erreichbar": e["erreichbar"] and offen, "weg": e["weg"] + " → " + svc["label"],
+                    "site": None, "port": port, "lokal": e.get("lokal", False)})
         for site in dienst_sites(svc, web):
             for l in site["listen"]:
                 if l["port"] not in svc["ports"]:
                     continue
                 desc, offen = svc["ports"][l["port"]]
                 for url in site_urls(dict(site, listen=[l]), web):
-                    svc["webadressen"].append({"url": url, "erreichbar": offen, "weg": svc["label"], "site": site})
+                    adresse_zufuegen(svc["webadressen"], {"url": url, "erreichbar": offen, "weg": svc["label"],
+                                                          "site": site, "port": l["port"], "lokal": False})
     ziel_von = {}            # (Port) -> Dienst im selben Container bzw. auf dem Host
     for svc in services:
         for port in svc.get("ports", {}):
@@ -2791,32 +2807,39 @@ def webadressen(services, web):
     php = [svc for svc in services if svc.get("name", "").startswith("php-fpm")]
     web["ziel_urls"] = OrderedDict()
     wo = " auf dem Host" if web.get("ist_host") else " in " + web["self"]
+
+    def fuer_site(e, site):
+        return e["site"] is site or (e["site"] is None and (e["port"] is None or
+                                                            any(l["port"] == e["port"] for l in site["listen"])))
     for _ in range(3):       # Weiterleitungen, auch über mehrere Stufen
         neu = False
         for front in services:
             for site in dienst_sites(front, web):
-                eintraege = [e for e in front["webadressen"] if e["site"] is site or e["site"] is None]
+                eintraege = [e for e in front["webadressen"] if fuer_site(e, site)]
                 for pfad, ziel in site["weiter"]:
+                    loopback = bool(re.match(r"(localhost|127\.|::1$)", split_target(ziel)[0]))
+                    backs = []
                     for ct, port in backend_containers(ziel, web):
-                        if ct == web["self"] or port == "*":
-                            continue
-                        liste = web["ziel_urls"].setdefault((ct, port), [])
-                        for e in eintraege:
-                            url = url_pfad(e["url"], pfad)
-                            if url not in [x["url"] for x in liste]:
-                                liste.append({"url": url, "erreichbar": e["erreichbar"], "weg": e["weg"] + wo})
-                    backs = [ziel_von.get(port) for ct, port in backend_containers(ziel, web) if ct == web["self"]]
+                        if ct == web["self"]:
+                            backs.append((ziel_von.get(port), port))
+                        elif port != "*":
+                            # über dasselbe Loopback (Host-Netzwerk, gemeinsamer Netzwerk-Namespace) kommt die Anfrage
+                            # von 127.0.0.1, über Container-IP bzw. veröffentlichten Port nicht
+                            lokal = loopback and ct in web.get("loopback", [])
+                            liste = web["ziel_urls"].setdefault((ct, port), [])
+                            for e in eintraege:
+                                adresse_zufuegen(liste, {"url": url_pfad(e["url"], pfad), "erreichbar": e["erreichbar"],
+                                                         "weg": e["weg"] + wo, "lokal": lokal})
                     if ziel.startswith("unix:") and "php" in ziel:
-                        backs += php
-                    for back in [b for b in backs if b and b is not front]:
-                        vorhanden = {e["url"] for e in back["webadressen"]}
-                        for e in eintraege:
-                            url = url_pfad(e["url"], pfad)
-                            if url not in vorhanden:
-                                back["webadressen"].append({"url": url, "erreichbar": e["erreichbar"],
-                                                            "weg": e["weg"] + " → " + back["label"], "site": None})
-                                vorhanden.add(url)
-                                neu = True
+                        backs += [(b, None) for b in php]
+                    for back, port in backs:
+                        if not back or back is front:
+                            continue
+                        for e in eintraege:      # gleiche Maschine: auch über Loopback erreichbar
+                            neu = adresse_zufuegen(back["webadressen"], {
+                                "url": url_pfad(e["url"], pfad), "erreichbar": e["erreichbar"],
+                                "weg": e["weg"] + " → " + back["label"], "site": None, "port": port,
+                                "lokal": True}) or neu
         if not neu:
             break
     for svc in services:
@@ -2865,14 +2888,16 @@ def webserver_pruefen(services, web):
         svcs = [s for s in services if s.get("exe") == k["exe"]]
         eigen = [e for s in svcs for e in s.get("webadressen", []) if k["site"] is None or e["site"] is k["site"]]
         ueber_proxy = [e for s in svcs for e in s.get("webadressen", []) if e["site"] is None and e["erreichbar"]]
+        # "nur localhost" umgeht nur ein Proxy, dessen Anfragen von dieser Maschine bzw. über dasselbe Loopback kommen
+        lokal_proxy = [e for e in ueber_proxy if e.get("lokal", True)]
         erreichbar = any(e["erreichbar"] for e in eigen) or bool(ueber_proxy) or (
             k["site"] is None and any(s["exposed"] for s in svcs))
         text = k["text"]
         if k.get("nur_lokal"):
-            if not ueber_proxy:
+            if not lokal_proxy:
                 continue
             text += " – davor leitet ein Proxy Anfragen von dieser Maschine weiter (%s), damit greift die " \
-                    "Beschränkung nicht" % webadressen_text([e["url"] for e in ueber_proxy], 2)
+                    "Beschränkung nicht" % webadressen_text([e["url"] for e in lokal_proxy], 2)
         urls = [e["url"] for e in eigen] or [e["url"] for e in ueber_proxy]
         pfad = k["pfad"]
         if k.get("verzeichnis"):       # Verzeichnis -> Pfad unterhalb des Docroots der Website (sonst unbekannt)
@@ -4922,15 +4947,15 @@ def main():
 
 def urls_zufuegen(urls, ziel_urls, gruppen):
     """Webadressen der Ziele {(Container, Port): [Webadresse]} je Container sammeln: urls = {Container: {Port:
-    [Webadresse]}}, bei gemeinsamem Netzwerk-Namespace für jeden Container der Gruppe. Liefert die Container, deren
-    Webadressen sich geändert haben."""
+    [Webadresse]}}, bei gemeinsamem Netzwerk-Namespace für jeden Container der Gruppe; ein erreichbarer Weg ersetzt
+    einen nicht erreichbaren. Liefert die Container, deren Webadressen sich geändert haben."""
     neu = set()
     for (ct, port), liste in ziel_urls.items():
         for ziel in [ct] + gruppen.get(ct, []):
-            vorhanden = urls.setdefault(ziel, {}).get(port, [])
-            dazu = [e for e in liste if e["url"] not in [x["url"] for x in vorhanden]]
-            if dazu:           # neue Liste: die an einen früheren Scan übergebene bleibt unverändert
-                urls[ziel][port] = vorhanden + dazu
+            # neue Liste: die an einen früheren Scan übergebene bleibt unverändert
+            vorhanden = list(urls.setdefault(ziel, {}).get(port, []))
+            if [adresse_zufuegen(vorhanden, e) for e in liste].count(True):
+                urls[ziel][port] = vorhanden
                 neu.add(ziel)
     return neu
 

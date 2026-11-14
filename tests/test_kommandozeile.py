@@ -289,6 +289,18 @@ class Kommandozeile(unittest.TestCase):
         self.assertEqual(gesehen, [("mit", {"3000": [e_host]}), ("app", {"3000": [e_host]}), ("proxy", None),
                                    ("mit", {"3000": [e_host, e_proxy]}), ("app", {"3000": [e_host, e_proxy]})])
 
+    def test_erreichbarer_weg_fuer_ein_ziel(self):
+        # dieselbe Adresse erst nicht erreichbar, dann erreichbar: ersetzt (neue Liste) und als geändert gemeldet
+        urls = {}
+        intern = {"url": "https://www.example.org/app/", "erreichbar": False, "weg": "a"}
+        offen = dict(intern, erreichbar=True, weg="b")
+        self.assertEqual(scanner.urls_zufuegen(urls, {("app", "3000"): [intern]}, {}), {"app"})
+        frueher = urls["app"]["3000"]
+        self.assertEqual(scanner.urls_zufuegen(urls, {("app", "3000"): [offen]}, {}), {"app"})
+        self.assertEqual(urls["app"]["3000"], [offen])
+        self.assertEqual(frueher, [intern])
+        self.assertEqual(scanner.urls_zufuegen(urls, {("app", "3000"): [intern]}, {}), set())
+
     def test_einzelscan_kennt_proxys_auf_dem_host(self):
         db = os.path.join(self.tmp, "db")
         os.makedirs(db, exist_ok=True)

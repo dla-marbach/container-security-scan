@@ -777,7 +777,8 @@ class Webadressen(unittest.TestCase):
         scanner.webadressen(services, w)
         self.assertEqual(list(w["ziel_urls"]), [("regdido", "3000"), ("api", "8080")])
         self.assertEqual(w["ziel_urls"][("regdido", "3000")], [
-            {"url": "https://www.example.org/regdido/", "erreichbar": True, "weg": "nginx:443 auf dem Host"}])
+            {"url": "https://www.example.org/regdido/", "erreichbar": True, "weg": "nginx:443 auf dem Host",
+             "lokal": False}])
         # im Scan des Containers: Webadressen des Dienstes an diesem Port
         node = dienst("node:3000", "/usr/local/bin/node", ["3000"], exposed=True)
         cw = web(self="regdido", via_urls={"3000": w["ziel_urls"][("regdido", "3000")]})
@@ -785,6 +786,60 @@ class Webadressen(unittest.TestCase):
         self.assertEqual([(e["url"], e["erreichbar"], e["weg"]) for e in node["webadressen"]], [
             ("https://www.example.org/regdido/", True, "nginx:443 auf dem Host → node:3000")])
         self.assertEqual(cw["ziel_urls"], {})
+
+    def test_ziel_nur_auf_loopback(self):
+        # Proxy von außerhalb (Container-IP), Dienst lauscht nur auf Loopback: Adresse nicht erreichbar
+        node = dienst("node:3000", "/usr/local/bin/node", ["3000"], exposed=False)
+        e = {"url": "https://www.example.org/app/", "erreichbar": True, "weg": "nginx:443 auf dem Host", "lokal": False}
+        scanner.webadressen([node], web(self="app", via_urls={"3000": [e]}))
+        self.assertEqual([(x["url"], x["erreichbar"]) for x in node["webadressen"]],
+                         [("https://www.example.org/app/", False)])
+
+    def test_weitergeleitete_adressen_je_port(self):
+        # nginx im Container mit getrennten Websites an 80 und 8080: eine an Port 80 weitergeleitete Adresse gilt
+        # nicht für die Website an 8080 (und deren Ziel)
+        sites = [{"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["public.example"], "datei": "a.conf",
+                  "roots": [], "listen": [{"adresse": "*", "port": "80", "ssl": False}], "weiter": []},
+                 {"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["intern.example"], "datei": "b.conf",
+                  "roots": [], "listen": [{"adresse": "*", "port": "8080", "ssl": False}],
+                  "weiter": [("/private/", "http://127.0.0.1:9000/")]}]
+        e = {"url": "https://public.example/app/", "erreichbar": True, "weg": "nginx:443 auf dem Host", "lokal": False}
+        nginx = dienst("nginx:80,8080", "/usr/sbin/nginx", ["80", "8080"], exposed=True)
+        backend = dienst("python3:9000", "/usr/bin/python3", ["9000"])
+        scanner.webadressen([nginx, backend], web(self="app", sites=sites, via_urls={"80": [e]}))
+        self.assertIn("https://public.example/app/", [x["url"] for x in nginx["webadressen"]])
+        self.assertEqual([x["url"] for x in backend["webadressen"]], ["http://intern.example:8080/private/"])
+
+    def test_erreichbarer_weg_ersetzt_nicht_erreichbaren(self):
+        # dieselbe Adresse für dasselbe Ziel über einen internen und einen öffentlichen Webserver: erreichbar
+        # (Apache nur an 127.0.0.1:80, nginx an der öffentlichen Adresse, beide mit www.example.org)
+        w = dict(self.w, containers={"172.18.0.5": "api"})
+        w["sites"] = [dict(w["sites"][1], namen=["www.example.org"], listen=[{"adresse": "127.0.0.1", "port": "80",
+                                                                               "ssl": False}],
+                           weiter=[("/api/", "http://172.18.0.5:8080/")]),
+                      dict(w["sites"][0], namen=["www.example.org"], listen=[{"adresse": "*", "port": "80", "ssl": False}],
+                           weiter=[("/api/", "http://172.18.0.5:8080/")])]
+        services = [dienst("httpd-prefork:80", "/usr/sbin/httpd-prefork", ["80"]),
+                    dienst("nginx:80", "/usr/sbin/nginx", ["80"], exposed=True)]
+        scanner.webadressen(services, w)
+        self.assertEqual([(x["url"], x["erreichbar"], x["weg"]) for x in w["ziel_urls"][("api", "8080")]],
+                         [("http://www.example.org/api/", True, "nginx:80 auf dem Host")])
+        liste = [{"url": "u", "erreichbar": False, "weg": "a"}]
+        self.assertTrue(scanner.adresse_zufuegen(liste, {"url": "u", "erreichbar": True, "weg": "b"}))
+        self.assertFalse(scanner.adresse_zufuegen(liste, {"url": "u", "erreichbar": False, "weg": "c"}))
+        self.assertEqual(liste, [{"url": "u", "erreichbar": True, "weg": "b"}])
+
+    def test_nur_localhost_hinter_proxy_von_ausserhalb(self):
+        # Apache-Statusseite "nur localhost": ein Proxy auf dem Host vor der Container-IP umgeht sie nicht, einer
+        # über dasselbe Loopback schon
+        apache = dienst("apache2:80", "/usr/sbin/apache2", ["80"], exposed=True)
+        konf = [{"id": "WEB-STATUS", "exe": "/usr/sbin/apache2", "site": None, "pfad": "/server-status",
+                 "nur_lokal": True, "text": "Apache: server-status nur für localhost"}]
+        for lokal, erwartet in ((False, 0), (True, 1)):
+            e = {"url": "https://www.example.org/", "erreichbar": True, "weg": "nginx:443 auf dem Host", "lokal": lokal}
+            w = web(self="app", via_urls={"80": [e]}, web_konf=konf)
+            scanner.webadressen([apache], w)
+            self.assertEqual(len(scanner.webserver_pruefen([apache], w)), erwartet, lokal)
 
     def test_komponenten(self):
         def C(typ, ort, aktiv):
