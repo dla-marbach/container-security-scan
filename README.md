@@ -132,7 +132,7 @@ chmod 440 /etc/sudoers.d/rundeck-container-scan && visudo -c
 | `1` | `FUNDE` | relevante Schwachstellen, [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) oder auf dem Host erreichbare [Einstellungen der Webserver](#einstellungen-der-webserver) | Funde ansehen (neue sind markiert), Images bzw. Pakete aktualisieren (SLES: `zypper patch`), Einstellungen beheben; Fehlalarme und akzeptierte Risiken in die [Ausnahmeliste](#ausnahmen) |
 | `2` | `UNVOLLSTAENDIG` | **Prüfung unvollständig – nie als „sauber“ werten** | Meldung lesen und Ursache beheben |
 
-Gründe für `2` sind z. B.: Docker nicht erreichbar, Daten fehlen oder sind älter als 3 Tage, Dateien, Prozesse
+Gründe für `2` sind z. B.: Docker nicht erreichbar, Daten fehlen oder sind 3 Tage oder älter, Dateien, Prozesse
 oder Webserver-Konfiguration nicht vollständig lesbar, Distribution ohne Sicherheitsupdates (Supportende),
 Ausnahmeliste fehlerhaft, Host-Scan nicht als root.
 
@@ -213,7 +213,7 @@ Grundsatz: **im Zweifel erreichbar.** Erkannt werden:
   per Container-Name, IP oder `127.0.0.1`
 - Ziele aus Traefik- und caddy-docker-proxy-Labels
 - Container, die eine erreichbare Anwendung aufruft (Ziel-URLs in Umgebung oder Kommandozeile, offene
-  Verbindungen); Datenbanken und Caches als Ziel zählen nicht
+  Verbindungen); Datenbanken, Caches und Message Broker als Ziel zählen nicht
 - Tunnel-Agenten (cloudflared, frpc, ngrok, chisel)
 - **möglicherweise erreichbar** (mit Warnung): Container im Docker-Netz eines Proxys, dessen Ziele nicht
   vollständig bekannt sind (Traefik, Caddy, HAProxy, Envoy, Varnish; nginx mit nicht auflösbarer Variable)
@@ -326,7 +326,7 @@ sudo python3 -I $C --db $DB --alle <container> <ausgabeverzeichnis>             
 | `--alle` | alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV) |
 | `--ausnahmen DATEI` | [Ausnahmeliste](#ausnahmen) |
 | `--db DIR` | Datenverzeichnis; mehrfach möglich, je Ökosystem gilt das erste, das es enthält. Standard: `daten/` und `osv-db/` neben dem Skript |
-| `--db-aktualisieren` | Daten holen (nie als root, nie den Code): im Git-Checkout den Branch `daten` nach `daten/`; mit `--db DIR` alle Daten direkt von den Quellen; `--oekosysteme A,B` lädt weitere Ökosysteme (z. B. openSUSE) nach `osv-db/`, `--voll` alles neu |
+| `--db-aktualisieren` | Daten holen (nie als root, nie den Code): im Git-Checkout den Branch `daten` nach `daten/`; ohne Git-Checkout oder mit `--db DIR` alle Daten direkt von den Quellen; `--oekosysteme A,B` lädt weitere Ökosysteme (z. B. openSUSE) nach `osv-db/`, `--voll` alles neu |
 | `--user` | Benutzer für `docker exec` (Standard `0`); ein anderer kann meist nicht alles lesen (dann `2`) |
 | `--version` | Version anzeigen |
 
@@ -355,10 +355,10 @@ Feldern und Einträgen, die der Abgleich liest (Ergebnisse identisch mit den vol
 
 ## Rein lesend
 
-- Im Container laufen nur `find`/`tar`, ein sh-Skript, das `/proc` liest, und Versionsabfragen (`node -e`,
-  `php -r` …) mit Zeitlimit – **nie mit mehr Rechten als der jeweilige Prozess**, Befehle über einen festen
-  Suchpfad statt den `PATH` des Images. `docker diff` zeigt vor und nach dem Scan keine Änderung.
-- `nginx -T` bzw. `apache2 -S` laufen mit dem Benutzer des Webservers, nicht als root.
+- Im Container laufen nur `find`/`tar` und ein sh-Skript, das `/proc` liest, über einen festen Suchpfad statt
+  den `PATH` des Images. `docker diff` zeigt vor und nach dem Scan keine Änderung.
+- Versionsabfragen (`node -e`, `php -r` …, mit Zeitlimit) und `nginx -T` bzw. `apache2 -S` laufen **nie mit mehr
+  Rechten als der jeweilige Prozess** bzw. der Hauptprozess des Webservers.
 - Ohne Shell im Container wird passiv gelesen (`docker export`, `docker cp`, `/proc` des Hosts); nichts wird auf
   dem Host entpackt.
 - Auf dem Host: `firewall-cmd` und `ip` nur abfragend; die TLS-Prüfung ist ein Verbindungsaufbau zum eigenen
@@ -375,7 +375,7 @@ Dafür gibt es z. B. [Trivy](https://trivy.dev), [Grype](https://github.com/anch
 
 Bekannte Grenzen:
 
-- Nicht erkannt: Rust, Ruby, .NET, Programme ohne Versionskennung, JavaScript-Bundles ohne Kopfkommentar,
+- Nicht erkannt: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung, JavaScript-Bundles ohne Kopfkommentar,
   Fremdpaketquellen außer den genannten.
 - Welche Pakete eine Anwendung tatsächlich importiert, ist von außen nicht sichtbar.
 - Nur nginx und Apache werden als Proxy ausgewertet; andere machen ihre Nachbarn „möglicherweise“ erreichbar

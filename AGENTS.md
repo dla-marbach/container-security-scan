@@ -16,7 +16,7 @@ tests/                       unittest, eine Datei je Bereich (Übersicht in test
 .github/workflows/           tests.yml (Unit-Tests; Docker-Test bei PRs und auf main), daten.yml (Daten, täglich)
 ```
 
-Die Daten (OSV-Auszug, EOL, KEV) liegen im Branch `daten` und werden nur von `daten.yml` geschrieben. Lokal
+Die Daten (OSV-Auszug, EOL, KEV, Schweregrade von SUSE) liegen im Branch `daten` und werden nur von `daten.yml` geschrieben. Lokal
 liegen sie unter `daten/` (in `.gitignore`), geholt mit `./container-security-scan.py --db-aktualisieren`.
 Den Branch `daten` nie von Hand ändern.
 
