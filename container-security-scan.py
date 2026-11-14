@@ -4219,9 +4219,10 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
 
 
 # ===========================================================================
-def scan_container(name, a, via_proxy=None, via_urls=None):
+def scan_container(name, a, via_proxy=None, via_urls=None, host_hinweise=None):
     """Einen Container scannen. via_proxy: {Port: [Grund]} (Ziel eines erreichbaren Proxys), via_urls: {Port:
-    [Webadresse]} (dessen Webadressen, siehe webadressen). Liefert (Rückgabewert, öffentliche Backends [(Container,
+    [Webadresse]} (dessen Webadressen, siehe webadressen), host_hinweise: ([Warnung], [Problem]) der Proxys auf
+    dem Host, die diesen Container betreffen (Einzelscan, ohne eigene Zeilen für den Host). Liefert (Rückgabewert, öffentliche Backends [(Container,
     Port, Dienst)], Basis der Berichtsdateien, Webadressen der Ziele in anderen Containern {(Container, Port):
     [Webadresse]})."""
     c = Container(name, a.user)
@@ -4242,6 +4243,7 @@ def scan_container(name, a, via_proxy=None, via_urls=None):
     comps += probe_runtimes(c, procs, owners) + host_components()
     web = collect_web(c, procs)
     problems.extend(web["problems"])
+    problems.extend((host_hinweise or ((), ()))[1])
     web["self"] = c.name
     web["via_proxy"] = via_proxy or {}
     web["via_urls"] = via_urls or {}
@@ -4249,7 +4251,7 @@ def scan_container(name, a, via_proxy=None, via_urls=None):
     services = mark_usage(comps, procs, owners, web)
 
     # Ports, auf denen ein Container lauscht, der den Netzwerk-Namespace mitnutzt: dort bewertet
-    warnings = []
+    warnings = list((host_hinweise or ((), ()))[0])
     listening = {port for p in procs.values() for port in p["ports"]}
     ohne_prozess = fremd       # lauschende Sockets ohne sichtbaren Prozess
     # nur, wenn dort ein lesbarer Prozess auf dem Port lauscht (also bewertet wird); sonst Rückfallregel
@@ -4501,14 +4503,17 @@ def host_proxy_pids(infos, proc="/proc", alle=False):
     return pids, gesperrt
 
 
+HOST_UNLESBAR = "Prozesse auf dem Host nicht vollständig lesbar"
+
+
 def host_proxys(infos):
     """Reverse Proxys und Tunnel direkt auf dem Host, z.B. nginx vor einem Container ohne veröffentlichten Port
     (proxy_pass http://172.18.0.5:3000). Liefert (Ziele [(Container, Port, Grund)], Dienste, Warnungen, Probleme).
     Ziele per Container-IP; nicht auswertbare Weiterleitungen machen alle Container mit Docker-Netz möglicherweise
     erreichbar (der Host erreicht sie über ihre IP)."""
     pids, gesperrt = host_proxy_pids(infos)
-    warnings = ["Prozesse auf dem Host nicht vollständig lesbar (%d; Skript nicht als root?) – Reverse Proxys auf "
-                "dem Host ggf. nicht erkannt" % gesperrt] if gesperrt else []
+    warnings = [HOST_UNLESBAR + " (%d; Skript nicht als root?) – Reverse Proxys auf dem Host ggf. nicht erkannt"
+                % gesperrt] if gesperrt else []
     if not pids:
         return [], [], warnings, []
     rc, out = run(["sh", "-s", "--"] + pids, input=PROC_SH)
@@ -4891,14 +4896,19 @@ def main():
             return scan_container(a.container, a)[0]       # meldet den Fehler selbst
         d = next((x for x in infos if a.container in (name_von(x), x.get("Id")) or x.get("Id", "").startswith(a.container)), {})
         ziele, services, warnings, problems = host_proxys(infos)
-        host_code = host_ausgeben(services, warnings, problems)
         namen = {name_von(d)} | set(netz_gruppe(d, infos)) if d else set()
         via = {}
         for ct, port, reason in ziele:
             if ct in namen and reason not in via.setdefault(port, []):
                 via[port].append(reason)
-        code = scan_container(a.container, a, via)[0]
-        return 2 if 2 in (code, host_code) else code
+        # keine eigenen Zeilen für den Host: was die Bewertung dieses Containers betrifft, steht bei ihm
+        # (unvollständig gelesene Proxys -> unvollständig; nicht auswertbare Weiterleitungen, die ihn treffen)
+        hinweise = [w for w in warnings if w.startswith(HOST_UNLESBAR)]
+        if via.get("*"):
+            hinweise += ["Weiterleitungen von %s nicht vollständig auswertbar (%s) – Container gilt als möglicherweise "
+                         "öffentlich" % (svc["label"], "; ".join(svc["unklar"])) for svc in services if svc["unklar"]]
+        return scan_container(a.container, a, via, None,
+                              (hinweise, ["Proxy auf dem Host: " + p for p in problems]))[0]
     try:
         infos, netze = docker_lage()
         public, rest, gruppen = container_liste(infos, netze)

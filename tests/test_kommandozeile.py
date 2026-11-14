@@ -298,10 +298,40 @@ class Kommandozeile(unittest.TestCase):
             with mock.patch.object(scanner, "scan_container", return_value=(0, [], None, {})) as scan, \
                     mock.patch.object(scanner, "docker_lage", return_value=(infos, {})), \
                     mock.patch.object(scanner, "host_proxys", return_value=host), \
-                    mock.patch("sys.stdout", new_callable=io.StringIO), \
+                    mock.patch("sys.stdout", new_callable=io.StringIO) as out, \
                     mock.patch.object(sys, "argv", ["x", "--db", db, ref, self.tmp]):
                 self.assertEqual(scanner.main(), 0)
             self.assertEqual(scan.call_args[0][2], {"3000": ["nginx:443 auf dem Host"]})
+            self.assertEqual(scan.call_args[0][4], ([], []))
+            self.assertNotIn("Host:", out.getvalue())
+
+    def test_einzelscan_ohne_zeilen_fuer_den_host(self):
+        # Hinweise der Proxys auf dem Host nur, soweit sie den Container betreffen – beim Container, nicht als
+        # eigene Zeilen; nicht lesbare Konfiguration dort macht den Scan des Containers unvollständig
+        db = os.path.join(self.tmp, "db")
+        os.makedirs(db, exist_ok=True)
+        infos = [{"Id": "abc123", "Name": "/app", "HostConfig": {}, "NetworkSettings": {"Networks": {"n": {}}}}]
+        svc = {"label": "nginx:443 auf dem Host", "exposed": True, "backends": [], "unresolved": ["10.0.0.9:80"],
+               "unklar": ["Ziel $backend"]}
+        warnungen = ["Prozesse auf dem Host nicht vollständig lesbar (2; Skript nicht als root?) – …",
+                     "Backend 10.0.0.9:80 von nginx:443 auf dem Host keinem Container zuordenbar (anderer Server?)",
+                     "Weiterleitungen von nginx:443 auf dem Host nicht vollständig auswertbar (Ziel $backend) – …"]
+        for ziele, erwartet in (([("app", "*", "nginx:443 auf dem Host")], 2), ([("db", "*", "nginx:443 auf dem Host")], 1)):
+            host = (ziele, [svc], warnungen, ["/usr/sbin/nginx -T fehlgeschlagen"])
+            with mock.patch.object(scanner, "scan_container", return_value=(2, [], None, {})) as scan, \
+                    mock.patch.object(scanner, "docker_lage", return_value=(infos, {})), \
+                    mock.patch.object(scanner, "host_proxys", return_value=host), \
+                    mock.patch("sys.stdout", new_callable=io.StringIO) as out, \
+                    mock.patch.object(sys, "argv", ["x", "--db", db, "app", self.tmp]):
+                self.assertEqual(scanner.main(), 2)
+            self.assertNotIn("Host:", out.getvalue())
+            hinweise, probleme = scan.call_args[0][4]
+            self.assertEqual(probleme, ["Proxy auf dem Host: /usr/sbin/nginx -T fehlgeschlagen"])
+            self.assertEqual(len(hinweise), erwartet)
+            self.assertTrue(hinweise[0].startswith("Prozesse auf dem Host nicht vollständig lesbar"))
+            if erwartet == 2:
+                self.assertIn("Weiterleitungen von nginx:443 auf dem Host nicht vollständig auswertbar (Ziel $backend) "
+                              "– Container gilt als möglicherweise öffentlich", hinweise[1])
 
     def host_lauf(self, args, docker=True, infos=([], {}), host=(1, [], None, {}), docker_fehler=False, public=()):
         """main() mit --host; liefert (Rückgabewert, gescannte Container, Ausgabe, Mock von scan_host)."""

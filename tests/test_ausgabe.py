@@ -167,7 +167,7 @@ class Gesamtlauf(unittest.TestCase):
         self.problems = []
         self.info = {}
 
-    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, via_urls=None, **web_kw):
+    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, via_urls=None, host_hinweise=None, **web_kw):
         """scan_container; liefert (Rückgabewert, Backends, Basis), Webadressen der Ziele in self.ziel_urls."""
         nginx = proc(1, "/usr/sbin/nginx", ports=ports or {"80": "alle"}, maps={"/usr/lib/x86_64-linux-gnu/libssl.so.3"})
         w = web(**dict({"published": {"80": ["0.0.0.0:80"]}}, **web_kw))
@@ -186,7 +186,7 @@ class Gesamtlauf(unittest.TestCase):
         for p in patches:
             p.start()
         try:
-            ergebnis = scanner.scan_container("app", self.a, via, via_urls)
+            ergebnis = scanner.scan_container("app", self.a, via, via_urls, host_hinweise)
             self.konsole = scanner.sys.stdout.getvalue()
             self.ziel_urls = ergebnis[3]
             return ergebnis[:3]
@@ -200,6 +200,15 @@ class Gesamtlauf(unittest.TestCase):
         self.lauf(published={}, via={"80": ["nginx:443 auf dem Host"]}, via_urls={"80": [e]})
         self.assertIn("app:   Webadressen nginx:80: erreichbar: https://www.example.org/app/", self.konsole)
         self.assertEqual(self.ziel_urls, {})
+
+    def test_hinweise_der_proxys_auf_dem_host(self):
+        # Einzelscan: Probleme der Proxys auf dem Host machen den Container unvollständig, Warnungen bei ihm
+        code, _, base = self.lauf(host_hinweise=(["Prozesse auf dem Host nicht vollständig lesbar (1)"],
+                                                 ["Proxy auf dem Host: /usr/sbin/nginx -T fehlgeschlagen"]))
+        self.assertEqual(code, 2)
+        self.assertIn("app: UNVOLLSTÄNDIG: Proxy auf dem Host: /usr/sbin/nginx -T fehlgeschlagen", self.konsole)
+        with open(base + ".md", encoding="utf-8") as f:
+            self.assertIn("Prozesse auf dem Host nicht vollständig lesbar (1)", f.read())
 
     def test_relevanter_fund_ergibt_1(self):
         code, backends, base = self.lauf()
