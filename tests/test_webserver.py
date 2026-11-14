@@ -870,3 +870,5 @@ class Tls(unittest.TestCase):
         ergebnis = json.loads(out.decode())
         self.assertEqual(sorted(ergebnis), ["TLSv1", "TLSv1.1"])
         self.assertTrue(all(v.startswith("nicht prüfbar") for v in ergebnis.values()), ergebnis)
+        # nur ASCII: mit leerer Umgebung (env -i, ohne LANG) liest Python 3.6 die Kommandozeile sonst nicht
+        self.assertTrue(all(ord(c) < 128 for c in scanner.TLS_PRUEFUNG))

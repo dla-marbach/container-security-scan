@@ -2777,6 +2777,7 @@ def webserver_pruefen(services, web):
 # entscheiden Konfiguration, OpenSSL-Version und systemweite Vorgaben (crypto-policies) zusammen – die Konfiguration
 # allein reicht nicht. Eigener Prozess ohne OpenSSL-Konfiguration (OPENSSL_CONF=/dev/null), damit die Vorgaben des
 # Systems nicht schon den Client einschränken; SECLEVEL=0 erlaubt die alten Verfahren auf Seite des Clients.
+# Nur ASCII: Python 3.6 mit leerer Umgebung (env -i, ohne LANG) kann eine Kommandozeile mit Umlauten nicht lesen.
 TLS_PRUEFUNG = r"""
 import json, socket, ssl, sys, warnings
 warnings.simplefilter("ignore")
@@ -2797,7 +2798,7 @@ for name in ("TLSv1", "TLSv1.1"):
         except ssl.SSLError:
             ctx.set_ciphers("ALL")
     except (AttributeError, ValueError, ssl.SSLError) as e:
-        out[name] = "nicht prüfbar: %s" % e
+        out[name] = "nicht pr\u00fcfbar: %s" % e
         continue
     try:
         with socket.create_connection((host, port), timeout=10) as s:
@@ -2805,10 +2806,10 @@ for name in ("TLSv1", "TLSv1.1"):
                 out[name] = "angenommen" if t.version() == name else "abgelehnt"
     except ssl.SSLError as e:
         grund = getattr(e, "reason", None) or str(e)
-        out[name] = "nicht prüfbar: %s" % grund if grund in ("NO_PROTOCOLS_AVAILABLE", "NO_CIPHERS_AVAILABLE") \
+        out[name] = "nicht pr\u00fcfbar: %s" % grund if grund in ("NO_PROTOCOLS_AVAILABLE", "NO_CIPHERS_AVAILABLE") \
             else "abgelehnt"
     except (OSError, ValueError) as e:
-        out[name] = "nicht prüfbar: %s" % e
+        out[name] = "nicht pr\u00fcfbar: %s" % e
 sys.stdout.write(json.dumps(out))
 """
 
