@@ -554,9 +554,6 @@ class Backends(unittest.TestCase):
         self.assertIn("-> Container app-api", scanner.resolve_backend("http://api", self.w, "app"))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 SLES_ARGV = ["/usr/sbin/httpd-prefork", "-DSYSCONFIG", "-C", "PidFile /run/httpd.pid", "-C",
              "Include /etc/apache2/sysconfig.d//loadmodule.conf", "-f", "/etc/apache2/httpd.conf", "-c",
@@ -872,3 +869,7 @@ class Tls(unittest.TestCase):
         self.assertTrue(all(v.startswith("nicht prüfbar") for v in ergebnis.values()), ergebnis)
         # nur ASCII: mit leerer Umgebung (env -i, ohne LANG) liest Python 3.6 die Kommandozeile sonst nicht
         self.assertTrue(all(ord(c) < 128 for c in scanner.TLS_PRUEFUNG))
+
+
+if __name__ == "__main__":
+    unittest.main()

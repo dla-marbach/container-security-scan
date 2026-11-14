@@ -489,8 +489,10 @@ Lücke für die eigenen Pakete (zurückportierte Korrekturen, Konfiguration); di
 ab. Geprüft (11/2026) an SLES 15 SP6 mit 349 Funden: mit der Bewertung der NVD 44 CRITICAL, 152 HIGH und 80 ohne
 Schweregrad, mit SUSEs Bewertung 3 CRITICAL, 108 HIGH und 13 ohne (SUSE-Updates ohne CVE). In einer Stichprobe von
 40 CVEs stimmte die Stufe aus SUSEs CVSS-Wert 36-mal mit SUSEs eigener Einstufung (critical/important/…) überein,
-sonst LOW statt MEDIUM. Fehlt die Datei oder ist sie älter als 7 Tage, erscheint eine Warnung, und der
-Schweregrad kommt wie bei anderen Quellen über die CVE aus Bitnami- bzw. Alpine-Daten.
+sonst LOW statt MEDIUM. Fehlt die Datei oder ist sie ungültig, erscheint eine Warnung, und der Schweregrad
+kommt wie bei anderen Quellen über die CVE aus Bitnami- bzw. Alpine-Daten. Ist sie älter als 7 Tage, erscheint
+ebenfalls eine Warnung; ihre Werte gelten aber weiter (sie sind auch dann genauer als die der NVD), nur CVEs, die
+darin noch fehlen, bekommen den Schweregrad aus den anderen Quellen.
 
 Ökosysteme, die nicht im Repository liegen (openSUSE), lädt `--db-aktualisieren --oekosysteme …`
 direkt von OSV nach `osv-db/`. Für Ökosysteme, die es im Branch `daten` schon gibt, ist das wirkungslos:

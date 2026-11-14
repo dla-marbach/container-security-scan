@@ -436,7 +436,8 @@ def schweregrad_aus_punkten(score):
 def suse_schweregrad_markieren(findings, paths):
     """Funde aus den SUSE-Daten (OS-Pakete von SLES/openSUSE) mit SUSEs eigener Bewertung der CVE versehen; sie
     hat Vorrang vor der Übernahme aus anderen Quellen (wie bei Debian und Ubuntu die Einstufung der Distribution).
-    Liefert Warnungen (fehlende oder veraltete Daten: dann gilt die Bewertung aus anderen Quellen)."""
+    Liefert Warnungen: fehlende oder ungültige Daten (dann gilt die Bewertung aus anderen Quellen), veraltete Daten
+    (gelten weiter; genauer als die der NVD, nur neue CVEs fehlen darin)."""
     suse = [f for f in findings if f.get("quelle_datei") in ("SUSE", "openSUSE")]
     if not suse:
         return []
