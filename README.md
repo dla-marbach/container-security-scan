@@ -30,6 +30,16 @@ was im **laufenden** Container steckt und ob es von außen erreichbar ist:
 - Auf dem Server selbst zählt, was die Firewall durchlässt und welche **Webadresse** bei welchem Dienst
   ankommt, auch über mehrere Proxys hintereinander (nginx → Apache → php-fpm).
 
+## Abgrenzung
+
+Das Werkzeug beantwortet eine Frage: **Welche laufenden Dienste – in Containern oder direkt auf dem Host – sind
+erreichbar, und welche verwundbaren Komponenten nutzen sie?** Dazu gehören nur Prüfungen, die diese Frage
+schärfen: Erreichbarkeit (Docker, Reverse Proxys, firewalld), Webadressen, die
+[gefährlichen Einstellungen des Containers](#gefährliche-einstellungen-des-containers) und die
+[Einstellungen der Webserver](#einstellungen-der-webserver). Nicht vorgesehen sind allgemeine Härtung
+(CIS-Benchmarks, HTTP-Header, Cipher-Listen, Kennwortregeln), weitere Paketfilter neben firewalld und Prüfungen
+der Konfiguration weiterer Dienste; dafür gibt es eigene Werkzeuge (siehe [Verwandte Werkzeuge](#verwandte-werkzeuge)).
+
 ## Installation und Betrieb
 
 Das Skript läuft als root, deshalb sind Code und Daten getrennt: Der **Code** ist eine Datei aus einem
@@ -157,7 +167,7 @@ Rückgabewert nicht.
 | Wert | Bedeutung |
 |---|---|
 | `0` | keine relevanten Schwachstellen |
-| `1` | relevante Schwachstellen, [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) oder erreichbare [Einstellungen der Webserver](#einstellungen-der-webserver) gefunden |
+| `1` | relevante Schwachstellen, [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) oder auf dem Host erreichbare [Einstellungen der Webserver](#einstellungen-der-webserver) gefunden |
 | `2` | Fehler oder **Prüfung unvollständig** – nie als „sauber“ werten. Z. B.: docker nicht erreichbar, Container läuft nicht, Daten fehlen für ein benötigtes Ökosystem oder sind älter als 3 Tage, keine Paketdatenbank im Container, Dateien nicht vollständig lesbar (z. B. unlesbare Verzeichnisse; während der Prüfung gelöschte oder geänderte Dateien zählen nicht), nginx- bzw. Apache-Konfiguration nicht lesbar (im Container oder eines Proxys auf dem Host), Distribution ohne aktuelle Sicherheitsdaten (EOL), Ausnahmeliste fehlerhaft; beim Host: nicht als root, Prozesse oder Dateien des Hosts nicht vollständig lesbar, mit Containern: Docker eingerichtet, aber nicht erreichbar. |
 
 **Relevant** ist P1 CRITICAL/HIGH und P2 CRITICAL (anpassbar über `RELEVANT` am Anfang des Skripts), dazu
@@ -306,9 +316,12 @@ Adressen stammen aus der Konfiguration, nicht aus dem DNS.
 
 ### Einstellungen der Webserver
 
-Einstellungen von nginx und Apache, die Informationen preisgeben. Sie sind **relevant** (Rückgabewert 1), wenn
-der Webserver erreichbar ist, auch über einen Proxy davor; sonst stehen sie unter „Nicht gezählt“. Paket für die
-[Ausnahmeliste](#ausnahmen): der erste Name der Website, sonst das Programm.
+Einstellungen von nginx und Apache, die Informationen preisgeben. Auf dem Host sind sie **relevant**
+(Rückgabewert 1), wenn der Webserver erreichbar ist, auch über einen Proxy davor; sonst stehen sie unter „Nicht
+gezählt“. Im Container sind sie vorerst nur eine **Warnung** (ohne Einfluss auf den Rückgabewert): Die Prüfung ist
+neu, und verbreitete Images (z. B. `php:apache` mit der Debian-Vorgabe `Options Indexes` für `/var/www`) würden
+sonst sofort `1` melden. Paket für die [Ausnahmeliste](#ausnahmen): der erste Name der Website, sonst das
+Programm; eine Ausnahme unterdrückt auch die Warnung.
 
 | Kennung | Befund |
 |---|---|

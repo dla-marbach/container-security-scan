@@ -70,5 +70,7 @@ was welche Datei prüft, und wird mitgepflegt. Tests nie abschalten oder übersp
 ## Nicht tun
 
 - Kein automatisches Update des Codes auf Servern einführen (Code nur von Hand, aus einem Tag).
+- Den Umfang nicht ohne konkreten Anlass erweitern (README: Abgrenzung): keine allgemeinen Härtungsprüfungen,
+  keine weiteren Paketfilter neben firewalld, keine weiteren `WEB-…`- oder `CONF-…`-Prüfungen.
 - Keine Tags oder Releases anlegen; das macht der Maintainer nach dem Merge.
 - Nicht direkt nach `main` pushen; Änderungen über einen Branch und Pull Request.

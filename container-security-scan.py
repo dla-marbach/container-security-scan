@@ -3996,7 +3996,8 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
         w("\nEinstellungen der Webserver (Statusseiten, Verzeichnislisten%s): keine gezählt." % (
             ", TLS 1.0/1.1" if host else ""))
     konf_ausgenommen = [k for k in konf if k.get("ausgenommen")]
-    web_intern = [k for k in konf if not k.get("ausgenommen") and k.get("art") == "web" and not k.get("erreichbar")]
+    web_intern = [k for k in konf if not k.get("ausgenommen") and k.get("art") == "web" and not k.get("erreichbar")
+                  and not k.get("nur_warnung")]
     if ausgenommen or konf_ausgenommen or web_intern:
         w("\nNicht gezählt (wären sonst relevant):")
         for r in ausgenommen[:30]:
@@ -4187,15 +4188,18 @@ def scan_container(name, a, via_proxy=None):
     konf = konfiguration_pruefen(c)
     webadressen(services, web)
     komponenten_webadressen(comps, services)
-    konf += webserver_pruefen(services, web)
+    # Einstellungen der Webserver im Container: vorerst nur Warnung (neue Prüfung, bestehende Images wie php:apache
+    # hätten sonst sofort Rückgabewert 1); auf dem Host zählen sie
+    konf += [dict(k, nur_warnung=True) for k in webserver_pruefen(services, web)]
     code, base = abschliessen(c, c.name, "scan_" + c.name, "bekannt_%s.json" % c.name, a, comps, pkgs, osinfo,
                               services, procs, web, how, problems, konf)
     return code, [(ct, port, "%s in %s" % (label, c.name)) for s in services for ct, port, label in s["backends"]], base
 
 
 def konf_zaehlt(k):
-    """Zählt eine Einstellung (CONF-…, WEB-…) für den Rückgabewert? Webserver nur, wenn erreichbar."""
-    return not k.get("ausgenommen") and (k.get("art") != "web" or k.get("erreichbar"))
+    """Zählt eine Einstellung (CONF-…, WEB-…) für den Rückgabewert? Webserver nur, wenn erreichbar und nicht nur als
+    Warnung (Container, siehe scan_container)."""
+    return not k.get("ausgenommen") and not k.get("nur_warnung") and (k.get("art") != "web" or k.get("erreichbar"))
 
 
 def abschliessen(z, prefix, basisname, known_name, a, comps, pkgs, osinfo, services, procs, web, how, problems, konf):
@@ -4204,6 +4208,10 @@ def abschliessen(z, prefix, basisname, known_name, a, comps, pkgs, osinfo, servi
     warnings = how["warnungen"]
     ausnahmen_anwenden(konf, getattr(a, "ausnahmen_liste", None) or [], warnings)
     konf_relevant = [k for k in konf if konf_zaehlt(k)]
+    for k in konf:
+        if k.get("nur_warnung") and k.get("erreichbar") and not k.get("ausgenommen"):
+            warnings.append("Einstellung des Webservers (im Container vorerst nur Warnung, zählt nicht für den "
+                            "Rückgabewert): " + konf_text(k))
 
     log("Abgleich mit OSV-Daten %s ..." % ", ".join(a.dbdirs))
     findings, db_date, missing, os_newest = osv_scan(comps, osinfo, a.dbdirs)

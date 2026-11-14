@@ -411,6 +411,26 @@ class Gesamtlauf(unittest.TestCase):
         self.assertIn("Nicht gezählt (wären sonst relevant):\n- CONF-PID-HOST: pid=host: sieht und beeinflusst alle "
                       "Prozesse des Hosts – Ausnahme bis 2026-12-31: Monitoring-Agent", text)
 
+    def test_einstellung_des_webservers_im_container_nur_warnung(self):
+        # nginx erreichbar mit stub_status ohne Beschränkung: im Container nur Warnung, Rückgabewert unverändert
+        self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2")
+        site = {"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["shop.example.org"], "datei": "default.conf",
+                "roots": [], "weiter": [], "listen": [{"adresse": "*", "port": "80", "ssl": False}]}
+        konf = [{"id": "WEB-STATUS", "exe": "/usr/sbin/nginx", "site": site, "pfad": "/nginx_status",
+                 "text": "nginx: stub_status in location /nginx_status ohne Zugriffsbeschränkung"}]
+        code, _, base = self.lauf(sites=[site], web_konf=konf)
+        self.assertEqual(code, 0)
+        self.assertIn("app: WARNUNG: Einstellung des Webservers (im Container vorerst nur Warnung, zählt nicht für den "
+                      "Rückgabewert): WEB-STATUS: nginx: stub_status", self.konsole)
+        self.assertIn("http://shop.example.org/nginx_status", self.konsole)
+        with open(base + ".md", encoding="utf-8") as f:
+            self.assertIn("Einstellungen der Webserver (Statusseiten, Verzeichnislisten): keine gezählt.", f.read())
+        # mit Ausnahme auch keine Warnung
+        self.a.ausnahmen_liste = [{"id": "WEB-STATUS", "paket": "shop.example.org",
+                                   "bis": scanner.datetime.date(2026, 12, 31), "grund": "Monitoring", "zeile": 1}]
+        self.lauf(sites=[site], web_konf=konf)
+        self.assertNotIn("Einstellung des Webservers", self.konsole)
+
     def test_root_dienst_ist_nur_warnung(self):
         self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2")
         code, _, base = self.lauf()     # nginx:80 als einziger Prozess mit UID 0
