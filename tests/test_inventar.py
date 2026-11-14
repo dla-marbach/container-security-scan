@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 import unittest
 import zipfile
 from unittest import mock
@@ -312,6 +313,21 @@ class Dateisuche(unittest.TestCase):
         self.assertIn("Permission denied", err)
         rc, _, err = self.suche(self.tmp, tar="exit 2\n")
         self.assertEqual((rc, err), (3, "tar: Fehler ohne Meldung\n"))
+
+    def test_zeitlimit_beendet_auch_kindprozesse(self):
+        # Kind der Shell (wie tar, das ein Virenscanner per fanotify blockiert) hält die Pipe offen: Das Zeitlimit
+        # muss die ganze Prozessgruppe beenden, sonst wartet der Scan auf das Ende des Kindes.
+        meldungen = []
+        start = time.time()
+        self.assertFalse(scanner.stream_tar(["sh", "-c", "sleep 60; true"], {}, [], timeout=1, meldungen=meldungen))
+        self.assertLess(time.time() - start, 30)
+        self.assertEqual(meldungen, ["Zeitüberschreitung nach 1 s, Suche abgebrochen"])
+
+    def test_ohne_zeitueberschreitung_keine_meldung(self):
+        meldungen = []
+        self.assertTrue(scanner.stream_tar(["sh", "-c", "tar -cf - -T /dev/null"], {}, [], timeout=60,
+                                           meldungen=meldungen))
+        self.assertEqual(meldungen, [])
 
     def test_meldungen_im_bericht(self):
         meldungen = []

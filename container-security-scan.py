@@ -76,6 +76,7 @@ import subprocess
 import sys
 import tarfile
 import shutil
+import signal
 import tempfile
 import threading
 import traceback
@@ -89,7 +90,7 @@ from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "0.4.1"
+VERSION = "0.4.2"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
@@ -807,13 +808,33 @@ def read_tar(stream, files, extra, prefix=""):
         pass
 
 
+def gruppe_beenden(p):
+    """Prozessgruppe eines mit start_new_session gestarteten Prozesses beenden (auch Kinder wie find/tar). Nur
+    solange er nicht abgeholt ist: Danach könnte die Nummer neu vergeben sein."""
+    if p.returncode is not None:
+        return
+    try:
+        os.killpg(p.pid, signal.SIGKILL)
+    except OSError:     # schon beendet
+        pass
+
+
 def stream_tar(cmd, files, extra, prefix="", input=None, timeout=1800, meldungen=None):
     """tar-Strom eines Befehls lesen (ohne alles im Speicher zu halten). Liefert False bei Fehler/Zeitüberschreitung.
     meldungen: Liste, an die die Fehlerausgabe des Befehls (zeilenweise) angehängt wird."""
     with tempfile.TemporaryFile() as err:     # Datei statt Pipe: kein Blockieren bei viel Fehlerausgabe
+        # Eigene Prozessgruppe: Bei Zeitüberschreitung (oder Abbruch) werden auch find/tar beendet, nicht nur die
+        # Shell. Sonst halten sie die Pipe offen und der Scan hängt, z. B. wenn ein Virenscanner (fanotify) das
+        # Öffnen einer Datei nicht freigibt.
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE if input else subprocess.DEVNULL,
-                             stdout=subprocess.PIPE, stderr=err if meldungen is not None else subprocess.DEVNULL)
-        timer = threading.Timer(timeout, p.kill)
+                             stdout=subprocess.PIPE, stderr=err if meldungen is not None else subprocess.DEVNULL,
+                             start_new_session=True)
+        abgelaufen = []
+
+        def ablauf():
+            abgelaufen.append(True)
+            gruppe_beenden(p)
+        timer = threading.Timer(timeout, ablauf)
         timer.start()
         try:
             if input:
@@ -822,12 +843,17 @@ def stream_tar(cmd, files, extra, prefix="", input=None, timeout=1800, meldungen
             read_tar(p.stdout, files, extra, prefix)
             p.stdout.close()
             rc = p.wait()
+        except BaseException:
+            gruppe_beenden(p)
+            raise
         finally:
             timer.cancel()
         if meldungen is not None:
             err.seek(0)
             meldungen.extend(x.strip() for x in err.read().decode("utf-8", "replace").splitlines() if x.strip())
-    return rc == 0
+            if abgelaufen:
+                meldungen.append("Zeitüberschreitung nach %d s, Suche abgebrochen" % timeout)
+    return rc == 0 and not abgelaufen
 
 
 def collect_files(c):
