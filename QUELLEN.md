@@ -28,6 +28,7 @@ Namensnennung und – wo verlangt – unter derselben Lizenz.
 | `Packagist/` | [Drupal Advisory Database](https://github.com/DrupalSecurityTeam/drupal-advisory-database) (`DRUPAL-…`) | [MIT](https://github.com/DrupalSecurityTeam/drupal-advisory-database/blob/main/LICENSE), © 2025 Ackama – geprüft, Text: [`LIZENZEN/MIT-Drupal-Advisory-Database.txt`](LIZENZEN/MIT-Drupal-Advisory-Database.txt) |
 | `eol-daten.json` | [endoflife.date](https://endoflife.date) (Auszug aus `/api/v1/products/full/`) | MIT, Text: [`EOL-LIZENZ.txt`](EOL-LIZENZ.txt) |
 | `kev.json` | [CISA Known Exploited Vulnerabilities Catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) (je CVE das Datum der Aufnahme) | [CC0 1.0](https://github.com/cisagov/kev-data/blob/main/LICENSE) – geprüft (Lizenzdatei von `cisagov/kev-data`); keine Nutzung von CISA-Logo oder DHS-Siegel, keine Billigung durch CISA/DHS |
+| `suse-schweregrad.json` | SUSEs CVSS-Bewertung je CVE ([`suse-cvss-scores.yaml`](https://ftp.suse.com/pub/projects/security/yaml/suse-cvss-scores.yaml); je CVE der Wert nach CVSS 3.x, sonst 4.0) | [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.de) laut [Lizenzdatei im Verzeichnis](https://ftp.suse.com/pub/projects/security/yaml/LICENSE) – geprüft am 14. November 2026 (die Datei spricht von den „OVAL data“, liegt aber im Verzeichnis der YAML-Datei) |
 
 Geprüft am 4. November 2026 anhand der Lizenzdateien der Quell-Repositories und der Liste der
 [OSV-Datenquellen](https://github.com/google/osv.dev/blob/master/docs/data.md), die für PyPA, OpenSSF
