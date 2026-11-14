@@ -53,6 +53,7 @@ class Kommandozeile(unittest.TestCase):
         self.assertIn("--ausnahmen", out)
         self.assertNotIn("--eol-daten-erzeugen", out)      # nur für die GitHub Action
         self.assertNotIn("--kev-daten-erzeugen", out)
+        self.assertNotIn("--suse-schweregrad-erzeugen", out)
 
     def test_fehlerhafte_ausnahmeliste_ergibt_2(self):
         os.mkdir(os.path.join(self.tmp, "db"))

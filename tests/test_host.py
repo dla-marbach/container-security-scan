@@ -435,6 +435,8 @@ class Gesamtlauf(unittest.TestCase):
                                                                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"}])])
         with open(os.path.join(self.db, "stand.json"), "w") as f:
             json.dump({e: {"geprueft": scanner.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")} for e in ("SUSE", "Packagist")}, f)
+        with open(os.path.join(self.db, "suse-schweregrad.json"), "w") as f:
+            json.dump({"geprueft": scanner.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "cves": {"CVE-2026-0001": [7.5, "3"]}}, f)
 
     def lauf(self, nginx_rc=0):
         out = ("P\t10\t/usr/sbin/nginx\t/\tnginx: master process nginx\t0:0\t1\nS\t10\t1\nS\t10\t2\n"
@@ -497,8 +499,8 @@ class Gesamtlauf(unittest.TestCase):
             bericht = f.read()
         self.assertIn("# Host-Scan: web01.example.com", bericht)
         self.assertIn("- Firewall: firewalld aktiv (Runtime), Standardzone public", bericht)
-        # Abgleich über das Quellpaket openssl-3, genutzt vom öffentlichen nginx -> P1
-        self.assertIn("| 1 | UNKNOWN | CVE-2026-0001 | libopenssl3 |", bericht)
+        # Abgleich über das Quellpaket openssl-3, genutzt vom öffentlichen nginx -> P1; Schweregrad von SUSE
+        self.assertIn("| 1 | HIGH | CVE-2026-0001 | libopenssl3 |", bericht)
         # Composer im Docroot der Apache-Website hinter nginx: öffentliche Webadresse der Kette
         self.assertIn("**GHSA-x** (CRITICAL) in guzzlehttp/guzzle 7.4.0 – behoben in 7.4.3 – genutzt von "
                       "httpd-prefork:8080, nginx:80,443 (über httpd-prefork), php-fpm:9000 – Webadressen: "

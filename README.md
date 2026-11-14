@@ -240,7 +240,8 @@ die Firewall vor dem Server; das ist auch hier nicht erkennbar.
 
 ### Bewertung der Funde
 
-- **Schweregrad:** Einstufung der Distribution (Debian, Ubuntu), sonst Angabe der Quelle, sonst CVSS. Hat
+- **Schweregrad:** Einstufung der Distribution (Debian, Ubuntu; SUSE: SUSEs eigene CVSS-Bewertung der CVE, siehe
+  [Daten](#daten)), sonst Angabe der Quelle, sonst CVSS. Hat
   der zutreffende Eintrag keinen (z. B. Go-Daten, Debian „not yet assigned“), wird die Bewertung derselben
   CVE aus den Bitnami- bzw. Alpine-Daten (CVSS der NVD) übernommen, bei mehreren die höchste. Solche Werte
   sind im Bericht mit `*` markiert. CVSS 4 wird angenähert (eher zu hoch), als Schadsoftware gemeldete
@@ -371,7 +372,7 @@ sudo python3 -I $C --db $DB --alle <container> <ausgabeverzeichnis>  # alle Befu
 | `--nur-behebbare` | für den Rückgabewert nur Funde zählen, für die es einen Fix gibt – **empfohlen** für die Alarmierung, sonst melden Container mit offenen, noch unbehobenen CVEs dauerhaft `1` |
 | `--alle` | alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV) |
 | `--ausnahmen DATEI` | Ausnahmeliste: passende Funde zählen nicht als relevant, jede Ausnahme mit Begründung und Ablaufdatum (siehe [Ausnahmen](#ausnahmen)) |
-| `--db-aktualisieren` | als root abgelehnt (Rückgabewert 2): nie Daten aus dem Netz als root schreiben. Im Git-Checkout den Branch `daten` nach `daten/` holen bzw. dort `git pull` – **nie den Code**; mit `--oekosysteme A,B` zusätzlich diese Ökosysteme direkt von OSV nach `osv-db/` (inkrementell, `--voll` lädt alles neu). Ohne Git-Checkout oder mit `--db`: alle Ökosysteme, die EOL- und die KEV-Daten direkt |
+| `--db-aktualisieren` | als root abgelehnt (Rückgabewert 2): nie Daten aus dem Netz als root schreiben. Im Git-Checkout den Branch `daten` nach `daten/` holen bzw. dort `git pull` – **nie den Code**; mit `--oekosysteme A,B` zusätzlich diese Ökosysteme direkt von OSV nach `osv-db/` (inkrementell, `--voll` lädt alles neu). Ohne Git-Checkout oder mit `--db`: alle Ökosysteme, die EOL-, die KEV-Daten und die Schweregrade von SUSE direkt |
 | `--db DIR` | nur diese Datenverzeichnisse verwenden; mehrfach möglich, je Ökosystem gilt das erste, das es enthält. Mit `--db-aktualisieren` genau eines (Ziel). Standard: `daten/` (Clone des Branches `daten`) und `osv-db/` neben dem Skript |
 | `--user` | Benutzer für `docker exec` (Standard `0`). Ein anderer Benutzer kann meist nicht alle Verzeichnisse lesen: Die Prüfung gilt dann als unvollständig (`2`), die Meldung nennt die ersten unlesbaren Pfade |
 
@@ -462,7 +463,8 @@ Packagist, Maven, Go und Bitnami (ca. 380 MB). Gekürzt heißt: nur die für den
 Abgleich nötigen Felder und Einträge; die Ergebnisse sind mit den vollständigen Exporten identisch
 (geprüft). Die GitHub Action [`.github/workflows/daten.yml`](.github/workflows/daten.yml) erzeugt die
 Daten täglich neu; die Ausgabe ist deterministisch, Commits enthalten nur echte Änderungen. Dazu kommen `eol-daten.json`
-([Supportende](#supportende-eol)) und `kev.json` ([aktiv ausgenutzte Lücken](#aktiv-ausgenutzte-lücken-kev)).
+([Supportende](#supportende-eol)), `kev.json` ([aktiv ausgenutzte Lücken](#aktiv-ausgenutzte-lücken-kev)) und
+`suse-schweregrad.json` (Schweregrad der SUSE-Funde, siehe unten).
 Quellen und Lizenzen: [`QUELLEN.md` im Branch `daten`](https://github.com/dla-marbach/container-security-scan/blob/daten/QUELLEN.md).
 
 Ubuntu ist am stärksten gekürzt: Der Export ist entpackt rund 8 GB groß (als ZIP ca. 800 MB), der
@@ -477,9 +479,18 @@ SUSE: nur Einträge für SLES 15 und 16 (ca. 18 MB statt 300 MB). SUSE führt L�
 nennt die Binärpakete des ganzen Updates, auch anderer Quellpakete (`libacl1` unter `attr`). Abgeglichen wird
 daher über das Quellpaket, und das Binärpaket muss für das Service Pack im Eintrag stehen: SLES 15 SP7 enthält
 z. B. `tiff` in zwei Versionszweigen (4.0.9 für `libtiff5`, 4.7 für `libtiff6`). Der Auszug behält die
-Binärpakete je Service Pack statt je Produkt. SUSE-Einträge haben keinen Schweregrad; er kommt über die CVE aus
-anderen Quellen (siehe [Bewertung](#bewertung-der-funde)), ohne CVE bleibt er `UNKNOWN`. Geprüft (11/2026):
-SLES 15 SP6 und SP7 mit identischen Funden aus Auszug und Gesamtexport.
+Binärpakete je Service Pack statt je Produkt. Geprüft (11/2026): SLES 15 SP6 und SP7 mit identischen Funden
+aus Auszug und Gesamtexport.
+
+Die SUSE-Einträge bei OSV haben keinen Schweregrad. Den liefert `suse-schweregrad.json`: SUSEs eigene
+CVSS-Bewertung je CVE aus [`suse-cvss-scores.yaml`](https://ftp.suse.com/pub/projects/security/yaml/)
+(CC-BY 4.0, ca. 39 000 CVEs mit CVSS 3.x bzw. 4.0, 1 MB), täglich von der Action geladen. SUSE bewertet die
+Lücke für die eigenen Pakete (zurückportierte Korrekturen, Konfiguration); die Bewertung der NVD weicht davon oft
+ab. Geprüft (11/2026) an SLES 15 SP6 mit 349 Funden: mit der Bewertung der NVD 44 CRITICAL, 152 HIGH und 80 ohne
+Schweregrad, mit SUSEs Bewertung 3 CRITICAL, 108 HIGH und 13 ohne (SUSE-Updates ohne CVE). In einer Stichprobe von
+40 CVEs stimmte die Stufe aus SUSEs CVSS-Wert 36-mal mit SUSEs eigener Einstufung (critical/important/…) überein,
+sonst LOW statt MEDIUM. Fehlt die Datei oder ist sie älter als 7 Tage, erscheint eine Warnung, und der
+Schweregrad kommt wie bei anderen Quellen über die CVE aus Bitnami- bzw. Alpine-Daten.
 
 Ökosysteme, die nicht im Repository liegen (openSUSE), lädt `--db-aktualisieren --oekosysteme …`
 direkt von OSV nach `osv-db/`. Für Ökosysteme, die es im Branch `daten` schon gibt, ist das wirkungslos:
@@ -489,7 +500,7 @@ Je Ökosystem gilt das erste Verzeichnis, das es enthält, und `daten/` (bzw. da
 ### Sonderfall: Daten direkt von OSV statt über GitHub
 
 Für Server, die `github.com` nicht erreichen dürfen oder GitHub nicht als Datenquelle nutzen sollen. Dann lädt `csscan` alle Ökosysteme direkt von OSV (`storage.googleapis.com`),
-die EOL-Daten von endoflife.date und den KEV-Katalog der CISA. Dafür das Installscript mit `DATEN=` aufrufen
+die EOL-Daten von endoflife.date, den KEV-Katalog der CISA und die Schweregrade von SUSE. Dafür das Installscript mit `DATEN=` aufrufen
 (es holt dann den Branch `daten` nicht: `sudo env DATEN= bash installieren.sh $V`) und nach jeder
 Installation im Wrapper `/usr/local/sbin/container-security-scan-lauf` die Zeilen mit `git pull` und `ARGS=`
 ersetzen:
@@ -510,7 +521,8 @@ sudo env REPO=$PWD/css.bundle DATEN= bash installieren.sh $V
 ```
 
 - **Erster Lauf:** die Gesamtexporte, zusammen ca. 1,25 GB (Stand 11/2026: Ubuntu 800 MB, npm 220 MB,
-  Debian 81 MB, SUSE 50 MB, PyPI 38 MB, die übrigen je ca. 10 MB; endoflife.date 3 MB, KEV-Katalog 2 MB).
+  Debian 81 MB, SUSE 50 MB, PyPI 38 MB, die übrigen je ca. 10 MB; endoflife.date 3 MB, KEV-Katalog 2 MB,
+  CVSS-Bewertung von SUSE 7 MB).
 - **Danach inkrementell:** Das Skript liest die Änderungsliste `modified_id.csv` bis zum letzten
   bekannten Stand und lädt nur die geänderten Einträge einzeln. Den Gesamtexport eines Ökosystems lädt
   es neu, wenn seit dem letzten Lauf mehr als 2000 Einträge geändert wurden oder sich mehr als 10 000
@@ -585,7 +597,7 @@ Lücke aktiv ausgenutzt.
   (Runtime-Konfiguration, nichts wird geändert). Die TLS-Prüfung ist ein Verbindungsaufbau zum eigenen
   Dienst (je TLS-Port, im Log des Webservers ggf. als abgebrochener Handshake sichtbar).
 - Getestet: `docker diff` zeigt vor und nach dem Scan keine Änderung im Container.
-- Es werden nur Daten **heruntergeladen** (GitHub bzw. OSV, endoflife.date und CISA); Paketlisten verlassen den Server nicht.
+- Es werden nur Daten **heruntergeladen** (GitHub bzw. OSV, endoflife.date, CISA und SUSE); Paketlisten verlassen den Server nicht.
 - Berichte und SBOM enthalten Kommandozeilen der Prozesse (oft mit Passwörtern) und Konfigurationsauszüge;
   das Skript legt sie daher nur für den aufrufenden Benutzer lesbar an (`umask 077`).
 

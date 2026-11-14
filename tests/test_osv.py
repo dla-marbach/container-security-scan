@@ -265,6 +265,8 @@ class Datenformat(Tmp):
             findings, _, missing, neuester = scanner.osv_scan(comps, osinfo, [d])
             ergebnisse.append((sorted((f["comp"]["name"], f["id"], f["fix"]) for f in findings), missing, neuester))
         self.assertEqual(ergebnisse[0], ergebnisse[1])
+        # Quelle je Fund (für SUSEs eigene Schweregrade, suse_schweregrad_markieren)
+        self.assertEqual({f["quelle_datei"] for f in scanner.osv_scan(comps, osinfo, [kurz])[0]}, {"SUSE"})
         self.assertEqual(ergebnisse[1][0], [("libacl1", "CVE-2026-100", "2.2.52-150000.4.20.1"),
                                             ("libattr1", "CVE-2026-100", "2.4.48-150000.3.5.1"),
                                             ("libtiff6", "CVE-2025-9900", "4.7.1-150600.3.23.1")])

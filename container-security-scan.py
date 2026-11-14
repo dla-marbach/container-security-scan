@@ -135,6 +135,10 @@ EOL_MAX_ALTER_TAGE = 30
 # Katalog aktiv ausgenutzter Schwachstellen (CISA Known Exploited Vulnerabilities, CC0)
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 KEV_MAX_ALTER_TAGE = 7
+# SUSEs eigene CVSS-Bewertung je CVE (CC-BY 4.0, siehe LICENSE im selben Verzeichnis): Die OSV-Daten von SUSE haben
+# keinen Schweregrad; die Bewertung der NVD weicht für SUSE-Pakete oft ab (zurückportierte Korrekturen, Konfiguration)
+SUSE_CVSS_URL = "https://ftp.suse.com/pub/projects/security/yaml/suse-cvss-scores.yaml"
+SUSE_SCHWEREGRAD_MAX_ALTER_TAGE = 7
 CVE_ID = re.compile(r"CVE-\d{4}-\d{4,}")
 # Schweregrad für Einträge ohne eigene Bewertung (z.B. Go): dieselbe CVE in diesen Quellen nachschlagen
 # (Bitnami: Bewertung der Quelle, Alpine: CVSS aus der NVD). Distributions-Dringlichkeit zählt hier nicht.
@@ -369,6 +373,101 @@ def kev_laden(paths):
     if best is None:
         raise ValueError(err)
     return best
+
+
+def suse_cvss_lesen(text):
+    """suse-cvss-scores.yaml (ohne YAML-Bibliothek, festes Format) -> {CVE: [Punktwert, CVSS-Version]}: je CVE die
+    Bewertung nach CVSS 3.x, sonst 4.0 (CVSS 2 hat andere Stufen und bleibt außen vor). Fehler -> ScanError."""
+    roh, cve = {}, None
+    for n, line in enumerate(text.splitlines(), 1):
+        if not line.strip() or line.strip() in ("---", "cvss:") or line.startswith("#"):
+            continue
+        m = re.match(r"^(CVE-\d{4}-\d{4,}):\s*$", line)
+        if m:
+            cve = m.group(1)
+            roh.setdefault(cve, [])
+            continue
+        m = re.match(r"^\s+- version:\s*([\d.]+)\s*$", line)
+        if m and cve:
+            roh[cve].append({"version": m.group(1)})
+            continue
+        m = re.match(r"^\s+(score|vector):\s*(\S+)\s*$", line)
+        if m and cve and roh[cve]:
+            roh[cve][-1][m.group(1)] = m.group(2)
+            continue
+        raise ScanError("suse-cvss-scores.yaml, Zeile %d: unerwartetes Format" % n)
+    result = {}
+    for cve, eintraege in roh.items():
+        for version in ("3.1", "3", "3.0", "4", "4.0"):
+            e = next((x for x in eintraege if x["version"] == version and "score" in x), None)
+            if e:
+                try:
+                    score = float(e["score"])
+                except ValueError:
+                    raise ScanError("suse-cvss-scores.yaml: ungültiger Wert für %s" % cve)
+                if not 0 <= score <= 10:
+                    raise ScanError("suse-cvss-scores.yaml: ungültiger Wert für %s" % cve)
+                result[cve] = [score, version[0]]
+                break
+    return result
+
+
+def suse_schweregrad_erzeugen(path):
+    """SUSEs CVSS-Bewertung je CVE laden und gekürzt speichern: {"geprueft", "cves": {CVE: [Punktwert, Version]}}."""
+    with urllib.request.urlopen(SUSE_CVSS_URL, timeout=300) as response:
+        text = response.read().decode("utf-8")
+    cves = suse_cvss_lesen(text)
+    if len(cves) < 10000:       # rund 41 000 (11/2026): weniger heißt abgebrochen oder falsche Datei
+        raise ScanError("SUSE-CVSS-Daten unvollständig (%d CVEs)" % len(cves))
+    with open(path + ".tmp", "w", encoding="utf-8") as f:      # je CVE eine Zeile: kleine Diffs im Branch daten
+        f.write('{"geprueft": %s, "quelle": %s, "cves": {\n' % (
+            json.dumps(utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")), json.dumps(SUSE_CVSS_URL)))
+        f.write(",\n".join("%s: %s" % (json.dumps(k), json.dumps(cves[k], separators=(",", ":"))) for k in sorted(cves)))
+        f.write("\n}}\n")
+    os.replace(path + ".tmp", path)
+
+
+def schweregrad_aus_punkten(score):
+    """Stufen nach CVSS 3.x/4.0."""
+    return "CRITICAL" if score >= 9 else "HIGH" if score >= 7 else "MEDIUM" if score >= 4 else \
+        "LOW" if score > 0 else "UNKNOWN"
+
+
+def suse_schweregrad_markieren(findings, paths):
+    """Funde aus den SUSE-Daten (OS-Pakete von SLES/openSUSE) mit SUSEs eigener Bewertung der CVE versehen; sie
+    hat Vorrang vor der Übernahme aus anderen Quellen (wie bei Debian und Ubuntu die Einstufung der Distribution).
+    Liefert Warnungen (fehlende oder veraltete Daten: dann gilt die Bewertung aus anderen Quellen)."""
+    suse = [f for f in findings if f.get("quelle_datei") in ("SUSE", "openSUSE")]
+    if not suse:
+        return []
+    best, err = None, "keine Datei"
+    for path in paths:
+        try:
+            data = json_datei(path)
+            checked = datetime.datetime.strptime(data["geprueft"], "%Y-%m-%dT%H:%M:%SZ")
+            cves = data["cves"]
+            if not isinstance(cves, dict) or not cves or not all(
+                    CVE_ID.fullmatch(k) and isinstance(v, list) and len(v) == 2 and isinstance(v[0], (int, float))
+                    for k, v in cves.items()):
+                raise ValueError("ungültige Einträge")
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            if not isinstance(e, FileNotFoundError) or err == "keine Datei":
+                err = str(e)
+            continue
+        if best is None or checked > best[0]:
+            best = (checked, cves)
+    if best is None:
+        return ["SUSE-Schweregrade fehlen oder sind ungültig (%s); Schweregrad der SUSE-Funde über andere Quellen "
+                "(NVD), oft abweichend" % err]
+    checked, cves = best
+    for f in suse:
+        if f["id"] in cves:
+            f["sev"] = schweregrad_aus_punkten(cves[f["id"]][0])
+            f.pop("sev_quelle", None)
+    if (utcnow() - checked).days >= SUSE_SCHWEREGRAD_MAX_ALTER_TAGE:
+        return ["SUSE-Schweregrade veraltet (Stand %s); git pull bzw. --db-aktualisieren ausführen"
+                % checked.strftime("%Y-%m-%d")]
+    return []
 
 
 def kev_markieren(findings, paths):
@@ -3451,7 +3550,8 @@ def osv_scan(comps, osinfo, dbdirs):
                                 old["sev"] = sev if old["sev"] == "UNKNOWN" else old["sev"]
                             else:
                                 title = (rec.get("summary") or rec.get("details") or "").split("\n")[0]
-                                findings[(id(c), vid)] = f = {"comp": c, "id": vid, "sev": sev, "fix": fix, "title": title}
+                                findings[(id(c), vid)] = f = {"comp": c, "id": vid, "sev": sev, "fix": fix, "title": title,
+                                                              "quelle_datei": fname}
                                 # Distributionsdaten führen nur, was die Distribution betrifft; andere Quellen
                                 # (GitHub, Bitnami) auch Lücken, die nur unter Windows auftreten
                                 if fname not in OS_FILES and nur_windows(title):
@@ -4218,6 +4318,7 @@ def abschliessen(z, prefix, basisname, known_name, a, comps, pkgs, osinfo, servi
     # nach osv_scan: erst dort werden Laufzeiten aus Fremdquellen (nginx.org, NodeSource …) erkannt
     warnings.extend(eol_warnungen(comps, [os.path.join(d, "eol-daten.json") for d in a.dbdirs]))
     warnings.extend(kev_markieren(findings, [os.path.join(d, "kev.json") for d in a.dbdirs]))
+    warnings.extend(suse_schweregrad_markieren(findings, [os.path.join(d, "suse-schweregrad.json") for d in a.dbdirs]))
     if missing:
         problems.append("Daten fehlen für: " + ", ".join(missing) + " (--db-aktualisieren --oekosysteme " + ",".join(missing) + ")")
     if not pkgs:
@@ -4642,6 +4743,7 @@ def main():
     ap.add_argument("--daten-erzeugen", metavar="VERZEICHNIS", help=argparse.SUPPRESS)   # für die GitHub Action
     ap.add_argument("--eol-daten-erzeugen", metavar="DATEI", help=argparse.SUPPRESS)
     ap.add_argument("--kev-daten-erzeugen", metavar="DATEI", help=argparse.SUPPRESS)
+    ap.add_argument("--suse-schweregrad-erzeugen", metavar="DATEI", help=argparse.SUPPRESS)
     ap.add_argument("--ausnahmen", metavar="DATEI",
                     help="Ausnahmeliste: je Zeile \"<Kennung> <Paket oder *> <gültig bis JJJJ-MM-TT> <Begründung>\"; "
                          "passende Funde zählen nicht als relevant (README: Ausnahmen)")
@@ -4668,6 +4770,9 @@ def main():
         return 0
     if a.kev_daten_erzeugen:
         kev_daten_erzeugen(a.kev_daten_erzeugen)
+        return 0
+    if a.suse_schweregrad_erzeugen:
+        suse_schweregrad_erzeugen(a.suse_schweregrad_erzeugen)
         return 0
     a.dbdirs = a.db or [d for d in (data_dir, local_db) if os.path.isdir(d)]
     if a.db_aktualisieren:
@@ -4706,7 +4811,8 @@ def main():
             osv_update(a.db[0] if a.db else local_db, [e for e in (a.oekosysteme or ",".join(OSV_ECOSYSTEMS)).split(",") if e], a.voll)
         if not repo_data:                 # ohne Git: EOL- und KEV-Daten direkt von der Quelle
             for label, func, fname in (("EOL-Daten von endoflife.date", eol_daten_erzeugen, "eol-daten.json"),
-                                       ("KEV-Daten der CISA", kev_daten_erzeugen, "kev.json")):
+                                       ("KEV-Daten der CISA", kev_daten_erzeugen, "kev.json"),
+                                       ("Schweregrade von SUSE", suse_schweregrad_erzeugen, "suse-schweregrad.json")):
                 try:
                     func(os.path.join(a.db[0] if a.db else local_db, fname))
                     log(label + " aktualisiert")
