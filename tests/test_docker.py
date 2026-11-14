@@ -309,6 +309,14 @@ class HostSles(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp()
         cls.name = "csstest-host-" + uuid.uuid4().hex[:8]
+        try:
+            cls.aufbauen()
+        except BaseException:
+            cls.tearDownClass()       # unittest ruft tearDownClass nach einem Fehler im Aufbau nicht auf
+            raise
+
+    @classmethod
+    def aufbauen(cls):
         umgebung = os.path.join(ROOT, "beispiele", "umgebung")
         # Proxy mit eigener Zertifizierungsstelle u.ä.: zusätzliche Optionen für docker build (z.B. --network host)
         extra = os.environ.get("CSS_DOCKER_BUILD_ARGS", "").split()

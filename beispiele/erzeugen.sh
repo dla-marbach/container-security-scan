@@ -8,8 +8,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 COMPOSE=(docker compose -f beispiele/umgebung/compose.yml)
-HOST=css-beispiel-host
-trap '"${COMPOSE[@]}" down; docker rm -f $HOST >/dev/null 2>&1 || true' EXIT
+HOST=css-beispiel-host       # Name des Images
+HOST_ID=                     # Container dieses Laufs: nur ihn entfernen, nie einen gleichnamigen anderen
+trap '"${COMPOSE[@]}" down; [ -z "$HOST_ID" ] || docker rm -f "$HOST_ID" >/dev/null 2>&1 || true' EXIT
 [ -d daten/SUSE ] || { echo "FEHLER: daten/SUSE fehlt (Daten aktualisieren: --db-aktualisieren)" >&2; exit 2; }
 "${COMPOSE[@]}" up -d
 bereit() {                     # beide Proxys erreichen ihre Ziele
@@ -44,16 +45,17 @@ sed -E -i 's/(scan_[A-Za-z0-9_.-]+)_[0-9]{8}_[0-9]{6}/\1/g' beispiele/ausgabe.tx
 # shellcheck disable=SC2086
 DOCKER_BUILDKIT=1 docker build -q -t $HOST ${CSS_DOCKER_BUILD_ARGS:-} -f beispiele/umgebung/host/Dockerfile \
     beispiele/umgebung >/dev/null
-docker run -d --name $HOST --hostname web01.example.com --cap-add NET_ADMIN --cap-add NET_RAW --cap-add SYS_PTRACE \
-    -v "$PWD/container-security-scan.py:/scan/container-security-scan.py:ro" -v "$PWD/daten:/daten:ro" $HOST >/dev/null
-for _ in $(seq 90); do docker exec $HOST test -e /run/bereit && break; sleep 1; done
-docker exec $HOST test -e /run/bereit || { docker logs $HOST; echo "FEHLER: SLES-Umgebung nicht bereit" >&2; exit 2; }
+HOST_ID=$(docker run -d --hostname web01.example.com --cap-add NET_ADMIN --cap-add NET_RAW --cap-add SYS_PTRACE \
+    -v "$PWD/container-security-scan.py:/scan/container-security-scan.py:ro" -v "$PWD/daten:/daten:ro" $HOST)
+for _ in $(seq 90); do docker exec "$HOST_ID" test -e /run/bereit && break; sleep 1; done
+docker exec "$HOST_ID" test -e /run/bereit \
+    || { docker logs "$HOST_ID"; echo "FEHLER: SLES-Umgebung nicht bereit" >&2; exit 2; }
 sleep 2
 rc_host=0
-docker exec $HOST python3 -I /scan/container-security-scan.py --db /daten --host --alle-container /out \
+docker exec "$HOST_ID" python3 -I /scan/container-security-scan.py --db /daten --host --alle-container /out \
     --nur-behebbare > beispiele/ausgabe-host.txt 2>&1 || rc_host=$?
 [ "$rc_host" -le 1 ] || { cat beispiele/ausgabe-host.txt; echo "FEHLER: Rückgabewert $rc_host (Host)" >&2; exit 2; }
-docker exec $HOST sh -c 'cat /out/host_web01_*.md' > beispiele/host_web01.md
+docker exec "$HOST_ID" sh -c 'cat /out/host_web01_*.md' > beispiele/host_web01.md
 sed -E -i 's/(host_[A-Za-z0-9_.-]+)_[0-9]{8}_[0-9]{6}/\1/g' beispiele/ausgabe-host.txt beispiele/host_web01.md
 
 chmod 644 beispiele/ausgabe*.txt beispiele/scan_* beispiele/host_*   # öffentliche Beispiele (sonst nur für root)

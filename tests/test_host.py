@@ -294,9 +294,10 @@ class Verzeichnisse(unittest.TestCase):
         aus = mock.patch.object(scanner, "HOST_AUSGENOMMEN", ("/proc", os.path.join(tmp, "var/lib/docker")))
         aus.start()
         self.addCleanup(aus.stop)
-        with mock.patch.object(scanner, "HOST_WURZELN", (os.path.join(tmp, "srv"), "/gibt/es/nicht")):
+        with mock.patch.object(scanner, "HOST_WURZELN", (os.path.join(tmp, "srv"), "/gibt/es/nicht")), \
+                mock.patch.object(scanner, "geraet", return_value=1):
             wurzeln = scanner.host_wurzeln(procs, w)
-        # alles liegt auf einem Dateisystem: unterhalb von "/" schon erfasst (find -xdev)
+        # alles liegt auf einem Dateisystem (nachgebildet): unterhalb von "/" schon erfasst (find -xdev)
         self.assertEqual(wurzeln, [])
         with mock.patch.object(scanner, "HOST_WURZELN", (os.path.join(tmp, "srv"),)), \
                 mock.patch.object(scanner, "geraet", side_effect=lambda p: p.count("/")):
