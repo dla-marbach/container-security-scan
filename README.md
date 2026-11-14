@@ -216,7 +216,7 @@ Loopback)`. Sonst gilt er als erreichbar, wenn eine der folgenden Bedingungen zu
 | gemeinsamer Netzwerk-Namespace | `network_mode: container:…`/`service:…` (z. B. VPN- oder Sidecar-Container): es gelten die Ports des Spenders; ein Ziel des Spenders wird an alle Container dieses Namespace weitergegeben |
 | hinter einem erreichbaren nginx/Apache | Backends aus `nginx -T` bzw. der Apache-Konfiguration (`proxy_pass`, `fastcgi_pass`, `upstream`, `ProxyPass`, `SetHandler proxy:`), auch über mehrere Proxys und Variablen aus `set`/`map`; Ziele per Container-Name, Alias, Compose-Dienst oder IP |
 | hinter einem erreichbaren Traefik bzw. caddy-docker-proxy | Ziele aus Docker-Labels (`traefik.*.services.*.loadbalancer.server.port`, `caddy.reverse_proxy: {{upstreams …}}`) |
-| hinter einem Reverse Proxy **direkt auf dem Host** | nginx/Apache außerhalb von Docker (Programm mit dem Wurzelverzeichnis des Hosts, nicht in der cgroup eines Containers), das nicht nur auf Loopback lauscht: Konfiguration wie oben, Ziele über die Container-IP (z. B. `proxy_pass http://172.18.0.5:3000`), über `127.0.0.1`/`localhost` auf den Container, der Adresse und Port veröffentlicht oder (im Host-Netzwerk) dort lauscht, sonst auf alle Container im Host-Netzwerk. Ergebnis auf der Konsole als `Host: …`; gilt auch für den Einzelscan |
+| hinter einem Reverse Proxy **direkt auf dem Host** | nginx/Apache außerhalb von Docker (Programm mit dem Wurzelverzeichnis des Hosts, nicht in der cgroup eines Containers), das nicht nur auf Loopback lauscht: Konfiguration wie oben, Ziele über die Container-IP (z. B. `proxy_pass http://172.18.0.5:3000`), über `127.0.0.1`/`localhost` auf den Container, der Adresse und Port veröffentlicht oder (im Host-Netzwerk) dort lauscht, sonst auf alle Container im Host-Netzwerk. Ergebnis auf der Konsole als `Host: …`; gilt auch für den Einzelscan, dort ohne Zeilen für den Host (nicht lesbare Konfiguration eines Proxys auf dem Host macht den Scan des Containers unvollständig) |
 | aufgerufen von einer erreichbaren Anwendung | z. B. API-Gateway oder php-fpm hinter nginx im selben Container: Ziel-URLs (`http(s)://`, `ws(s)://`, `grpc(s)://`) auf andere Container in Umgebung oder Kommandozeile sowie beim Scan offene TCP-Verbindungen. Datenbanken, Caches und Message Broker als Ziel zählen nicht. Im Bericht als `Aufruf: Container …, Port … (Quelle)`, ohne Werte der Umgebung |
 | hinter einem Tunnel-Agenten | cloudflared, frpc, ngrok, chisel – im Container oder auf dem Host: leiten Verkehr von außen weiter, ohne zu lauschen; gelten immer als erreichbar und nicht auswertbar (siehe nächste Zeile). Container mit einem solchen Image bzw. Befehl werden vorgezogen |
 | **möglicherweise** erreichbar | Container im selben Docker-Netz wie ein erreichbarer Dienst, dessen Weiterleitungen nicht vollständig bekannt sind: Traefik, Caddy, HAProxy, Envoy, Varnish u. a. (Konfiguration wird nicht ausgewertet; Labels geben nur einen Teil der Ziele an), nginx-Ziel mit nicht auflösbarer Variable (`proxy_pass http://$host`), nicht lesbare nginx-Konfiguration, veröffentlichter Port ohne erkennbaren Prozess. Bei einem solchen Dienst auf dem Host oder im Host-Netzwerk: alle Container mit einem Docker-Netz (der Host erreicht sie über ihre IP). Container mit demselben Loopback (Host-Netzwerk, gemeinsamer Netzwerk-Namespace) auch mit Diensten, die nur auf Loopback lauschen. Mit Warnung je Dienst |
@@ -310,10 +310,16 @@ Aus der Konfiguration von nginx (`listen`, `server_name`, `ssl`) und Apache (vHo
 veröffentlichten Port. Leitet ein Webserver einen Pfad an einen anderen Dienst im selben Container bzw. auf dem
 Host weiter (`location /app/ { proxy_pass http://127.0.0.1:8080/; }`, `ProxyPass`, `SetHandler proxy:fcgi://…`),
 erscheint die Adresse mit Pfad auch beim Ziel, über mehrere Stufen: `https://www.example.org/app/ (\.php$)` bei
-php-fpm hinter Apache hinter nginx. Je Adresse steht im Bericht, ob sie erreichbar ist (wie der Port, über den
+php-fpm hinter Apache hinter nginx. Leitet ein Proxy auf dem Host (mit `--host`) bzw. in einem anderen Container
+einen Pfad an einen Container weiter (per Container-IP, Name oder veröffentlichtem Port, z. B.
+`proxy_pass http://127.0.0.1:7776/`), erscheint die Adresse beim Dienst im Container. Je Adresse steht im Bericht, ob sie erreichbar ist (wie der Port, über den
 die Anfrage hereinkommt), auf der Konsole je Dienst eine Zeile `Webadressen …`, bei jedem Fund die Adressen
 der Dienste, die die Komponente nutzen (Bibliotheken im Docroot: nur die Websites mit diesem Docroot). Die
-Adressen stammen aus der Konfiguration, nicht aus dem DNS.
+Adressen stammen aus der Konfiguration, nicht aus dem DNS. Grenzen: Eine weitergeleitete Adresse gilt für alle
+Websites am Port des Ziels (welche antwortet, entscheidet der Host-Header; im Zweifel eine Adresse zu viel), und
+über mehrere Stufen werden die Pfade aneinandergehängt. Das stimmt, wenn das Ziel den Pfad `/` hat
+(`location /app/ { proxy_pass http://mitte/; }`), sonst nicht: mit `proxy_pass http://mitte/dienst/` und dort
+`location /dienst/api/` ergibt sich `/app/dienst/api/` statt `/app/api/`.
 
 ### Einstellungen der Webserver
 
@@ -409,6 +415,8 @@ nginx als öffentlicher Reverse Proxy vor Node.js 22.22.0 (Node2Shell) und PHP 8
 (PHP2Shell) mit Anwendung, `vendor/` und eingebettetem jQuery 1.12.4 im Volume; Traefik mit Docker-Socket
 (gefährliche Einstellung) und Ziel per Label. Berichte für alle vier Container, das SBOM als Beispiel des
 Formats nur für Node.js ([`scan_app-node.cdx.json`](beispiele/scan_app-node.cdx.json)), ohne `.sha256`.
+Ein Einzelscan wie über den Wrapper mit Containername (`container-security-scan-lauf app-proxy`):
+[Konsolenausgabe](beispiele/ausgabe-einzeln.txt), ohne Zeilen für den Host.
 Dazu ein SLES-15-Server ohne Docker ([`beispiele/umgebung/host/`](beispiele/umgebung/host/), als Container mit
 firewalld), Lauf `--host --alle-container --nur-behebbare` ([Bericht](beispiele/host_web01.md),
 [Konsolenausgabe](beispiele/ausgabe-host.txt)): nginx (öffentlich) vor Apache (nur Loopback) vor php-fpm mit
@@ -452,7 +460,8 @@ Mit `--host` (so im Wrapper) ist der Server selbst ein weiteres Ziel, mit densel
   Optionen des Hauptprozesses (`start_apache2`: `-DSYSCONFIG -C "Include …/loadmodule.conf" -f …`);
   [Erreichbarkeit](#erreichbarkeit-auf-dem-host), [Webadressen](#webadressen),
   [Einstellungen](#einstellungen-der-webserver) samt TLS-Prüfung.
-- **Warnungen:** öffentlicher Dienst als root (nicht `sshd`, `systemd`), Datenbank/Cache/Message Broker ohne
+- **Warnungen:** öffentlicher Dienst als root (nicht `sshd`, `systemd`, `docker-proxy` – der Dienst dahinter
+  wird im Container bewertet), Datenbank/Cache/Message Broker ohne
   Beschränkung der Quelle erreichbar, Proxy-Ziele, die keinem Dienst und keinem Container zuordenbar sind
   (anderer Server: dort gesondert scannen).
 

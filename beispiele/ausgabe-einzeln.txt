@@ -1,0 +1,7 @@
+Erfasse Container 'app-proxy' ...
+Abgleich mit OSV-Daten daten ...
+container-security-scan 0.4.1
+app-proxy: RELEVANTE SCHWACHSTELLEN – 6 Befunde, davon 2 relevant (2 neu, 1 aktiv ausgenutzt); öffentlich: nginx:80 – Bericht: /var/log/container-security-scan/berichte/scan_app-proxy.md
+app-proxy:   Webadressen nginx:80: erreichbar: http://shop.example.org:8080/
+app-proxy:   CVE-2026-4738 (HIGH) in zlib 1.3.2-r1 – behoben in 1.4-r0 – genutzt von nginx:80 – Webadressen: http://shop.example.org:8080/
+app-proxy:   CVE-2026-125350 (HIGH KEV) in libxslt 1.1.43-r3 – behoben in 1.1.43-r4 – genutzt von – – aktiv ausgenutzt (KEV seit 2026-11-10)

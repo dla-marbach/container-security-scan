@@ -2,9 +2,9 @@
 
 - Image: node:22.22.0-alpine (sha256:e4bf2a82ad0a)  
 - OS: Alpine Linux v3.23  
-- Zeitpunkt: 2026-11-13 22:58  
-- Scanner: container-security-scan 0.4.0  
-- Datenbank: OSV, Stand 2026-11-13 03:23 UTC (daten)  
+- Zeitpunkt: 2026-11-14 08:48  
+- Scanner: container-security-scan 0.4.1  
+- Datenbank: OSV, Stand 2026-11-14 07:57 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
 ## Ergebnis
@@ -14,19 +14,19 @@
 
 Davon **0 neu** seit dem letzten Lauf.
 
-- **CVE-2026-111497** (CRITICAL KEV) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000 – **aktiv ausgenutzt** (KEV seit 2026-10-27)
-- **CVE-2021-23337** (HIGH) in lodash 4.17.20 – behoben in 4.17.21 – genutzt von node:3000
-- **CVE-2026-4800** (HIGH) in lodash 4.17.20 – behoben in 4.18.0 – genutzt von node:3000
-- **CVE-2026-107891** (HIGH) in musl 1.2.5-r21 – behoben in 1.2.5-r24 – genutzt von node:3000
-- **CVE-2026-40200** (HIGH) in musl 1.2.5-r21 – behoben in 1.2.5-r23 – genutzt von node:3000
-- **CVE-2026-105482** (HIGH) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000
-- **CVE-2026-106069** (HIGH) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000
-- **CVE-2026-21710** (HIGH) in node 22.22.0 – behoben in 22.22.2 – genutzt von node:3000
-- **CVE-2026-48617** (HIGH) in node 22.22.0 – behoben in 22.23.0 – genutzt von node:3000
-- **CVE-2026-48937** (HIGH) in node 22.22.0 – behoben in 22.23.0 – genutzt von node:3000
-- **CVE-2026-56846** (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
-- **CVE-2026-56848** (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
-- **CVE-2026-58043** (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
+- **CVE-2026-111497** (CRITICAL KEV) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000 – Webadressen: http://shop.example.org:8080/ – **aktiv ausgenutzt** (KEV seit 2026-10-27)
+- **CVE-2021-23337** (HIGH) in lodash 4.17.20 – behoben in 4.17.21 – genutzt von node:3000 – Webadressen: http://shop.example.org:8080/
+- **CVE-2026-4800** (HIGH) in lodash 4.17.20 – behoben in 4.18.0 – genutzt von node:3000 – Webadressen: http://shop.example.org:8080/
+- **CVE-2026-107891** (HIGH) in musl 1.2.5-r21 – behoben in 1.2.5-r24 – genutzt von node:3000 – Webadressen: http://shop.example.org:8080/
+- **CVE-2026-40200** (HIGH) in musl 1.2.5-r21 – behoben in 1.2.5-r23 – genutzt von node:3000 – Webadressen: http://shop.example.org:8080/
+- **CVE-2026-105482** (HIGH) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000 – Webadressen: http://shop.example.org:8080/
+- **CVE-2026-106069** (HIGH) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000 – Webadressen: http://shop.example.org:8080/
+- **CVE-2026-21710** (HIGH) in node 22.22.0 – behoben in 22.22.2 – genutzt von node:3000 – Webadressen: http://shop.example.org:8080/
+- **CVE-2026-48617** (HIGH) in node 22.22.0 – behoben in 22.23.0 – genutzt von node:3000 – Webadressen: http://shop.example.org:8080/
+- **CVE-2026-48937** (HIGH) in node 22.22.0 – behoben in 22.23.0 – genutzt von node:3000 – Webadressen: http://shop.example.org:8080/
+- **CVE-2026-56846** (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000 – Webadressen: http://shop.example.org:8080/
+- **CVE-2026-56848** (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000 – Webadressen: http://shop.example.org:8080/
+- **CVE-2026-58043** (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000 – Webadressen: http://shop.example.org:8080/
 
 Gefährliche Einstellungen des Containers (privileged, Docker-Socket, pid=host …): keine gezählt.
 
@@ -37,6 +37,14 @@ Einstellungen der Webserver (Statusseiten, Verzeichnislisten): keine gezählt.
 | Dienst | Programm | Ports / Konfiguration |
 |---|---|---|
 | node:3000 | node 22.22.0 | Port 3000/tcp (alle) öffentlich über nginx:80 in app-proxy, traefik:80 in app-traefik; Anwendung: server.js; Arbeitsverzeichnis: /app |
+
+## Webadressen
+
+Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen bzw. vHost, TLS); Pfade, die ein Proxy auf denselben Container weiterleitet, beim Ziel. „Erreichbar“ wie der Port, über den die Anfrage hereinkommt.
+
+| Webadresse | Erreichbar | Dienst | Weg | Website | Docroot / Ziel |
+|---|---|---|---|---|---|
+| http://shop.example.org:8080/ | ja | node:3000 | nginx:80 in app-proxy → node:3000 | (weitergeleitet) | – |
 
 ## Übersicht (Anzahl Befunde)
 
@@ -51,41 +59,41 @@ Einstellungen der Webserver (Statusseiten, Verzeichnislisten): keine gezählt.
 
 | P | Schwere | ID | Paket | Installiert | Behoben in | Genutzt von | Webadressen | Titel |
 |---|---|---|---|---|---|---|---|---|
-| 1 | CRITICAL KEV | CVE-2026-111497 | node | 22.22.0 | 22.23.4 | node:3000 | – | A flaw in Node.js can cause Node.js Brotli decoder out-of-bounds write permits remote code |
-| 1 | HIGH | CVE-2021-23337 | lodash | 4.17.20 | 4.17.21 | node:3000 | – | Command Injection in lodash |
-| 1 | HIGH | CVE-2026-4800 | lodash | 4.17.20 | 4.18.0 | node:3000 | – | lodash vulnerable to Code Injection via `_.template` imports key names |
-| 1 | HIGH | CVE-2026-107891 | musl | 1.2.5-r21 | 1.2.5-r24 | node:3000 | – | musl libc before 1.2.7, when an untrusted regular expression is used with regcomp, has mul |
-| 1 | HIGH | CVE-2026-40200 | musl | 1.2.5-r21 | 1.2.5-r23 | node:3000 | – | An issue was discovered in musl libc 0.7.10 through 1.2.6. Stack-based memory corruption c |
-| 1 | HIGH | CVE-2026-105482 | node | 22.22.0 | 22.23.4 | node:3000 | – | A flaw in Node.js DNS resolution allows hostnames containing a NUL byte to be silently tru |
-| 1 | HIGH | CVE-2026-106069 | node | 22.22.0 | 22.23.4 | node:3000 | – | A flaw in Node.js TLS hostname verification can cause a server certificate to be validated |
-| 1 | HIGH | CVE-2026-21710 | node | 22.22.0 | 22.22.2 | node:3000 | – | A flaw in Node.js HTTP request handling causes an uncaught `TypeError` when a request is r |
-| 1 | HIGH | CVE-2026-48617 | node | 22.22.0 | 22.23.0 | node:3000 | – | A flaw in Node.js Permission Model enforcement allows Bypass via `process.report.writeRepo |
-| 1 | HIGH | CVE-2026-48937 | node | 22.22.0 | 22.23.0 | node:3000 | – | A flaw in Node.js HTTP/2 server API can cause servers to keep accepting data even after se |
-| 1 | HIGH | CVE-2026-56846 | node | 22.22.0 | 22.23.2 | node:3000 | – | A flaw in Node.js HTTP/2 handling can cause HTTP/2 retained header blocks evade maxSession |
-| 1 | HIGH | CVE-2026-56848 | node | 22.22.0 | 22.23.2 | node:3000 | – | A flaw in Node.js HTTP/2 handling allows `nghttp2_session_mem_send()` to be called re-entr |
-| 1 | HIGH | CVE-2026-58043 | node | 22.22.0 | 22.23.2 | node:3000 | – | A flaw in Node.js Permission Model enforcement can over-grant filesystem access across rad |
-| 1 | MEDIUM | CVE-2020-28500 | lodash | 4.17.20 | 4.17.21 | node:3000 | – | Regular Expression Denial of Service (ReDoS) in lodash |
-| 1 | MEDIUM | CVE-2025-13465 | lodash | 4.17.20 | 4.17.23 | node:3000 | – | Lodash has Prototype Pollution Vulnerability in `_.unset`, `_.omit`, and `_.pullAt` functi |
-| 1 | MEDIUM | CVE-2026-105481 | node | 22.22.0 | 22.23.4 | node:3000 | – | A flaw in Node.js HTTP Agent connection reuse can cause a client to accept as valid a resp |
-| 1 | MEDIUM | CVE-2026-106072 | node | 22.22.0 | 22.23.4 | node:3000 | – | A flaw in Node.js TLS hostname verification allows a certificate with only a DNS SAN to au |
-| 1 | MEDIUM | CVE-2026-106074 | node | 22.22.0 | 22.23.4 | node:3000 | – | A flaw in Node.js `crypto` causes the internal entropy caches used by `crypto.randomUUID() |
-| 1 | MEDIUM | CVE-2026-21713 | node | 22.22.0 | 22.22.2 | node:3000 | – | A flaw in Node.js HMAC verification uses a non-constant-time comparison when validating us |
-| 1 | MEDIUM | CVE-2026-21714 | node | 22.22.0 | 22.22.2 | node:3000 | – | A memory leak occurs in Node.js HTTP/2 servers when a client sends WINDOW_UPDATE frames on |
-| 1 | MEDIUM | CVE-2026-21717 | node | 22.22.0 | 22.22.2 | node:3000 | – | A flaw in V8's string hashing mechanism causes integer-like strings to be hashed to their  |
-| 1 | MEDIUM | CVE-2026-56847 | node | 22.22.0 | 22.23.2 | node:3000 | – | A flaw in Node.js Permission Model enforcement allows `trace_events.createTracing().enable |
-| 1 | MEDIUM | CVE-2026-56850 | node | 22.22.0 | 22.23.2 | node:3000 | – | A flaw in Node.js HTTPS Agent connection reuse can cause PFX object-array key collisions,  |
-| 1 | MEDIUM | CVE-2026-58040 | node | 22.22.0 | 22.23.2 | node:3000 | – | An incomplete fix has been identified in Node.js: HTTPS Agent TLS session reuse skips host |
-| 1 | MEDIUM | CVE-2026-58041 | node | 22.22.0 | 22.23.2 | node:3000 | – | A flaw in Node.js node:sqlite allows a stale StatementSyncIterator created through Databas |
-| 1 | MEDIUM | CVE-2026-58042 | node | 22.22.0 | 22.23.2 | node:3000 | – | A flaw in Node.js can cause dns.resolveAny() Aborts the Node.js Process When a DNS Respons |
-| 1 | MEDIUM | CVE-2026-58045 | node | 22.22.0 | 22.23.2 | node:3000 | – | A flaw in Node.js allows a spoofed `TypedArray` `byteLength` to trigger a reachable assert |
-| 1 | LOW | CVE-2026-6042 | musl | 1.2.5-r21 | 1.2.5-r22 | node:3000 | – | A security flaw has been discovered in musl libc up to 1.2.6. Affected is the function ico |
-| 1 | LOW | CVE-2026-106073 | node | 22.22.0 | 22.23.4 | node:3000 | – | A flaw in Node.js Permission Model filesystem enforcement leaves `fs.realpathSync()` witho |
-| 1 | LOW | CVE-2026-21715 | node | 22.22.0 | 22.22.2 | node:3000 | – | A flaw in Node.js Permission Model filesystem enforcement leaves `fs.realpathSync.native() |
-| 1 | LOW | CVE-2026-21716 | node | 22.22.0 | 22.22.2 | node:3000 | – | An incomplete fix for CVE-2024-36137 leaves `FileHandle.chmod()` and `FileHandle.chown()`  |
-| 1 | LOW | CVE-2026-48931 | node | 22.22.0 | 22.23.0 | node:3000 | – | A flaw in Node.js HTTP Agent can cause a client to accept as valid a response that is send |
-| 1 | LOW | CVE-2026-48932 | node | 22.22.0 | 22.23.0 | node:3000 | – | A flaw in Node.js HTTP client can cause a request desynchronization for Node.js-based forw |
-| 1 | LOW | CVE-2026-58039 | node | 22.22.0 | 22.23.2 | node:3000 | – | A flaw in Node.js Permission Model enforcement allows process.report writes (and overwrite |
-| 1 | LOW | CVE-2026-58044 | node | 22.22.0 | 22.23.2 | node:3000 | – | A flaw in Node.js HTTP client can cause a request desynchronization for Node.js-based forw |
+| 1 | CRITICAL KEV | CVE-2026-111497 | node | 22.22.0 | 22.23.4 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js can cause Node.js Brotli decoder out-of-bounds write permits remote code |
+| 1 | HIGH | CVE-2021-23337 | lodash | 4.17.20 | 4.17.21 | node:3000 | http://shop.example.org:8080/ | Command Injection in lodash |
+| 1 | HIGH | CVE-2026-4800 | lodash | 4.17.20 | 4.18.0 | node:3000 | http://shop.example.org:8080/ | lodash vulnerable to Code Injection via `_.template` imports key names |
+| 1 | HIGH | CVE-2026-107891 | musl | 1.2.5-r21 | 1.2.5-r24 | node:3000 | http://shop.example.org:8080/ | musl libc before 1.2.7, when an untrusted regular expression is used with regcomp, has mul |
+| 1 | HIGH | CVE-2026-40200 | musl | 1.2.5-r21 | 1.2.5-r23 | node:3000 | http://shop.example.org:8080/ | An issue was discovered in musl libc 0.7.10 through 1.2.6. Stack-based memory corruption c |
+| 1 | HIGH | CVE-2026-105482 | node | 22.22.0 | 22.23.4 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js DNS resolution allows hostnames containing a NUL byte to be silently tru |
+| 1 | HIGH | CVE-2026-106069 | node | 22.22.0 | 22.23.4 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js TLS hostname verification can cause a server certificate to be validated |
+| 1 | HIGH | CVE-2026-21710 | node | 22.22.0 | 22.22.2 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js HTTP request handling causes an uncaught `TypeError` when a request is r |
+| 1 | HIGH | CVE-2026-48617 | node | 22.22.0 | 22.23.0 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js Permission Model enforcement allows Bypass via `process.report.writeRepo |
+| 1 | HIGH | CVE-2026-48937 | node | 22.22.0 | 22.23.0 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js HTTP/2 server API can cause servers to keep accepting data even after se |
+| 1 | HIGH | CVE-2026-56846 | node | 22.22.0 | 22.23.2 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js HTTP/2 handling can cause HTTP/2 retained header blocks evade maxSession |
+| 1 | HIGH | CVE-2026-56848 | node | 22.22.0 | 22.23.2 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js HTTP/2 handling allows `nghttp2_session_mem_send()` to be called re-entr |
+| 1 | HIGH | CVE-2026-58043 | node | 22.22.0 | 22.23.2 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js Permission Model enforcement can over-grant filesystem access across rad |
+| 1 | MEDIUM | CVE-2020-28500 | lodash | 4.17.20 | 4.17.21 | node:3000 | http://shop.example.org:8080/ | Regular Expression Denial of Service (ReDoS) in lodash |
+| 1 | MEDIUM | CVE-2025-13465 | lodash | 4.17.20 | 4.17.23 | node:3000 | http://shop.example.org:8080/ | Lodash has Prototype Pollution Vulnerability in `_.unset`, `_.omit`, and `_.pullAt` functi |
+| 1 | MEDIUM | CVE-2026-105481 | node | 22.22.0 | 22.23.4 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js HTTP Agent connection reuse can cause a client to accept as valid a resp |
+| 1 | MEDIUM | CVE-2026-106072 | node | 22.22.0 | 22.23.4 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js TLS hostname verification allows a certificate with only a DNS SAN to au |
+| 1 | MEDIUM | CVE-2026-106074 | node | 22.22.0 | 22.23.4 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js `crypto` causes the internal entropy caches used by `crypto.randomUUID() |
+| 1 | MEDIUM | CVE-2026-21713 | node | 22.22.0 | 22.22.2 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js HMAC verification uses a non-constant-time comparison when validating us |
+| 1 | MEDIUM | CVE-2026-21714 | node | 22.22.0 | 22.22.2 | node:3000 | http://shop.example.org:8080/ | A memory leak occurs in Node.js HTTP/2 servers when a client sends WINDOW_UPDATE frames on |
+| 1 | MEDIUM | CVE-2026-21717 | node | 22.22.0 | 22.22.2 | node:3000 | http://shop.example.org:8080/ | A flaw in V8's string hashing mechanism causes integer-like strings to be hashed to their  |
+| 1 | MEDIUM | CVE-2026-56847 | node | 22.22.0 | 22.23.2 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js Permission Model enforcement allows `trace_events.createTracing().enable |
+| 1 | MEDIUM | CVE-2026-56850 | node | 22.22.0 | 22.23.2 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js HTTPS Agent connection reuse can cause PFX object-array key collisions,  |
+| 1 | MEDIUM | CVE-2026-58040 | node | 22.22.0 | 22.23.2 | node:3000 | http://shop.example.org:8080/ | An incomplete fix has been identified in Node.js: HTTPS Agent TLS session reuse skips host |
+| 1 | MEDIUM | CVE-2026-58041 | node | 22.22.0 | 22.23.2 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js node:sqlite allows a stale StatementSyncIterator created through Databas |
+| 1 | MEDIUM | CVE-2026-58042 | node | 22.22.0 | 22.23.2 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js can cause dns.resolveAny() Aborts the Node.js Process When a DNS Respons |
+| 1 | MEDIUM | CVE-2026-58045 | node | 22.22.0 | 22.23.2 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js allows a spoofed `TypedArray` `byteLength` to trigger a reachable assert |
+| 1 | LOW | CVE-2026-6042 | musl | 1.2.5-r21 | 1.2.5-r22 | node:3000 | http://shop.example.org:8080/ | A security flaw has been discovered in musl libc up to 1.2.6. Affected is the function ico |
+| 1 | LOW | CVE-2026-106073 | node | 22.22.0 | 22.23.4 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js Permission Model filesystem enforcement leaves `fs.realpathSync()` witho |
+| 1 | LOW | CVE-2026-21715 | node | 22.22.0 | 22.22.2 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js Permission Model filesystem enforcement leaves `fs.realpathSync.native() |
+| 1 | LOW | CVE-2026-21716 | node | 22.22.0 | 22.22.2 | node:3000 | http://shop.example.org:8080/ | An incomplete fix for CVE-2024-36137 leaves `FileHandle.chmod()` and `FileHandle.chown()`  |
+| 1 | LOW | CVE-2026-48931 | node | 22.22.0 | 22.23.0 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js HTTP Agent can cause a client to accept as valid a response that is send |
+| 1 | LOW | CVE-2026-48932 | node | 22.22.0 | 22.23.0 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js HTTP client can cause a request desynchronization for Node.js-based forw |
+| 1 | LOW | CVE-2026-58039 | node | 22.22.0 | 22.23.2 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js Permission Model enforcement allows process.report writes (and overwrite |
+| 1 | LOW | CVE-2026-58044 | node | 22.22.0 | 22.23.2 | node:3000 | http://shop.example.org:8080/ | A flaw in Node.js HTTP client can cause a request desynchronization for Node.js-based forw |
 | 4 | CRITICAL | CVE-2026-31789 | libcrypto3 | 3.5.5-r0 | 3.5.6-r0 | – | – | Issue summary: Converting an excessively large OCTET STRING value to |
 | 4 | CRITICAL | CVE-2026-34182 | libcrypto3 | 3.5.5-r0 | 3.5.7-r0 | – | – | Issue Summary: Cryptographic Message Services (CMS) processing fails to perform |
 | 4 | CRITICAL | CVE-2026-63073 | libcrypto3 | 3.5.5-r0 | 3.5.8-r0 | – | – | Issue summary: OpenSSL CMP response validation passed an unexpected response |
@@ -189,7 +197,7 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 
 | Typ | Name | Version | Fundort | Genutzt von |
 |---|---|---|---|---|
-| host | linux-kernel | 6.18.44-fc-v445 | Host | Host |
+| host | linux-kernel | 6.18.44-fc-v470 | Host | Host |
 | host | docker-engine | 29.9.2 | Host | Host |
 | host | containerd | v2.4.2 | Host | Host |
 | host | runc | 1.5.2 | Host | Host |
@@ -210,18 +218,18 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        5e52daf71bf5741187225b1a12dd5977fe288a8a576c203dca6f697036ca017b
-Gestartet: 2026-11-13T22:57:43.031518399Z
+ID:        70cc821309de53f0cd73d3eeeb4e62a9e9422f9486f0f3c60169e1db0d426350
+Gestartet: 2026-11-14T08:48:11.841649179Z
 Kommando:  ["docker-entrypoint.sh"] ["node", "server.js"]
 Mounts:    /home/user/container-security-scan/beispiele/umgebung/node->/app
-Host:      Kernel 6.18.44-fc-v445
+Host:      Kernel 6.18.44-fc-v470
 ```
 
 ### Laufende Prozesse
 
 ```
 PID                 USER                COMMAND
-16856               root                node server.js
+7671                root                node server.js
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

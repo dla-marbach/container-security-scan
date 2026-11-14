@@ -1,16 +1,16 @@
 {
  "bomFormat": "CycloneDX",
  "specVersion": "1.5",
- "serialNumber": "urn:uuid:de08cfa3-a27c-4c25-8349-6b9079066a62",
+ "serialNumber": "urn:uuid:5b1ef9f6-77fa-4681-9943-79699fd0c6cd",
  "version": 1,
  "metadata": {
-  "timestamp": "2026-11-13T22:58:31Z",
+  "timestamp": "2026-11-14T08:48:56Z",
   "tools": {
    "components": [
     {
      "type": "application",
      "name": "container-security-scan.py",
-     "version": "0.4.0"
+     "version": "0.4.1"
     }
    ]
   },
@@ -26,7 +26,7 @@
     },
     {
      "name": "container-security-scan:container-id",
-     "value": "5e52daf71bf5741187225b1a12dd5977fe288a8a576c203dca6f697036ca017b"
+     "value": "70cc821309de53f0cd73d3eeeb4e62a9e9422f9486f0f3c60169e1db0d426350"
     },
     {
      "name": "container-security-scan:repo-digest",
@@ -4726,7 +4726,7 @@
    "bom-ref": "c256",
    "type": "platform",
    "name": "linux-kernel",
-   "version": "6.18.44-fc-v445",
+   "version": "6.18.44-fc-v470",
    "properties": [
     {
      "name": "container-security-scan:typ",
@@ -4839,6 +4839,9 @@
    "bom-ref": "dienst:node:3000",
    "name": "node",
    "version": "22.22.0",
+   "endpoints": [
+    "http://shop.example.org:8080/"
+   ],
    "description": "Port 3000/tcp (alle) öffentlich über nginx:80 in app-proxy, traefik:80 in app-traefik; Anwendung: server.js; Arbeitsverzeichnis: /app",
    "properties": [
     {
