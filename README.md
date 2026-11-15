@@ -49,6 +49,26 @@ Der Scan läuft als root, deshalb sind Code und Daten getrennt. Den **Code** ins
 Release (Git-Tag). Die **Daten** holt der Benutzer `csscan` ohne Rechte bei jedem Lauf per `git pull` aus dem
 Branch [`daten`](https://github.com/dla-marbach/container-security-scan/tree/daten).
 
+```mermaid
+flowchart TD
+    subgraph gh["GitHub"]
+        A["Action, täglich<br/>OSV, CISA-KEV, endoflife.date, SUSE"]
+        B["Branch daten<br/>nur Daten, kein Code"]
+        A --> B
+    end
+    subgraph srv["Server"]
+        W["Wrapper als root<br/>manuell, cron, Rundeck<br/>zuerst git pull der Daten<br/>als csscan, ohne root"]
+        E["Host<br/>Pakete, Prozesse, Webserver"]
+        F["Laufende Container<br/>inkl. Volumes, Laufzeiten"]
+        G["Erreichbarkeit<br/>Docker, nginx/Apache, firewalld"]
+        H["Abgleich mit den Daten, Priorität P1–P4<br/>P1 = genutzt von erreichbarem Dienst"]
+        I["Rückgabewert 0 / 1 / 2<br/>Bericht, SBOM, Mail bei 1 oder 2"]
+        W --> E & F
+        E & F --> G --> H --> I
+    end
+    B --> W
+```
+
 ```
 /opt/container-security-scan/                  Code (container-security-scan.py)
 /var/lib/container-security-scan/daten/        Daten (Branch daten, Benutzer csscan)
