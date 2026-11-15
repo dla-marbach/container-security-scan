@@ -16,7 +16,7 @@ tests/                       unittest, eine Datei je Bereich (Übersicht in test
 .github/workflows/           tests.yml (Unit-Tests; Docker-Test bei PRs und auf main), daten.yml (Daten, täglich)
 ```
 
-Die Daten (OSV-Auszug, EOL, KEV) liegen im Branch `daten` und werden nur von `daten.yml` geschrieben. Lokal
+Die Daten (OSV-Auszug, EOL, KEV, Schweregrade von SUSE) liegen im Branch `daten` und werden nur von `daten.yml` geschrieben. Lokal
 liegen sie unter `daten/` (in `.gitignore`), geholt mit `./container-security-scan.py --db-aktualisieren`.
 Den Branch `daten` nie von Hand ändern.
 
@@ -70,7 +70,7 @@ was welche Datei prüft, und wird mitgepflegt. Tests nie abschalten oder übersp
 ## Nicht tun
 
 - Kein automatisches Update des Codes auf Servern einführen (Code nur von Hand, aus einem Tag).
-- Den Umfang nicht ohne konkreten Anlass erweitern (README: Abgrenzung): keine allgemeinen Härtungsprüfungen,
+- Den Umfang nicht ohne konkreten Anlass erweitern (README: Abgrenzung und Grenzen): keine allgemeinen Härtungsprüfungen,
   keine weiteren Paketfilter neben firewalld, keine weiteren `WEB-…`- oder `CONF-…`-Prüfungen.
 - Keine Tags oder Releases anlegen; das macht der Maintainer nach dem Merge.
 - Nicht direkt nach `main` pushen; Änderungen über einen Branch und Pull Request.
