@@ -54,7 +54,6 @@ flowchart TD
     subgraph gh["GitHub"]
         A["Action, täglich<br/>OSV, CISA-KEV, endoflife.date, SUSE"]
         B["Branch daten<br/>nur Daten, kein Code"]
-        R["Release (Git-Tag)<br/>Code"]
         A --> B
     end
     subgraph srv["Server"]
@@ -69,7 +68,6 @@ flowchart TD
         E & F --> G --> H --> I
     end
     B --> C
-    R -->|Installscript von Hand| W
 ```
 
 ```
