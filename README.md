@@ -57,17 +57,16 @@ flowchart TD
         A --> B
     end
     subgraph srv["Server"]
-        W["Wrapper als root<br/>manuell, cron oder Rundeck"]
-        C["zuerst git pull der Daten<br/>als csscan, ohne root"]
+        W["Wrapper als root<br/>manuell, cron, Rundeck<br/>zuerst git pull der Daten<br/>als csscan, ohne root"]
         E["Host<br/>Pakete, Prozesse, Webserver"]
         F["Laufende Container<br/>inkl. Volumes, Laufzeiten"]
         G["Erreichbarkeit<br/>Docker, nginx/Apache, firewalld"]
         H["Abgleich mit den Daten, Priorität P1–P4<br/>P1 = genutzt von erreichbarem Dienst"]
         I["Rückgabewert 0 / 1 / 2<br/>Bericht, SBOM, Mail bei 1 oder 2"]
-        W --> C --> E & F
+        W --> E & F
         E & F --> G --> H --> I
     end
-    B --> C
+    B --> W
 ```
 
 ```
