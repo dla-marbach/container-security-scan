@@ -1,4 +1,4 @@
-{"geprueft": "2026-11-14T08:02:40Z", "quelle": "https://ftp.suse.com/pub/projects/security/yaml/suse-cvss-scores.yaml", "cves": {
+{"geprueft": "2026-11-15T11:01:00Z", "quelle": "https://ftp.suse.com/pub/projects/security/yaml/suse-cvss-scores.yaml", "cves": {
 "CVE-1999-0512": [6.5,"3"],
 "CVE-2002-0640": [9.8,"3"],
 "CVE-2002-20001": [7.5,"3"],

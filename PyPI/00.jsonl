@@ -9042,6 +9042,12 @@
 {"affected":[{"package":{"ecosystem":"PyPI","name":"nsscache"},"versions":["9.9.9"]}],"id":"MAL-2026-1991","published":"2026-03-20T10:36:26Z","summary":"Malicious code in nsscache (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"perfkitbenchmarker"},"versions":["9.9.9"]}],"id":"MAL-2026-1992","published":"2026-03-20T10:34:07Z","summary":"Malicious code in perfkitbenchmarker (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"pubsub2inbox"},"versions":["9.9.9"]}],"id":"MAL-2026-1993","published":"2026-03-20T10:34:45Z","summary":"Malicious code in pubsub2inbox (PyPI)"}
+{"affected":[{"package":{"ecosystem":"PyPI","name":"ps-bool"},"versions":["0.2.0","0.2.1","0.2.3","0.2.4","0.2.5"]}],"id":"MAL-2026-19934","published":"2026-11-14T15:28:36Z","summary":"Malicious code in ps-bool (PyPI)"}
+{"affected":[{"package":{"ecosystem":"PyPI","name":"demo-pingtest-xyz"},"versions":["0.0.1"]}],"id":"MAL-2026-19935","published":"2026-11-14T17:18:32Z","summary":"Malicious code in demo-pingtest-xyz (PyPI)"}
+{"affected":[{"package":{"ecosystem":"PyPI","name":"gateio-sdk"},"versions":["99.99.1","99.99.2"]}],"id":"MAL-2026-19936","published":"2026-11-14T17:17:37Z","summary":"Malicious code in gateio-sdk (PyPI)"}
+{"affected":[{"package":{"ecosystem":"PyPI","name":"gateio-ws"},"versions":["99.99.1","99.99.2"]}],"id":"MAL-2026-19937","published":"2026-11-14T17:19:26Z","summary":"Malicious code in gateio-ws (PyPI)"}
+{"affected":[{"package":{"ecosystem":"PyPI","name":"gateio-v4"},"versions":["99.99.1"]}],"id":"MAL-2026-19940","published":"2026-11-15T01:41:33Z","summary":"Malicious code in gateio-v4 (PyPI)"}
+{"affected":[{"package":{"ecosystem":"PyPI","name":"gatepay-sdk-python"},"versions":["99.99.1"]}],"id":"MAL-2026-19942","published":"2026-11-15T08:33:20Z","summary":"Malicious code in gatepay-sdk-python (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"cfgmgr-syn"},"versions":["1.0.26","1.0.27"]}],"id":"MAL-2026-1999","published":"2026-03-20T13:12:40Z","summary":"Malicious code in cfgmgr-syn (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"cfgmgr-sync"},"versions":["1.0.0","1.0.1","1.0.2","1.0.3","1.0.4","1.0.5","1.0.6","1.0.7","1.0.8","1.0.9"]}],"id":"MAL-2026-2000","published":"2026-03-20T13:13:33Z","summary":"Malicious code in cfgmgr-sync (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"qyrm-pipinject4"},"versions":["1.0"]}],"id":"MAL-2026-2016","published":"2026-03-21T15:46:26Z","summary":"Malicious code in qyrm-pipinject4 (PyPI)"}
