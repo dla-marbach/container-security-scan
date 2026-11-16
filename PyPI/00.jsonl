@@ -7138,7 +7138,7 @@
 {"affected":[{"package":{"ecosystem":"PyPI","name":"rtxt-dep2"},"versions":["3.3.7"]}],"id":"MAL-2024-12341","published":"2024-07-26T16:53:30Z","summary":"Malicious code in rtxt-dep2 (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"rwoka"},"versions":["0.1.2","0.1.1","0.1.3"]}],"id":"MAL-2024-12342","published":"2024-12-14T16:26:57Z","summary":"Malicious code in rwoka (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"shinchina"},"versions":["1.0.0"]}],"id":"MAL-2024-12343","published":"2024-07-26T16:53:30Z","summary":"Malicious code in shinchina (PyPI)"}
-{"affected":[{"package":{"ecosystem":"PyPI","name":"spiderai"},"versions":["1.0","1.1","0.0.2","0.0.1","0.0.3","0.1.0"]}],"id":"MAL-2024-12348","published":"2024-10-02T09:16:00Z","summary":"Malicious code in spiderai (PyPI)"}
+{"affected":[{"package":{"ecosystem":"PyPI","name":"spiderai"},"versions":["1.0","1.1"]}],"id":"MAL-2024-12348","published":"2024-10-02T09:16:00Z","summary":"Malicious code in spiderai (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"spl-types"},"versions":["1.0.4","1.0.5","1.0.7","1.0.8"]}],"id":"MAL-2024-12349","published":"2024-07-03T17:04:18Z","summary":"Malicious code in spl-types (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"szn-rain-client"},"versions":["1.0.3"]}],"id":"MAL-2024-12354","published":"2024-07-26T16:53:30Z","summary":"Malicious code in szn-rain-client (PyPI)"}
 {"affected":[{"package":{"ecosystem":"PyPI","name":"szn-sasanka"},"versions":["1.9.5"]}],"id":"MAL-2024-12355","published":"2024-07-26T16:53:30Z","summary":"Malicious code in szn-sasanka (PyPI)"}
