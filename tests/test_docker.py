@@ -284,6 +284,34 @@ class Integration(unittest.TestCase):
         for c, vorher in self.diff_vorher.items():
             self.assertEqual(self.diff(c), vorher, c)
 
+    @staticmethod
+    def dienste(text):
+        """Tabelle "Laufende Dienste" eines Berichts (Erreichbarkeit je Port, Weg dorthin)."""
+        return text.split("## Laufende Dienste", 1)[1].split("\n## ", 1)[0]
+
+    def test_auswahl_wie_im_gesamtlauf(self):
+        # nur über einen anderen Container erreichbar (nginx, nginx-Variable, Traefik-Label, Aufruf eines
+        # Gateways): ausgewählt bzw. einzeln geprüft dieselbe Erreichbarkeit wie im Gesamtlauf
+        for args, erwartet in ((["--container", self.id + "-*node", "--container", self.label],
+                                [self.node, self.varnode, self.label]),
+                               ([self.api], [self.api])):
+            out = os.path.join(self.tmp, "auswahl-" + erwartet[0])
+            p = subprocess.run([sys.executable, SKRIPT] + args + [out, "--nur-behebbare"], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, timeout=2400)
+            ausgabe = p.stdout.decode("utf-8", "replace")
+            self.assertIn(p.returncode, (0, 1), ausgabe)
+            berichte = sorted(n for n in os.listdir(out) if n.endswith(".md"))
+            self.assertEqual(len(berichte), len(erwartet), berichte)
+            for c in erwartet:
+                name = [n for n in berichte if n.startswith("scan_%s_" % c)]
+                self.assertEqual(len(name), 1, (c, berichte))
+                with open(os.path.join(out, name[0]), encoding="utf-8") as f:
+                    self.assertEqual(self.dienste(f.read()), self.dienste(self.bericht(c)), c)
+                zeile = [l for l in ausgabe.splitlines() if l.startswith(c + ": ") and "Bericht:" in l]
+                gesamt = [l for l in self.ausgabe.splitlines() if l.startswith(c + ": ") and "Bericht:" in l]
+                self.assertEqual(zeile[0].split(" – Bericht:")[0], gesamt[0].split(" – Bericht:")[0])
+            self.assertIn("Gesamt: %d von " % len(erwartet), ausgabe)
+
     def test_gestoppter_container_ergibt_2(self):
         name = self.id + "-stop"
         docker("create", "--name", name, NODE_IMAGE)

@@ -104,12 +104,15 @@ git clone -q https://github.com/dla-marbach/container-security-scan.git /tmp/css
 ### Scannen
 
 ```bash
-sudo /usr/local/sbin/container-security-scan-lauf            # alle laufenden Container
-sudo /usr/local/sbin/container-security-scan-lauf app-php    # nur dieser Container
+sudo /usr/local/sbin/container-security-scan-lauf                 # alle laufenden Container
+sudo /usr/local/sbin/container-security-scan-lauf app-php         # nur dieser Container
+sudo /usr/local/sbin/container-security-scan-lauf 'surveyor_*'    # alle passenden (Muster mit * und ?)
 ```
 
-Ein einzelner Container wird ohne die Proxys in anderen Containern geprüft (Proxys direkt auf dem Host zählen):
-Ist er nur über einen solchen erreichbar, erscheinen seine Dienste als P2 statt P1.
+Auch bei einer Auswahl ermittelt der Scan die Erreichbarkeit über alle laufenden Container (nur Prozesse, Ports
+und Proxy-Konfiguration, wenige Sekunden je Container); die Ergebnisse sind dieselben wie im Gesamtlauf. Muster
+in Anführungszeichen setzen, sonst ersetzt die Shell sie ggf. durch Dateinamen. Passt kein laufender Container,
+ist das Ergebnis `2`.
 
 ### Täglich per cron oder Rundeck
 
@@ -304,13 +307,14 @@ Für Sonderfälle; nutzt die vorhandenen Daten, ohne sie zu aktualisieren:
 ```bash
 C=/opt/container-security-scan/container-security-scan.py; DB=/var/lib/container-security-scan/daten
 sudo python3 -I $C --db $DB --alle-container --nur-behebbare <ausgabeverzeichnis>   # wie der Wrapper
-sudo python3 -I $C --db $DB --alle <container> <ausgabeverzeichnis>                 # ein Container, alle Befunde
+sudo python3 -I $C --db $DB --alle --container 'app-*' <ausgabeverzeichnis>        # Auswahl, alle Befunde
 ```
 
 | Option | Bedeutung |
 |---|---|
 | `--alle-container` | alle laufenden Container, zuerst die erreichbaren und die Backends ihrer Proxys |
 | `--oeffentliche` | nur die erreichbaren Container und deren Backends |
+| `--container MUSTER` | nur passende Container (Name, ID oder Muster wie `surveyor_*`, mehrfach möglich; auch ohne Option als erstes Argument), Erreichbarkeit wie im Gesamtlauf |
 | `--nur-behebbare` | nur Funde mit Fix zählen – empfohlen, sonst melden ungepatchte Lücken dauerhaft `1` |
 | `--alle` | alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV) |
 | `--ausnahmen DATEI` | [Ausnahmeliste](#ausnahmen) |

@@ -15,6 +15,9 @@ Aufruf:
      Nicht als root – siehe README "Installation und Betrieb";
      mit --oekosysteme X,Y: zusätzlich diese Ökosysteme direkt von OSV nach osv-db laden (z.B. SUSE)
   ./container-security-scan.py <container> [ausgabeverzeichnis] [--nur-behebbare] [--alle] [--ausnahmen DATEI]
+  ./container-security-scan.py --container MUSTER [--container MUSTER ...] [ausgabeverzeichnis] [...]
+     nur diese Container (Name, ID oder Muster wie 'surveyor_*'); die Erreichbarkeit wird wie mit
+     --alle-container über alle laufenden Container ermittelt (ohne deren Inventar): gleiche Ergebnisse
   ./container-security-scan.py --alle-container [ausgabeverzeichnis] [...]
      alle laufenden Container: zuerst die erreichbaren und ihre Ziele, dann alle übrigen. Erreichbar
      ("öffentlich" = von außerhalb des Docker-Hosts, Intranet oder Internet): veröffentlichte Ports,
@@ -54,6 +57,7 @@ Anwendung wirklich importiert, ist von außen nicht sichtbar).
 import argparse
 import concurrent.futures
 import datetime
+import fnmatch
 import hashlib
 import io
 import ipaddress
@@ -3204,29 +3208,10 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
 
 
 # ===========================================================================
-def scan_container(name, a, via_proxy=None):
-    """Einen Container scannen. Liefert (Rückgabewert, öffentliche Backends [(Container, Port, Dienst)])."""
-    c = Container(name, a.user)
-    log("Erfasse Container '%s' ..." % c.name)
-    how = {}
-    files, extra, how["files"], problems = collect_files(c)
-    osinfo = os_release(files)
-    pkgs, owners, how["pkgdb"] = os_packages(c, files)
-    procs, how["procs"], fremd = collect_procs(c)
-    lang = npm_packages(files) + composer_packages(files) + pypi_packages(files) + extra
-    if how["pkgdb"] == "rpm (im Container)":
-        owners.update(rpm_owners(c, {norm(f) for p in procs.values() for f in p["maps"] | {p["exe"]}} |
-                                 {x["datei"] for x in lang}))
-    # Sprach-Komponenten, deren Datei zu einem OS-Paket gehört (z.B. gosu, python3-*-Pakete, libxyz-java),
-    # prüft der Abgleich über das OS-Paket – sonst würden sie doppelt gezählt (so hält es auch Trivy)
-    how["os_owned"] = sum(1 for x in lang if owners.get(norm(x["datei"])))
-    comps = pkgs + [x for x in lang if not owners.get(norm(x["datei"]))]
-    comps += probe_runtimes(c, procs, owners) + host_components()
-    web = collect_web(c, procs)
-    problems.extend(web["problems"])
-    web["self"] = c.name
-    web["via_proxy"] = via_proxy or {}
-    web["venvs"] = {posixpath.dirname(f) for f in files if f.endswith("/pyvenv.cfg")}
+def dienste_ermitteln(a, comps, procs, owners, web, fremd, how_procs):
+    """Dienste eines Containers mit Erreichbarkeit und öffentlichen Backends in anderen Containern, dazu Warnungen
+    zu nicht zuordenbaren Ports und Weiterleitungen. Gemeinsam für scan_container und erreichbarkeit_pruefen
+    (dort ohne Komponenten): die Erreichbarkeit hängt nur von Prozessen, Ports und Konfiguration ab."""
     services = mark_usage(comps, procs, owners, web)
 
     # Ports, auf denen ein Container lauscht, der den Netzwerk-Namespace mitnutzt: dort bewertet
@@ -3279,7 +3264,7 @@ def scan_container(name, a, via_proxy=None):
                                         "möglicherweise öffentlich: " + ", ".join(nachbarn + loopback)
                                         if nachbarn or loopback else "")})
         warnings.append("Prozess zu Port %s nicht ermittelbar (%s) – alle Komponenten als öffentlich genutzt gewertet"
-                        % (", ".join(unmatched) or "?", how["procs"]))
+                        % (", ".join(unmatched) or "?", how_procs))
     for svc in services:
         for b in svc["unresolved"]:
             warnings.append("Backend %s von %s keinem Container zuordenbar – dort ggf. gesondert scannen" % (b, svc["label"]))
@@ -3288,6 +3273,53 @@ def scan_container(name, a, via_proxy=None):
                 svc["label"], "; ".join(svc["unklar"]),
                 "Container in denselben Docker-Netzen gelten als möglicherweise öffentlich: " + ", ".join(web["nachbarn"])
                 if web.get("nachbarn") else "keine Container in denselben Docker-Netzen"))
+    return services, warnings
+
+
+def backends_von(services, name):
+    """Öffentliche Backends der Dienste eines Containers [(Ziel-Container, Port, Grund)]."""
+    return [(ct, port, "%s in %s" % (label, name)) for s in services for ct, port, label in s["backends"]]
+
+
+def erreichbarkeit_pruefen(name, a, via_proxy=None):
+    """Nur die Erreichbarkeit eines Containers, ohne Inventar und Abgleich mit den Daten (Einzelscan, --container):
+    Prozesse, Ports und Konfiguration der Webserver wie in scan_container, in Sekunden statt Minuten. Liefert wie
+    scan_container (Rückgabewert, öffentliche Backends, Bericht), Rückgabewert und Bericht None."""
+    c = Container(name, a.user)
+    log("Ermittle Erreichbarkeit über Container '%s' ..." % c.name)
+    procs, how_procs, fremd = collect_procs(c)
+    web = collect_web(c, procs)
+    web["self"] = c.name
+    web["via_proxy"] = via_proxy or {}
+    web["venvs"] = set()
+    services, _ = dienste_ermitteln(a, [], procs, {}, web, fremd, how_procs)
+    return None, backends_von(services, c.name), None
+
+
+def scan_container(name, a, via_proxy=None):
+    """Einen Container scannen. Liefert (Rückgabewert, öffentliche Backends [(Container, Port, Dienst)])."""
+    c = Container(name, a.user)
+    log("Erfasse Container '%s' ..." % c.name)
+    how = {}
+    files, extra, how["files"], problems = collect_files(c)
+    osinfo = os_release(files)
+    pkgs, owners, how["pkgdb"] = os_packages(c, files)
+    procs, how["procs"], fremd = collect_procs(c)
+    lang = npm_packages(files) + composer_packages(files) + pypi_packages(files) + extra
+    if how["pkgdb"] == "rpm (im Container)":
+        owners.update(rpm_owners(c, {norm(f) for p in procs.values() for f in p["maps"] | {p["exe"]}} |
+                                 {x["datei"] for x in lang}))
+    # Sprach-Komponenten, deren Datei zu einem OS-Paket gehört (z.B. gosu, python3-*-Pakete, libxyz-java),
+    # prüft der Abgleich über das OS-Paket – sonst würden sie doppelt gezählt (so hält es auch Trivy)
+    how["os_owned"] = sum(1 for x in lang if owners.get(norm(x["datei"])))
+    comps = pkgs + [x for x in lang if not owners.get(norm(x["datei"]))]
+    comps += probe_runtimes(c, procs, owners) + host_components()
+    web = collect_web(c, procs)
+    problems.extend(web["problems"])
+    web["self"] = c.name
+    web["via_proxy"] = via_proxy or {}
+    web["venvs"] = {posixpath.dirname(f) for f in files if f.endswith("/pyvenv.cfg")}
+    services, warnings = dienste_ermitteln(a, comps, procs, owners, web, fremd, how["procs"])
     warnings.extend(root_dienste(c, procs, web))
     warnings.extend(offene_datendienste(procs, web))
     how["warnungen"] = warnings
@@ -3354,7 +3386,7 @@ def scan_container(name, a, via_proxy=None):
     for r in relevant:
         print("%s:   %s%s" % (c.name, "NEU: " if r["neu"] and known is not None else "", fund_text(r)))
     sys.stdout.flush()
-    return code, [(ct, port, "%s in %s" % (label, c.name)) for s in services for ct, port, label in s["backends"]], base
+    return code, backends_von(services, c.name), base
 
 
 def container_liste(infos, netze):
@@ -3481,17 +3513,83 @@ def host_ausgeben(services, warnings, problems):
     return 2 if problems else 0
 
 
+GESAMT_TEXT = {0: "OK", 1: "RELEVANTE FUNDE (Schwachstellen bzw. gefährliche Einstellungen)",
+               2: "mindestens eine Prüfung UNVOLLSTÄNDIG"}
+
+
+def container_auswahl(infos, muster):
+    """Laufende Container, deren Name zu einem der Muster passt (Platzhalter * ? [...] wie in der Shell); ein Muster
+    ohne Platzhalter trifft auch die ID bzw. deren Anfang (wie bei docker). Sortiert nach Name."""
+    treffer = set()
+    for d in infos:
+        name, cid = name_von(d), d.get("Id") or ""
+        for m in muster:
+            if fnmatch.fnmatchcase(name, m) or (not re.search(r"[*?\[]", m) and cid.startswith(m)):
+                treffer.add(name)
+    return sorted(treffer)
+
+
+def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None):
+    """Reihenfolge und Weitergabe der Erreichbarkeit: zuerst die erreichbaren Container und (wiederholt) die Backends
+    ihrer Proxys in anderen Containern – vorgezogen, damit sie schon mit ihrer Erreichbarkeit geprüft werden –,
+    danach die übrigen (spaeter). pruefen(Name, via) -> (Rückgabewert, Backends, Bericht): scan_container bzw.
+    erreichbarkeit_pruefen. Liefert (via je Container, Container mit Fehler); codes: Rückgabewerte je Container."""
+    codes = {} if codes is None else codes
+    queue = OrderedDict((n, {}) for n in public)
+    for ct, port, reason in ziele:          # Ziele von Proxys auf dem Host: erreichbar, vorgezogen
+        for ziel in [ct] + gruppen.get(ct, []):
+            queue.setdefault(ziel, {}).setdefault(port, []).append(reason)
+            queue.move_to_end(ziel, last=False)
+    spaeter = list(spaeter)
+    vias, fehler, runs = {}, [], Counter()
+    while queue or spaeter:
+        if not queue:
+            n = spaeter.pop(0)
+            if n not in vias:
+                queue[n] = {}
+            continue
+        name, via = queue.popitem(last=False)
+        vias[name] = via
+        runs[name] += 1
+        try:
+            codes[name], backends, _ = pruefen(name, via)
+        except ScanError as e:
+            if run(["docker", "ps", "-q"])[0] == 0 and run(["docker", "inspect", "--type", "container", name])[0] != 0:
+                print("%s: übersprungen – Container nicht mehr vorhanden (z.B. mit --rm beendet)" % name)
+                del vias[name]
+                continue
+            log("FEHLER bei %s: %s" % (name, e))
+            codes[name], backends = 2, []
+            fehler.append(name)
+        for ct, port, reason in backends:
+            # bei gemeinsamem Netzwerk-Namespace lauscht ggf. ein anderer Container der Gruppe auf dem Port
+            for ziel in [ct] + gruppen.get(ct, []):
+                merged = {k: list(v) for k, v in (queue.get(ziel) or vias.get(ziel) or {}).items()}
+                if reason in merged.get(port, []):
+                    continue
+                merged.setdefault(port, []).append(reason)
+                if ziel in vias and runs[ziel] >= 3:
+                    continue          # Schutz vor Endlosschleifen bei gegenseitigen Proxys
+                queue[ziel] = merged
+                queue.move_to_end(ziel, last=False)
+    return vias, fehler
+
+
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
     data_dir, local_db = os.path.join(here, "daten"), os.path.join(here, "osv-db")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("container", nargs="?", help="Name oder ID des laufenden Containers")
+    ap.add_argument("container", nargs="?", help="Name oder ID des laufenden Containers (wie --container)")
     ap.add_argument("ausgabe", nargs="?", default=".", help="Ausgabeverzeichnis (Standard: aktuelles Verzeichnis)")
     ap.add_argument("--oeffentliche", action="store_true",
                     help="alle Container mit veröffentlichten Ports scannen, dazu deren Backends hinter einem Proxy")
     ap.add_argument("--alle-container", action="store_true",
                     help="wie --oeffentliche, danach alle übrigen laufenden Container (empfohlen, so im Wrapper): "
                          "was nicht als erreichbar erkannt wird, fehlt so nicht, sondern erscheint mindestens als P2")
+    ap.add_argument("--container", action="append", dest="muster", metavar="MUSTER",
+                    help="nur passende Container prüfen (Name, ID oder Muster wie 'surveyor_*', mehrfach möglich); "
+                         "die Erreichbarkeit wird wie mit --alle-container über alle Container ermittelt, die "
+                         "Ergebnisse sind dieselben wie im Gesamtlauf")
     ap.add_argument("--db", action="append", metavar="DIR",
                     help="Verzeichnis mit OSV-Daten, mehrfach möglich: je Ökosystem gilt das erste, das es enthält "
                          "(Standard: daten und osv-db neben diesem Skript)")
@@ -3514,8 +3612,12 @@ def main():
     ap.add_argument("--version", action="version", version="container-security-scan " + VERSION)
     a = ap.parse_args()
     mehrere = a.oeffentliche or a.alle_container
-    if mehrere and a.container:      # mit --oeffentliche/--alle-container ist das erste Argument das Ausgabeverzeichnis
+    if mehrere and a.muster:
+        ap.error("--container nicht zusammen mit --oeffentliche bzw. --alle-container")
+    if (mehrere or a.muster) and a.container and a.ausgabe == ".":
+        # mit --oeffentliche/--alle-container/--container ist das einzige Argument das Ausgabeverzeichnis
         a.ausgabe, a.container = a.container, None
+    muster = (a.muster or []) + ([a.container] if a.container else [])
     if a.daten_erzeugen:
         daten_erzeugen(a.daten_erzeugen)
         return 0
@@ -3569,10 +3671,10 @@ def main():
                 except (OSError, ValueError, KeyError, TypeError, ScanError) as e:
                     log("WARNUNG: %s nicht aktualisiert: %s" % (label, e))
         a.dbdirs = a.db or [d for d in (data_dir, local_db) if os.path.isdir(d)]
-        if not a.container and not mehrere:
+        if not muster and not mehrere:
             return 0
-    if not a.container and not mehrere:
-        ap.error("Container fehlt (oder --oeffentliche bzw. --alle-container)")
+    if not muster and not mehrere:
+        ap.error("Container fehlt (oder --container, --oeffentliche bzw. --alle-container)")
     # Berichte enthalten Kommandozeilen der Prozesse (oft mit Passwörtern) und Konfigurationsauszüge:
     # nur für den aufrufenden Benutzer lesbar, auch ohne umask im Aufruf (cron, Rundeck, von Hand)
     os.umask(0o077)
@@ -3580,22 +3682,6 @@ def main():
         raise ScanError("keine OSV-Daten gefunden (%s) – zuerst: %s --db-aktualisieren" % (", ".join(a.db or [data_dir]), sys.argv[0]))
     a.ausnahmen_liste = ausnahmen_laden(a.ausnahmen) if a.ausnahmen else []
     print("container-security-scan %s" % VERSION)
-    if not mehrere:
-        # auch ein Einzelscan kennt Proxys auf dem Host (ohne die in anderen Containern)
-        try:
-            infos, netze = docker_lage()
-        except ScanError:
-            return scan_container(a.container, a)[0]       # meldet den Fehler selbst
-        d = next((x for x in infos if a.container in (name_von(x), x.get("Id")) or x.get("Id", "").startswith(a.container)), {})
-        ziele, services, warnings, problems = host_proxys(infos)
-        host_code = host_ausgeben(services, warnings, problems)
-        namen = {name_von(d)} | set(netz_gruppe(d, infos)) if d else set()
-        via = {}
-        for ct, port, reason in ziele:
-            if ct in namen and reason not in via.setdefault(port, []):
-                via[port].append(reason)
-        code = scan_container(a.container, a, via)[0]
-        return 2 if 2 in (code, host_code) else code
     try:
         infos, netze = docker_lage()
         public, rest, gruppen = container_liste(infos, netze)
@@ -3605,57 +3691,47 @@ def main():
         return 2
     host_code = host_ausgeben(services, warnings, problems)
 
-    # Erreichbare Container, dabei (wiederholt) deren Backends in anderen Containern – vorgezogen, damit sie
-    # schon mit ihrer Erreichbarkeit geprüft werden; mit --alle-container danach die übrigen
-    queue = OrderedDict((n, {}) for n in public)
-    for ct, port, reason in ziele:          # Ziele von Proxys auf dem Host: erreichbar, vorgezogen
-        for ziel in [ct] + gruppen.get(ct, []):
-            queue.setdefault(ziel, {}).setdefault(port, []).append(reason)
-            queue.move_to_end(ziel, last=False)
-    spaeter = list(rest) if a.alle_container else []
-    if not queue and not spaeter:
-        print("Keine laufenden Container gefunden." if a.alle_container else "Keine Container mit veröffentlichten Ports gefunden.")
-        return host_code
-    vias, codes, reports, runs = {}, {}, {}, Counter()
-    while queue or spaeter:
-        if not queue:
-            n = spaeter.pop(0)
-            if n not in vias:
-                queue[n] = {}
-            continue
-        name, via = queue.popitem(last=False)
-        vias[name] = via
-        runs[name] += 1
-        try:
-            codes[name], backends, base = scan_container(name, a, via)
-        except ScanError as e:
-            if run(["docker", "ps", "-q"])[0] == 0 and run(["docker", "inspect", "--type", "container", name])[0] != 0:
-                print("%s: übersprungen – Container nicht mehr vorhanden (z.B. mit --rm beendet)" % name)
-                del vias[name]
-                continue
-            log("FEHLER bei %s: %s" % (name, e))
-            codes[name], backends, base = 2, [], None
+    if muster:
+        # Auswahl: Erreichbarkeit wie im Gesamtlauf über alle laufenden Container ermitteln (ohne Inventar und
+        # Abgleich), dann nur die ausgewählten vollständig prüfen – mit denselben Ergebnissen wie im Gesamtlauf
+        auswahl = container_auswahl(infos, muster)
+        if not auswahl:
+            log("FEHLER: kein laufender Container passt zu %s" % ", ".join(muster))
+            return 2
+        vias, fehler = durchlauf(public, rest, ziele, gruppen, lambda n, via: erreichbarkeit_pruefen(n, a, via))
+        codes = {}
+        for name in auswahl:
+            try:
+                codes[name] = scan_container(name, a, vias.get(name, {}))[0]
+            except ScanError as e:
+                log("FEHLER bei %s: %s" % (name, e))
+                codes[name] = 2
+        fehler = [n for n in fehler if n not in auswahl]
+        if fehler:      # Ziele dieser Container unbekannt: Erreichbarkeit der Auswahl ggf. unvollständig
+            print("UNVOLLSTÄNDIG: Erreichbarkeit über %s nicht ermittelbar (siehe Meldungen)" % ", ".join(fehler))
+        code = 2 if 2 in codes.values() or host_code == 2 or fehler else 1 if 1 in codes.values() else 0
+        print("Gesamt: %d von %d Containern geprüft (%s) – %s" % (len(codes), len(public) + len(rest),
+                                                                 ", ".join(muster), GESAMT_TEXT[code]))
+        return code
+
+    reports = {}
+
+    def pruefen(name, via):
+        code, backends, base = scan_container(name, a, via)
         if reports.get(name) and reports[name] != base:   # erneute Prüfung ersetzt den ersten Bericht dieses Laufs
             # (bei gleichem Namen – Prüfung in derselben Sekunde – ist er schon überschrieben)
             for ext in (".md", ".cdx.json", ".sha256"):
                 if os.path.exists(reports[name] + ext):
                     os.remove(reports[name] + ext)
         reports[name] = base
-        for ct, port, reason in backends:
-            # bei gemeinsamem Netzwerk-Namespace lauscht ggf. ein anderer Container der Gruppe auf dem Port
-            for ziel in [ct] + gruppen.get(ct, []):
-                merged = {k: list(v) for k, v in (queue.get(ziel) or vias.get(ziel) or {}).items()}
-                if reason in merged.get(port, []):
-                    continue
-                merged.setdefault(port, []).append(reason)
-                if ziel in vias and runs[ziel] >= 3:
-                    continue          # Schutz vor Endlosschleifen bei gegenseitigen Proxys
-                queue[ziel] = merged
-                queue.move_to_end(ziel, last=False)
+        return code, backends, base
+    if not public and not ziele and not (rest and a.alle_container):
+        print("Keine laufenden Container gefunden." if a.alle_container else "Keine Container mit veröffentlichten Ports gefunden.")
+        return host_code
+    codes = {}
+    vias, _ = durchlauf(public, rest if a.alle_container else [], ziele, gruppen, pruefen, codes)
     code = 2 if 2 in codes.values() or host_code == 2 else 1 if 1 in codes.values() else 0
-    print("Gesamt: %d Container geprüft – %s" % (len(codes), {
-        0: "OK", 1: "RELEVANTE FUNDE (Schwachstellen bzw. gefährliche Einstellungen)",
-        2: "mindestens eine Prüfung UNVOLLSTÄNDIG"}[code]))
+    print("Gesamt: %d Container geprüft – %s" % (len(codes), GESAMT_TEXT[code]))
     return code
 
 

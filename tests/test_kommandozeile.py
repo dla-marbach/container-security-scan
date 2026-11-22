@@ -75,7 +75,7 @@ class Kommandozeile(unittest.TestCase):
         self.assertIn("docker nicht erreichbar", out)
         rc, out = self.aufruf("--db", self.db, "web", "berichte")
         self.assertEqual(rc, 2)
-        self.assertIn("nicht gefunden", out)
+        self.assertIn("docker nicht erreichbar", out)
 
     def test_keine_oeffentlichen_container(self):
         self.docker('[ "$1" = ps ] && exit 0\nexit 1\n')
@@ -181,7 +181,11 @@ class Kommandozeile(unittest.TestCase):
         alt = os.umask(0o022)
         try:
             with mock.patch.object(scanner, "scan_container", side_effect=scan), \
-                    mock.patch.object(scanner, "docker_lage", side_effect=scanner.ScanError("x")), \
+                    mock.patch.object(scanner, "erreichbarkeit_pruefen", return_value=(None, [], None)), \
+                    mock.patch.object(scanner, "docker_lage", return_value=([{"Id": "abc", "Name": "/web"}], {})), \
+                    mock.patch.object(scanner, "container_liste", return_value=([], ["web"], {})), \
+                    mock.patch.object(scanner, "host_proxys", return_value=([], [], [], [])), \
+                    mock.patch("sys.stdout", new_callable=io.StringIO), \
                     mock.patch.object(sys, "argv", ["x", "--db", db, "web", self.tmp]):
                 self.assertEqual(scanner.main(), 0)
         finally:
@@ -266,19 +270,80 @@ class Kommandozeile(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertIn("Host: UNVOLLSTÄNDIG: /usr/sbin/nginx -T fehlgeschlagen", out)
 
-    def test_einzelscan_kennt_proxys_auf_dem_host(self):
+    def auswahl(self, args, infos, public, rest, gruppen, backends, host=([], [], [], []), fehler=()):
+        """main() mit Einzelscan bzw. --container: Erreichbarkeit über alle Container (erreichbarkeit_pruefen),
+        vollständig nur die Auswahl (scan_container). Liefert (Rückgabewert, [Erreichbarkeit (Container, via)],
+        [Scan (Container, via)], Ausgabe)."""
         db = os.path.join(self.tmp, "db")
         os.makedirs(db, exist_ok=True)
-        infos = [{"Id": "abc123", "Name": "/app", "HostConfig": {}, "NetworkSettings": {"Networks": {"n": {}}}}]
+        leicht, voll = [], []
+
+        def erreichbarkeit(name, a, via=None):
+            if name in fehler:
+                raise scanner.ScanError("Prozesse in %s nicht ermittelbar" % name)
+            leicht.append((name, via))
+            return None, backends.get(name, []), None
+
+        def scan(name, a, via=None):
+            voll.append((name, via))
+            return 1 if name.startswith("surveyor") else 0, backends.get(name, []), None
+        with mock.patch.object(scanner, "scan_container", side_effect=scan), \
+                mock.patch.object(scanner, "erreichbarkeit_pruefen", side_effect=erreichbarkeit), \
+                mock.patch.object(scanner, "docker_lage", return_value=(infos, {})), \
+                mock.patch.object(scanner, "container_liste", return_value=(public, rest, gruppen)), \
+                mock.patch.object(scanner, "host_proxys", return_value=host), \
+                mock.patch.object(scanner, "run", return_value=(0, "")), \
+                mock.patch.object(scanner, "log"), mock.patch("sys.stdout", new_callable=io.StringIO) as out, \
+                mock.patch.object(sys, "argv", ["x", "--db", db] + args + [self.tmp]):
+            rc = scanner.main()
+        return rc, leicht, voll, out.getvalue()
+
+    def test_einzelscan_kennt_proxys_auf_dem_host(self):
+        infos = [{"Id": "abc123", "Name": "/app"}, {"Id": "def456", "Name": "/db"}]
         host = ([("app", "3000", "nginx:443 auf dem Host"), ("db", "*", "nginx:443 auf dem Host")], [], [], [])
         for ref in ("app", "abc"):
-            with mock.patch.object(scanner, "scan_container", return_value=(0, [], None)) as scan, \
-                    mock.patch.object(scanner, "docker_lage", return_value=(infos, {})), \
-                    mock.patch.object(scanner, "host_proxys", return_value=host), \
-                    mock.patch("sys.stdout", new_callable=io.StringIO), \
-                    mock.patch.object(sys, "argv", ["x", "--db", db, ref, self.tmp]):
-                self.assertEqual(scanner.main(), 0)
-            self.assertEqual(scan.call_args[0][2], {"3000": ["nginx:443 auf dem Host"]})
+            rc, _, voll, _ = self.auswahl([ref], infos, [], ["app", "db"], {}, {}, host=host)
+            self.assertEqual((rc, voll), (0, [("app", {"3000": ["nginx:443 auf dem Host"]})]))
+
+    def test_einzelscan_wie_im_gesamtlauf(self):
+        # app ist nur über nginx in proxy erreichbar, db nur über einen Aufruf von app: im Einzelscan dieselbe
+        # Erreichbarkeit wie im Gesamtlauf, vollständig geprüft wird nur der gewählte Container
+        infos = [{"Id": "a1", "Name": "/app"}, {"Id": "d1", "Name": "/db"}, {"Id": "p1", "Name": "/proxy"}]
+        backends = {"proxy": [("app", "3000", "nginx:80 in proxy")],
+                    "app": [("db", "8080", "node:3000 (Ziel-URL) in app")]}
+        _, gesamt, _ = self.mehrere("--alle-container", ["proxy"], ["app", "db"], {}, backends)
+        for name in ("app", "db"):
+            rc, leicht, voll, out = self.auswahl([name], infos, ["proxy"], ["app", "db"], {}, backends)
+            self.assertEqual(rc, 0)
+            self.assertEqual(leicht, gesamt)                    # gleiche Reihenfolge und Weitergabe
+            self.assertEqual(voll, [x for x in gesamt if x[0] == name])
+            self.assertIn("Gesamt: 1 von 3 Containern geprüft (%s) – OK" % name, out)
+
+    def test_auswahl_mit_muster(self):
+        infos = [{"Id": "s1", "Name": "/surveyor_app"}, {"Id": "s2", "Name": "/surveyor_db"},
+                 {"Id": "x1", "Name": "/surveyorx"}, {"Id": "p1", "Name": "/proxy"}]
+        backends = {"proxy": [("surveyor_app", "8080", "nginx:80 in proxy")]}
+        rc, _, voll, out = self.auswahl(["--container", "surveyor_*"], infos, ["proxy"],
+                                        ["surveyor_app", "surveyor_db", "surveyorx"], {}, backends)
+        self.assertEqual(rc, 1)
+        self.assertEqual(voll, [("surveyor_app", {"8080": ["nginx:80 in proxy"]}), ("surveyor_db", {})])
+        self.assertIn("Gesamt: 2 von 4 Containern geprüft (surveyor_*) – RELEVANTE FUNDE", out)
+        # mehrere Muster, ID-Anfang; [..] wie in der Shell
+        rc, _, voll, _ = self.auswahl(["--container", "prox?", "--container", "x1", "surveyor_[d]*"], infos,
+                                      ["proxy"], [], {}, {})
+        self.assertEqual(sorted(n for n, _ in voll), ["proxy", "surveyor_db", "surveyorx"])
+
+    def test_auswahl_ohne_treffer_oder_mit_fehler_ergibt_2(self):
+        infos = [{"Id": "a1", "Name": "/app"}, {"Id": "p1", "Name": "/proxy"}]
+        rc, leicht, voll, _ = self.auswahl(["--container", "surveyor_*"], infos, ["proxy"], ["app"], {}, {})
+        self.assertEqual((rc, leicht, voll), (2, [], []))
+        # Erreichbarkeit über einen anderen Container nicht ermittelbar: Ergebnis der Auswahl ggf. unvollständig
+        rc, _, voll, out = self.auswahl(["app"], infos, ["proxy"], ["app"], {}, {}, fehler=("proxy",))
+        self.assertEqual((rc, voll), (2, [("app", {})]))
+        self.assertIn("UNVOLLSTÄNDIG: Erreichbarkeit über proxy nicht ermittelbar", out)
+        # mit --alle-container bzw. --oeffentliche nicht kombinierbar
+        with self.assertRaises(SystemExit):
+            self.auswahl(["--alle-container", "--container", "app"], infos, [], [], {}, {})
 
     def test_alle_container_ohne_container(self):
         rc, gesehen, out = self.mehrere("--alle-container", [], [], {}, {})
@@ -293,7 +358,7 @@ class Kommandozeile(unittest.TestCase):
 
     def test_unerwarteter_fehler_ergibt_2(self):
         # docker inspect liefert Unsinn -> Ausnahme im Skript, darf nie als 0 oder 1 enden
-        self.docker('[ "$1" = inspect ] && echo "[{}]" && exit 0\nexit 1\n')
+        self.docker('case "$1" in ps) echo abc ;; inspect) echo \'[{"Name": "/web", "Id": "abc"}]\' ;; esac\nexit 0\n')
         rc, out = self.aufruf("--db", self.db, "web", "berichte")
         self.assertEqual(rc, 2)
         self.assertIn("Traceback", out)

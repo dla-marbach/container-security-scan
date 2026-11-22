@@ -68,6 +68,15 @@ class InstallationTest(unittest.TestCase):
         self.assertEqual(set(aufrufe), {"-I"}, "Code nur über python3 -I starten")
         self.assertNotRegex(wrapper, r"(?m)^\s*\"\$CODE\"", "Code nicht direkt über die Shebang-Zeile starten")
 
+    def test_wrapper_argumente(self):
+        # nur Namen, IDs und Muster (* ?) als --container; alles andere bricht ab, bevor etwas geschieht
+        for arg in ("-x", "--alle", "a b", "../x", "$(id)", "a;b", "a/b", ""):
+            r = subprocess.run(["bash", WRAPPER, "--mail", "app", arg], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, universal_newlines=True, timeout=30)
+            self.assertEqual(r.returncode, 2, arg)
+            self.assertIn("FEHLER: Aufruf:", r.stdout, arg)
+        self.assertIn('ZIEL+=(--container "$m")', lesen(WRAPPER))
+
     def liste(self, text):
         path = os.path.join(self.tmp, "ausnahmen.txt")
         with open(path, "w", encoding="utf-8") as f:
