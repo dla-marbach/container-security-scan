@@ -49,11 +49,9 @@ class Kommandozeile(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("--oeffentliche", out)
         self.assertIn("--alle-container", out)
-        self.assertIn("--host", out)
         self.assertIn("--ausnahmen", out)
         self.assertNotIn("--eol-daten-erzeugen", out)      # nur für die GitHub Action
         self.assertNotIn("--kev-daten-erzeugen", out)
-        self.assertNotIn("--suse-schweregrad-erzeugen", out)
 
     def test_fehlerhafte_ausnahmeliste_ergibt_2(self):
         os.mkdir(os.path.join(self.tmp, "db"))
@@ -175,11 +173,11 @@ class Kommandozeile(unittest.TestCase):
         os.mkdir(db)
         gesehen = []
 
-        def scan(name, a, via=None, urls=None):
+        def scan(name, a, via=None):
             alt = os.umask(0)
             os.umask(alt)
             gesehen.append(alt)
-            return 0, [], None, {}
+            return 0, [], None
         alt = os.umask(0o022)
         try:
             with mock.patch.object(scanner, "scan_container", side_effect=scan), \
@@ -196,11 +194,11 @@ class Kommandozeile(unittest.TestCase):
         os.makedirs(db, exist_ok=True)
         gesehen = []
 
-        def scan(name, a, via=None, urls=None):
+        def scan(name, a, via=None):
             if name in weg:
                 raise scanner.ScanError("Container '%s' nicht gefunden" % name)
             gesehen.append((name, via))
-            return 0, backends.get(name, []), None, {}
+            return 0, backends.get(name, []), None
 
         def run(cmd, *a, **kw):
             return (1, "") if cmd[:2] == ["docker", "inspect"] and cmd[-1] in weg else (0, "")
@@ -220,12 +218,12 @@ class Kommandozeile(unittest.TestCase):
         for namen in (["app-1", "app-2"], ["app-1", "app-1"]):
             namen_iter = iter(namen)
 
-            def scan(name, a, via=None, urls=None):
+            def scan(name, a, via=None):
                 base = os.path.join(self.tmp, next(namen_iter) if name == "app" else name)
                 for ext in (".md", ".cdx.json", ".sha256"):
                     with open(base + ext, "w") as f:
                         f.write(name)
-                return 0, [("app", "3000", "nginx:80 in proxy")] if name == "proxy" else [], base, {}
+                return 0, [("app", "3000", "nginx:80 in proxy")] if name == "proxy" else [], base
             db = os.path.join(self.tmp, "db")
             os.makedirs(db, exist_ok=True)
             with mock.patch.object(scanner, "scan_container", side_effect=scan), \
@@ -268,138 +266,19 @@ class Kommandozeile(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertIn("Host: UNVOLLSTÄNDIG: /usr/sbin/nginx -T fehlgeschlagen", out)
 
-    def test_webadressen_der_ziele(self):
-        # Webadressen eines Proxys auf dem Host gehen an den Scan des Ziels (auch an den Container mit demselben
-        # Netzwerk-Namespace); die eines Proxys in einem Container an seine Ziele, schon geprüfte erneut
-        e_host = {"url": "https://www.example.org/app/", "erreichbar": True, "weg": "nginx:443 auf dem Host"}
-        e_proxy = {"url": "https://shop.example.org/", "erreichbar": True, "weg": "nginx:80 in proxy"}
-        gesehen = []
-
-        def scan(name, a, via=None, urls=None):
-            gesehen.append((name, urls))
-            if name == "proxy":
-                return 0, [("app", "3000", "nginx:80 in proxy")], None, {("app", "3000"): [e_proxy]}
-            return 0, [], None, {}
-        a = mock.Mock(alle_container=True, host=True)
-        with mock.patch.object(scanner, "scan_container", side_effect=scan), \
-                mock.patch("sys.stdout", new_callable=io.StringIO):
-            rc = scanner.container_lauf(a, ["app", "proxy"], [], {"app": ["mit"]},
-                                        [("app", "3000", "nginx:443 auf dem Host")], 0, {("app", "3000"): [e_host]})
-        self.assertEqual(rc, 0)
-        self.assertEqual(gesehen, [("mit", {"3000": [e_host]}), ("app", {"3000": [e_host]}), ("proxy", None),
-                                   ("mit", {"3000": [e_host, e_proxy]}), ("app", {"3000": [e_host, e_proxy]})])
-
-    def test_erreichbarer_weg_fuer_ein_ziel(self):
-        # dieselbe Adresse erst nicht erreichbar, dann erreichbar: ersetzt (neue Liste) und als geändert gemeldet
-        urls = {}
-        intern = {"url": "https://www.example.org/app/", "erreichbar": False, "weg": "a"}
-        offen = dict(intern, erreichbar=True, weg="b")
-        self.assertEqual(scanner.urls_zufuegen(urls, {("app", "3000"): [intern]}, {}), {"app"})
-        frueher = urls["app"]["3000"]
-        self.assertEqual(scanner.urls_zufuegen(urls, {("app", "3000"): [offen]}, {}), {"app"})
-        self.assertEqual(urls["app"]["3000"], [offen])
-        self.assertEqual(frueher, [intern])
-        self.assertEqual(scanner.urls_zufuegen(urls, {("app", "3000"): [intern]}, {}), set())
-
     def test_einzelscan_kennt_proxys_auf_dem_host(self):
         db = os.path.join(self.tmp, "db")
         os.makedirs(db, exist_ok=True)
         infos = [{"Id": "abc123", "Name": "/app", "HostConfig": {}, "NetworkSettings": {"Networks": {"n": {}}}}]
         host = ([("app", "3000", "nginx:443 auf dem Host"), ("db", "*", "nginx:443 auf dem Host")], [], [], [])
         for ref in ("app", "abc"):
-            with mock.patch.object(scanner, "scan_container", return_value=(0, [], None, {})) as scan, \
+            with mock.patch.object(scanner, "scan_container", return_value=(0, [], None)) as scan, \
                     mock.patch.object(scanner, "docker_lage", return_value=(infos, {})), \
                     mock.patch.object(scanner, "host_proxys", return_value=host), \
-                    mock.patch("sys.stdout", new_callable=io.StringIO) as out, \
+                    mock.patch("sys.stdout", new_callable=io.StringIO), \
                     mock.patch.object(sys, "argv", ["x", "--db", db, ref, self.tmp]):
                 self.assertEqual(scanner.main(), 0)
             self.assertEqual(scan.call_args[0][2], {"3000": ["nginx:443 auf dem Host"]})
-            self.assertEqual(scan.call_args[0][4], ([], []))
-            self.assertNotIn("Host:", out.getvalue())
-
-    def test_einzelscan_ohne_zeilen_fuer_den_host(self):
-        # Hinweise der Proxys auf dem Host nur, soweit sie den Container betreffen – beim Container, nicht als
-        # eigene Zeilen; nicht lesbare Konfiguration dort macht den Scan des Containers unvollständig
-        db = os.path.join(self.tmp, "db")
-        os.makedirs(db, exist_ok=True)
-        infos = [{"Id": "abc123", "Name": "/app", "HostConfig": {}, "NetworkSettings": {"Networks": {"n": {}}}}]
-        svc = {"label": "nginx:443 auf dem Host", "exposed": True, "backends": [], "unresolved": ["10.0.0.9:80"],
-               "unklar": ["Ziel $backend"]}
-        warnungen = ["Prozesse auf dem Host nicht vollständig lesbar (2; Skript nicht als root?) – …",
-                     "Backend 10.0.0.9:80 von nginx:443 auf dem Host keinem Container zuordenbar (anderer Server?)",
-                     "Weiterleitungen von nginx:443 auf dem Host nicht vollständig auswertbar (Ziel $backend) – …"]
-        for ziele, erwartet in (([("app", "*", "nginx:443 auf dem Host")], 2), ([("db", "*", "nginx:443 auf dem Host")], 1)):
-            host = (ziele, [svc], warnungen, ["/usr/sbin/nginx -T fehlgeschlagen"])
-            with mock.patch.object(scanner, "scan_container", return_value=(2, [], None, {})) as scan, \
-                    mock.patch.object(scanner, "docker_lage", return_value=(infos, {})), \
-                    mock.patch.object(scanner, "host_proxys", return_value=host), \
-                    mock.patch("sys.stdout", new_callable=io.StringIO) as out, \
-                    mock.patch.object(sys, "argv", ["x", "--db", db, "app", self.tmp]):
-                self.assertEqual(scanner.main(), 2)
-            self.assertNotIn("Host:", out.getvalue())
-            hinweise, probleme = scan.call_args[0][4]
-            self.assertEqual(probleme, ["Proxy auf dem Host: /usr/sbin/nginx -T fehlgeschlagen"])
-            self.assertEqual(len(hinweise), erwartet)
-            self.assertTrue(hinweise[0].startswith("Prozesse auf dem Host nicht vollständig lesbar"))
-            if erwartet == 2:
-                self.assertIn("Weiterleitungen von nginx:443 auf dem Host nicht vollständig auswertbar (Ziel $backend) "
-                              "– Container gilt als möglicherweise öffentlich", hinweise[1])
-
-    def host_lauf(self, args, docker=True, infos=([], {}), host=(1, [], None, {}), docker_fehler=False, public=()):
-        """main() mit --host; liefert (Rückgabewert, gescannte Container, Ausgabe, Mock von scan_host)."""
-        db = os.path.join(self.tmp, "db")
-        os.makedirs(db, exist_ok=True)
-        gesehen = []
-
-        def scan(name, a, via=None, urls=None):
-            gesehen.append((name, via))
-            return 0, [], None, {}
-        lage = mock.Mock(side_effect=scanner.ScanError("docker nicht erreichbar")) if docker_fehler else \
-            mock.Mock(return_value=infos)
-        with mock.patch.object(scanner, "scan_container", side_effect=scan), \
-                mock.patch.object(scanner, "docker_vorhanden", return_value=docker), \
-                mock.patch.object(scanner, "docker_lage", lage), \
-                mock.patch.object(scanner, "container_liste", return_value=(list(public), ["db"], {})), \
-                mock.patch.object(scanner, "host_proxys") as host_proxys, \
-                mock.patch.object(scanner, "scan_host", return_value=host) as scan_host, \
-                mock.patch.object(scanner, "log"), mock.patch("sys.stdout", new_callable=io.StringIO) as out, \
-                mock.patch.object(sys, "argv", ["x", "--db", db] + args + [self.tmp]):
-            rc = scanner.main()
-        host_proxys.assert_not_called()        # mit --host bewertet scan_host die Proxys auf dem Host
-        return rc, gesehen, out.getvalue(), scan_host, lage
-
-    def test_host_ohne_docker(self):
-        # reiner Webserver: nur der Host, auch mit --alle-container (so im Wrapper); Docker wird nicht befragt
-        for args in (["--host"], ["--host", "--alle-container"]):
-            rc, gesehen, out, scan_host, lage = self.host_lauf(args, docker=False)
-            self.assertEqual((rc, gesehen), (1, []))
-            self.assertEqual(scan_host.call_args[0][0].ausgabe, self.tmp)       # erstes Argument: Ausgabeverzeichnis
-            self.assertEqual(scan_host.call_args[0][1], [])
-            lage.assert_not_called()
-        self.assertIn("Docker nicht vorhanden – nur der Host wird geprüft.", out)
-
-    def test_host_und_container(self):
-        # Ziele eines Proxys auf dem Host zuerst und als erreichbar; Ergebnis des Hosts zählt mit
-        infos = ([{"Id": "abc", "Name": "/app"}], {})
-        rc, gesehen, out, scan_host, _ = self.host_lauf(
-            ["--host", "--alle-container"], infos=infos, host=(1, [("app", "3000", "nginx:443 auf dem Host")], None, {}),
-            public=["proxy"])
-        self.assertEqual(rc, 1)
-        self.assertEqual(scan_host.call_args[0][1], infos[0])
-        self.assertEqual(gesehen, [("app", {"3000": ["nginx:443 auf dem Host"]}), ("proxy", {}), ("db", {})])
-        self.assertIn("Gesamt: Host und 3 Container geprüft – RELEVANTE FUNDE", out)
-        rc, gesehen, out, _, _ = self.host_lauf(["--host", "--alle-container"], infos=infos, host=(2, [], None, {}))
-        self.assertEqual(rc, 2)
-
-    def test_host_docker_nicht_erreichbar(self):
-        # Docker eingerichtet, aber nicht erreichbar: mit Containern unvollständig, nur der Host: Warnung
-        rc, gesehen, out, scan_host, _ = self.host_lauf(["--host", "--alle-container"], docker_fehler=True,
-                                                         host=(0, [], None, {}))
-        self.assertEqual((rc, gesehen), (2, []))
-        scan_host.assert_called_once()
-        rc, gesehen, out, _, _ = self.host_lauf(["--host"], docker_fehler=True, host=(0, [], None, {}))
-        self.assertEqual(rc, 0)
-        self.assertIn("Host: WARNUNG: Container nicht ermittelbar", out)
 
     def test_alle_container_ohne_container(self):
         rc, gesehen, out = self.mehrere("--alle-container", [], [], {}, {})

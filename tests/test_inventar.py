@@ -95,6 +95,17 @@ class OsPakete(unittest.TestCase):
         self.assertEqual([(p["name"], p["src"], p["srcver"]) for p in pkgs],
                          [("openssl-libs", "openssl", "1:3.0.7-27.el9"), ("bash", "bash", "5.1.8-9.el9")])
 
+    def test_rpm_besitzer_einmal_fuer_alle_pakete(self):
+        # rpm 4.14 (RHEL/UBI 8, SLES 15) bricht mit [%{FILENAMES}\t%{NAME}] ab; %{=NAME} wiederholt den Einzelwert
+        c = mock.Mock()
+        c.exec.return_value = (0, "/usr/bin/php\tphp-cli\n/usr/lib64/libxml2.so.2\tlibxml2\n/usr/share/doc\tfilesystem\n")
+        owners = scanner.rpm_owners(c, {"/usr/bin/php", "/usr/lib64/libxml2.so.2"})
+        self.assertEqual(c.exec.call_args[0][0], ["rpm", "-qa", "--qf", "[%{FILENAMES}\t%{=NAME}\n]"])
+        self.assertEqual(dict(owners), {"/bin/php": {"php-cli"}, "/lib64/libxml2.so.2": {"libxml2"}})   # norm: ohne /usr
+        c.exec.reset_mock()
+        self.assertEqual(dict(scanner.rpm_owners(c, set())), {})
+        c.exec.assert_not_called()
+
     def test_ohne_paketdatenbank(self):
         c = mock.Mock()
         c.exec.return_value = (127, "")

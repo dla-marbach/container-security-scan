@@ -179,85 +179,6 @@ class Kev(Tmp):
         self.assertFalse(os.path.exists(os.path.join(self.tmp, "kev.json")))
 
 
-SUSE_YAML = """---
-CVE-2002-0392:
-  cvss:
-    - version: 2.0
-      score: 6.8
-      vector: AV:N/AC:M/Au:N/C:P/I:P/A:P
-CVE-2025-9900:
-  cvss:
-    - version: 4
-      score: 8.5
-      vector: CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:A/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
-    - version: 3.1
-      score: 7.8
-      vector: CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H
-CVE-2026-8926:
-  cvss:
-    - version: 3.1
-      score: 5.5
-      vector: CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:H
-CVE-2026-0001:
-  cvss:
-    - version: 4
-      score: 9.3
-      vector: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
-"""
-
-
-class SuseSchweregrad(Tmp):
-    def test_lesen(self):
-        # CVSS 3.x vor 4.0; nur CVSS 2: nicht übernommen (andere Stufen)
-        self.assertEqual(scanner.suse_cvss_lesen(SUSE_YAML), {"CVE-2025-9900": [7.8, "3"], "CVE-2026-8926": [5.5, "3"],
-                                                              "CVE-2026-0001": [9.3, "4"]})
-        for kaputt in ("CVE-2025-1:\n  cvss:\n    - version: 3.1\n      score: elf\n",
-                       "CVE-2025-1:\n  cvss:\n    - version: 3.1\n      score: 11\n",
-                       "<html>Fehler</html>\n"):
-            with self.assertRaises(scanner.ScanError):
-                scanner.suse_cvss_lesen(kaputt)
-
-    def test_erzeugen(self):
-        path = os.path.join(self.tmp, "suse-schweregrad.json")
-        text = SUSE_YAML + "".join("CVE-2020-%d:\n  cvss:\n    - version: 3.1\n      score: 5.0\n" % i
-                                   for i in range(10000, 20000))
-        with mock.patch.object(scanner.urllib.request, "urlopen", return_value=io.BytesIO(text.encode())), \
-                mock.patch.object(scanner, "utcnow", return_value=datetime.datetime(2026, 11, 14, 7)):
-            scanner.suse_schweregrad_erzeugen(path)
-        data = scanner.json_datei(path)
-        self.assertEqual((data["geprueft"], len(data["cves"]), data["cves"]["CVE-2026-8926"]),
-                         ("2026-11-14T07:00:00Z", 10003, [5.5, "3"]))
-        with open(path, encoding="utf-8") as f:
-            self.assertIn('\n"CVE-2025-9900": [7.8,"3"],\n', f.read())        # je CVE eine Zeile
-        # zu wenige Einträge (abgebrochener Download, falsche Datei): Fehler, alte Datei bleibt
-        with mock.patch.object(scanner.urllib.request, "urlopen", return_value=io.BytesIO(SUSE_YAML.encode())):
-            with self.assertRaises(scanner.ScanError):
-                scanner.suse_schweregrad_erzeugen(path)
-        self.assertEqual(len(scanner.json_datei(path)["cves"]), 10003)
-
-    def test_markieren(self):
-        path = os.path.join(self.tmp, "suse-schweregrad.json")
-        with open(path, "w") as f:
-            json.dump({"geprueft": scanner.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                       "cves": {"CVE-2026-8926": [5.5, "3"], "CVE-2025-15467": [9.8, "3"], "CVE-2026-0001": [0.0, "3"]}}, f)
-        c = scanner.comp("os-paket", "curl", "8.6.0-150600.4.1")
-        funde = [{"comp": c, "id": "CVE-2026-8926", "sev": "CRITICAL", "sev_quelle": "BIT-x", "quelle_datei": "SUSE"},
-                 {"comp": c, "id": "CVE-2025-15467", "sev": "HIGH", "quelle_datei": "SUSE"},
-                 {"comp": c, "id": "SUSE-SU-2026:1-1", "sev": "UNKNOWN", "quelle_datei": "SUSE"},
-                 {"comp": c, "id": "CVE-2026-0001", "sev": "HIGH", "quelle_datei": "SUSE"},
-                 {"comp": c, "id": "CVE-2026-8926", "sev": "CRITICAL", "quelle_datei": "npm"}]
-        self.assertEqual(scanner.suse_schweregrad_markieren(funde, [path]), [])
-        # SUSEs Bewertung hat Vorrang (ohne Markierung *), nur für Funde aus den SUSE-Daten
-        self.assertEqual([(f["sev"], "sev_quelle" in f) for f in funde],
-                         [("MEDIUM", False), ("CRITICAL", False), ("UNKNOWN", False), ("UNKNOWN", False),
-                          ("CRITICAL", False)])
-        # fehlende Daten: Warnung (Schweregrad aus anderen Quellen bleibt); ohne SUSE-Funde keine Warnung
-        self.assertIn("SUSE-Schweregrade fehlen", scanner.suse_schweregrad_markieren(funde, [path + ".fehlt"])[0])
-        self.assertEqual(scanner.suse_schweregrad_markieren(funde[4:], [path + ".fehlt"]), [])
-        with mock.patch.object(scanner, "utcnow", return_value=scanner.utcnow() + datetime.timedelta(days=8)):
-            self.assertIn("SUSE-Schweregrade veraltet", scanner.suse_schweregrad_markieren(funde, [path])[0])
-
-
 class Ausnahmen(Tmp):
     def liste(self, text, mode=0o644):
         path = os.path.join(self.tmp, "ausnahmen.txt")
@@ -428,16 +349,6 @@ class RootDienste(unittest.TestCase):
                            exposed=("3000",))
         self.assertEqual(len(w), 1)
         self.assertIn("Öffentlicher Dienst node:3000 läuft als root", w[0])
-
-    def test_docker_proxy_auf_dem_host(self):
-        # docker-proxy leitet nur veröffentlichte Ports weiter (immer root); bewertet wird der Dienst im Container
-        host = scanner.Host()
-        procs = {"1": proc(1, "/usr/bin/docker-proxy", ports={"5432": "alle", "7778": "alle"}, user="0:0"),
-                 "2": proc(2, "/usr/local/bin/node", ports={"3000": "alle"}, user="0:0")}
-        w = web(self="Host", ist_host=True, interfaces=[("eth0", "203.0.113.10")], firewall={"aktiv": False})
-        warnungen = scanner.root_dienste(host, procs, w)
-        self.assertEqual(len(warnungen), 1)
-        self.assertIn("Öffentlicher Dienst node:3000 läuft als root", warnungen[0])
 
     def test_userns_remap_und_rootless(self):
         node = [proc(1, "/usr/local/bin/node", ports={"3000": "alle"}, user="0:0")]
