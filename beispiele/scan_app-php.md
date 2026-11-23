@@ -2,9 +2,9 @@
 
 - Image: php:8.3.30-fpm-bookworm (sha256:e7ca6c7f5a59)  
 - OS: Debian GNU/Linux 12 (bookworm)  
-- Zeitpunkt: 2026-11-22 15:59  
-- Scanner: container-security-scan 0.5.0  
-- Datenbank: OSV, Stand 2026-11-22 11:25 UTC (daten)  
+- Zeitpunkt: 2026-11-23 16:38  
+- Scanner: container-security-scan 0.5.1  
+- Datenbank: OSV, Stand 2026-11-23 12:39 UTC (daten)  
 - Erfassung: OS-Pakete dpkg; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer); 1 Kernel-Pakete nicht geprüft (Container nutzen den Kernel des Hosts)
 
 ## Ergebnis
@@ -57,6 +57,14 @@ Hinweis: 25 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit 
 | Dienst | Programm | Ports / Konfiguration |
 |---|---|---|
 | php-fpm:9000 | php-fpm 8.3.30 | Port 9000/tcp (alle) öffentlich über nginx:80 in app-proxy; Arbeitsverzeichnis: /var/www/html |
+
+## Webadressen
+
+Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen bzw. vHost, TLS) in diesem Container, in anderen Containern und direkt auf dem Host; Pfade, die ein Proxy weiterleitet, beim Ziel. „Erreichbar“ wie der Port, über den die Anfrage hereinkommt.
+
+| Webadresse | Erreichbar | Dienst | Weg | Website | Docroot / Ziel |
+|---|---|---|---|---|---|
+| http://shop.example.org:8080/ (\.php$) | ja | php-fpm:9000 | nginx:80 in app-proxy → php-fpm:9000 | (weitergeleitet) | – |
 
 ## Übersicht (Anzahl Befunde)
 
@@ -602,6 +610,8 @@ Hinweis: 25 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit 
 | 4 | HIGH | CVE-2026-95619 | libgcc-12-dev | 12.2.0-14+deb12u1 | kein Fix | – | A flaw was found in libstdc++. An integer overflow can occur when processing large inputs  |
 | 4 | HIGH | CVE-2026-102010 | libgomp1 | 12.2.0-14+deb12u1 | kein Fix | – | A flaw was found in GCC. When an application calls the erase_if function on a binary heap  |
 | 4 | HIGH | CVE-2026-95619 | libgomp1 | 12.2.0-14+deb12u1 | kein Fix | – | A flaw was found in libstdc++. An integer overflow can occur when processing large inputs  |
+| 4 | HIGH | CVE-2026-102010 | libhwasan0 | 12.2.0-14+deb12u1 | kein Fix | – | A flaw was found in GCC. When an application calls the erase_if function on a binary heap  |
+| 4 | HIGH | CVE-2026-95619 | libhwasan0 | 12.2.0-14+deb12u1 | kein Fix | – | A flaw was found in libstdc++. An integer overflow can occur when processing large inputs  |
 | 4 | HIGH | CVE-2026-102010 | libitm1 | 12.2.0-14+deb12u1 | kein Fix | – | A flaw was found in GCC. When an application calls the erase_if function on a binary heap  |
 | 4 | HIGH | CVE-2026-95619 | libitm1 | 12.2.0-14+deb12u1 | kein Fix | – | A flaw was found in libstdc++. An integer overflow can occur when processing large inputs  |
 | 4 | HIGH | CVE-2026-102010 | liblsan0 | 12.2.0-14+deb12u1 | kein Fix | – | A flaw was found in GCC. When an application calls the erase_if function on a binary heap  |
@@ -623,8 +633,6 @@ Hinweis: 25 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit 
 | 4 | HIGH | CVE-2026-54411 | libpam0g | 1.5.2-6+deb12u2 | kein Fix | – | Linux-PAM through 1.7.2 contains an observable timing discrepancy (CWE-208) in the pam_use |
 | 4 | HIGH | CVE-2026-82560 | libperl5.36 | 5.36.0-7+deb12u3 | kein Fix | – | Pod::Text versions before 6.1.1 for Perl allow CPU and memory exhaustion formatting a POD  |
 | 4 | HIGH | CVE-2026-9538 | libperl5.36 | 5.36.0-7+deb12u3 | kein Fix | – | Archive::Tar versions before 3.10 for Perl allow memory exhaustion via attacker controlled |
-| 4 | HIGH | CVE-2026-102010 | libquadmath0 | 12.2.0-14+deb12u1 | kein Fix | – | A flaw was found in GCC. When an application calls the erase_if function on a binary heap  |
-| 4 | HIGH | CVE-2026-95619 | libquadmath0 | 12.2.0-14+deb12u1 | kein Fix | – | A flaw was found in libstdc++. An integer overflow can occur when processing large inputs  |
 | 4 | HIGH | CVE-2026-53613 | libsmartcols1 | 2.38.1-5+deb12u3 | kein Fix | – | util-linux is a random collection of Linux utilities. In util-linux 2.17 through 2.41.6 an |
 | 4 | HIGH | CVE-2026-53615 | libsmartcols1 | 2.38.1-5+deb12u3 | kein Fix | – | util-linux is a random collection of Linux utilities. Before util-linux 2.41.4, `parse_dos |
 | 4 | HIGH | CVE-2026-78410 | libsmartcols1 | 2.38.1-5+deb12u3 | kein Fix | – | A flaw was found in util-linux. Restricted bind mounts take the source path from fstab but |
@@ -668,7 +676,7 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 
 | Typ | Name | Version | Fundort | Genutzt von |
 |---|---|---|---|---|
-| host | linux-kernel | 6.18.44-fc-v726 | Host | Host |
+| host | linux-kernel | 7.0.14-linuxkit | Host | Host |
 | host | docker-engine | 29.10.0 | Host | Host |
 | host | containerd | v2.4.2 | Host | Host |
 | host | runc | 1.5.3 | Host | Host |
@@ -690,20 +698,20 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        0fdb1424f6025074d95d07c87dde8dbb1e28a7080b7b0163f7cd5f43c92fb24d
-Gestartet: 2026-11-22T15:59:24.566613515Z
+ID:        b278e4814b174c4f2eecde7541d7c010da73efb6c256c99468df899f2dc021b2
+Gestartet: 2026-11-23T16:38:29.174910089Z
 Kommando:  ["docker-php-entrypoint"] ["php-fpm"]
-Mounts:    /home/user/container-security-scan/beispiele/umgebung/php->/srv/app
-Host:      Kernel 6.18.44-fc-v726
+Mounts:    /w/beispiele/umgebung/php->/srv/app
+Host:      Kernel 7.0.14-linuxkit
 ```
 
 ### Laufende Prozesse
 
 ```
 PID                 USER                COMMAND
-3112                root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
-3151                www-data            php-fpm: pool www
-3152                www-data            php-fpm: pool www
+607                 root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
+667                 33                  php-fpm: pool www
+668                 33                  php-fpm: pool www
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

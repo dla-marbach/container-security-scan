@@ -22,6 +22,7 @@ vollständig: [Konsolenausgabe](beispiele/ausgabe.txt)):
 
 ```
 app-php: RELEVANTE SCHWACHSTELLEN – 1440 Befunde, davon 65 relevant (65 neu, 4 aktiv ausgenutzt), … öffentlich: php-fpm:9000 – Bericht: …/scan_app-php.md
+app-php:   Webadressen php-fpm:9000: erreichbar: http://shop.example.org:8080/ (\.php$)
 app-php:   CVE-2026-109618 (CRITICAL KEV) in php 8.3.30 – behoben in 8.3.36 – genutzt von php-fpm:9000 – aktiv ausgenutzt (KEV seit 2026-10-26)
 app-php:   CVE-2022-29248 (HIGH) in guzzlehttp/guzzle 7.4.0 – behoben in 7.4.3 – genutzt von php-fpm:9000 (Docroot unbekannt)
 …
@@ -34,6 +35,7 @@ ERGEBNIS: FUNDE (Rückgabewert 1) – <rechner>
   schwer bzw. aktiv ausgenutzt (`KEV`), und es gibt einen Fix.
 - [Warnungen](#warnungen) wie „läuft als root“ ändern den Rückgabewert nicht, [gefährliche
   Einstellungen](#gefährliche-einstellungen-des-containers) wie ein eingebundener `docker.sock` schon.
+- Die [Webadressen](#webadressen) zeigen, unter welcher Adresse der betroffene Dienst erreichbar ist.
 - Der Bericht je Container ([Beispiel](beispiele/scan_app-php.md)) enthält alle Befunde, Dienste und Ports.
 
 Weiteres Beispiel: SBOM ([CycloneDX](beispiele/scan_app-node.cdx.json)).
@@ -241,6 +243,22 @@ Ein Proxy **direkt auf dem Host** (nginx, Apache, Tunnel-Agent außerhalb von Do
 nicht nur auf Loopback lauscht; eine Firewall des Hosts wird nicht ausgewertet. Seine Ziele erscheinen auf der
 Konsole als `Host: …`. Die Prozesse des Hosts liest der Scan nur als root vollständig, sonst warnt er.
 
+### Webadressen
+
+Zur Orientierung, unter welcher Adresse ein Dienst mit Funden erreichbar ist; ohne Einfluss auf Priorität und
+Rückgabewert. Aus der Konfiguration von nginx (`listen`, `server_name`, `ssl`) und Apache (vHosts aus `httpd -S`
+samt `ServerAlias`, `SSLEngine`, `Listen` des Hauptservers) bildet der Scan je Website die Webadressen, z. B.
+`https://www.example.org/`; ohne Namen `*`, mit dem veröffentlichten Port statt des Ports im Container.
+
+Leitet ein Webserver einen Pfad weiter (`location /app/ { proxy_pass http://127.0.0.1:8080/; }`, `ProxyPass`,
+`SetHandler proxy:fcgi://…`), erscheint die Adresse mit Pfad beim Ziel, auch über mehrere Stufen und Container:
+`https://www.example.org/app/ (\.php$)` bei php-fpm hinter Apache hinter nginx. Das gilt ebenso für einen Proxy
+direkt auf dem Host vor einem Container (per Container-IP, Name oder veröffentlichtem Port auf Loopback).
+
+Im Bericht stehen die Adressen je Dienst mit dem Weg dorthin und ob sie erreichbar sind (wie der Port, über den
+die Anfrage hereinkommt), auf der Konsole eine Zeile `Webadressen …` je Dienst, in der SBOM `endpoints`. Ein Fund
+gehört über „genutzt von“ zu seinem Dienst. Die Adressen stammen aus der Konfiguration, nicht aus dem DNS.
+
 ### Gefährliche Einstellungen des Containers
 
 Einstellungen, mit denen aus einer Lücke im Container root auf dem Host wird. Sie sind **immer relevant**, auch
@@ -295,7 +313,7 @@ Prozesse, oft mit Passwörtern):
 
 | Datei | Inhalt |
 |---|---|
-| `scan_<container>_<zeit>.md` | Bericht: relevante Funde und Warnungen, Dienste mit Ports, alle Befunde nach Priorität, Prozesse, Webserver-Konfiguration |
+| `scan_<container>_<zeit>.md` | Bericht: relevante Funde und Warnungen, Dienste mit Ports, Webadressen, alle Befunde nach Priorität, Prozesse, Webserver-Konfiguration |
 | `….cdx.json` | SBOM (CycloneDX 1.5), auch mit Trivy, Grype oder Dependency-Track nutzbar |
 | `….sha256` | Prüfsummen |
 | `bekannt_<container>.json` | relevante Funde des letzten Laufs, für die Markierung „neu“ |
@@ -371,6 +389,11 @@ Bekannte Grenzen:
   (eher zu viel). Ziele, die nur in Konfigurationsdateien einer Anwendung stehen (z. B. Spring
   `application.yml`), fehlen, wenn gerade keine Verbindung besteht.
 - Apache: `.htaccess` wird nicht ausgewertet.
+- Webadressen: Eine weitergeleitete Adresse gilt für alle Websites am Port des Ziels (welche antwortet,
+  entscheidet der Host-Header; im Zweifel eine Adresse zu viel). Über mehrere Stufen werden die Pfade
+  aneinandergehängt; das stimmt, wenn das Ziel den Pfad `/` hat (`proxy_pass http://mitte/;`), sonst nicht
+  (`proxy_pass http://mitte/dienst/` und dort `location /dienst/api/` ergibt `/app/dienst/api/` statt
+  `/app/api/`). Adressen aus Traefik- und Caddy-Labels fehlen.
 - Supportende nur für Produkte mit Paketkennung und die genannten Laufzeiten, nicht für einzelne OS-Pakete,
   Java-Laufzeiten oder Anwendungen wie WordPress.
 

@@ -2,17 +2,15 @@
 
 - Image: node:22.22.0-alpine (sha256:e4bf2a82ad0a)  
 - OS: Alpine Linux v3.23  
-- Zeitpunkt: 2026-11-22 16:00  
-- Scanner: container-security-scan 0.5.0  
-- Datenbank: OSV, Stand 2026-11-22 11:25 UTC (daten)  
+- Zeitpunkt: 2026-11-23 16:39  
+- Scanner: container-security-scan 0.5.1  
+- Datenbank: OSV, Stand 2026-11-23 12:40 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
 ## Ergebnis
 
 **Warnung:** Öffentlicher Dienst node:3000 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image  
 **13 relevante Schwachstellen** (Kriterium: P1 CRITICAL, P1 HIGH, P2 CRITICAL; aktiv ausgenutzte (KEV) unabhängig von Priorität und Schweregrad; nur mit verfügbarem Fix)
-
-Davon **0 neu** seit dem letzten Lauf.
 
 - **CVE-2026-111497** (CRITICAL KEV) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000 – **aktiv ausgenutzt** (KEV seit 2026-10-27)
 - **CVE-2021-23337** (HIGH) in lodash 4.17.20 – behoben in 4.17.21 – genutzt von node:3000
@@ -35,6 +33,14 @@ Gefährliche Einstellungen des Containers (privileged, Docker-Socket, pid=host �
 | Dienst | Programm | Ports / Konfiguration |
 |---|---|---|
 | node:3000 | node 22.22.0 | Port 3000/tcp (alle) öffentlich über nginx:80 in app-proxy, traefik:80 in app-traefik; Anwendung: server.js; Arbeitsverzeichnis: /app |
+
+## Webadressen
+
+Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen bzw. vHost, TLS) in diesem Container, in anderen Containern und direkt auf dem Host; Pfade, die ein Proxy weiterleitet, beim Ziel. „Erreichbar“ wie der Port, über den die Anfrage hereinkommt.
+
+| Webadresse | Erreichbar | Dienst | Weg | Website | Docroot / Ziel |
+|---|---|---|---|---|---|
+| http://shop.example.org:8080/ | ja | node:3000 | nginx:80 in app-proxy → node:3000 | (weitergeleitet) | – |
 
 ## Übersicht (Anzahl Befunde)
 
@@ -187,7 +193,7 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 
 | Typ | Name | Version | Fundort | Genutzt von |
 |---|---|---|---|---|
-| host | linux-kernel | 6.18.44-fc-v726 | Host | Host |
+| host | linux-kernel | 7.0.14-linuxkit | Host | Host |
 | host | docker-engine | 29.10.0 | Host | Host |
 | host | containerd | v2.4.2 | Host | Host |
 | host | runc | 1.5.3 | Host | Host |
@@ -208,18 +214,30 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        69a2f6cc06b5a6c35e3e83c5b675eb79e8a9a6bfa9d9a53b055068d03190be21
-Gestartet: 2026-11-22T15:59:24.385909562Z
+ID:        a7fc1ad533b8977b9ddb8de32beb0c7b142f0ca43255e091e67df5ae06ee1025
+Gestartet: 2026-11-23T16:38:29.237374297Z
 Kommando:  ["docker-entrypoint.sh"] ["node", "server.js"]
-Mounts:    /home/user/container-security-scan/beispiele/umgebung/node->/app
-Host:      Kernel 6.18.44-fc-v726
+Mounts:    /w/beispiele/umgebung/node->/app
+Host:      Kernel 7.0.14-linuxkit
 ```
 
 ### Laufende Prozesse
 
 ```
 PID                 USER                COMMAND
-3036                root                node server.js
+682                 root                node server.js
+4207                nobody              timeout 50 php -r $r = array("exe" => realpath(PHP_BINARY) ?: PHP_BINARY, "version" => PHP_VERSION, "sapi" => PHP_SAPI, "ext" => array(), "libs" => array()); foreach (get_loaded_extensions() as $e) { $v = phpversion($e); if ($v && strpos($v, PHP_VERSION) === false && $e !== "dom") $r["ext"][$e] = $v; } if (defined("OPENSSL_VERSION_TEXT")) { $p = explode(" ", OPENSSL_VERSION_TEXT); $r["libs"][strtolower($p[0])] = $p[1]; } if (function_exists("curl_version")) { $c = curl_version(); $r["libs"]["curl"] = $c["version"]; } if (defined("LIBXML_DOTTED_VERSION")) $r["libs"]["libxml2"] = LIBXML_DOTTED_VERSION; if (defined("PCRE_VERSION")) { $p = explode(" ", PCRE_VERSION); $r["libs"]["pcre2"] = $p[0]; } if (defined("INTL_ICU_VERSION")) $r["libs"]["icu"] = INTL_ICU_VERSION; if (class_exists("SQLite3")) { $s = SQLite3::version(); $r["libs"]["sqlite"] = $s["versionString"]; } if (defined("SODIUM_LIBRARY_VERSION")) $r["libs"]["libsodium"] = SODIUM_LIBRARY_VERSION; if (defined("ZLIB_VERSION")) $r["libs"]["zlib"] = ZLIB_VERSION; echo json_encode($r);
+4238                nobody              timeout 50 python3 -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+4268                nobody              timeout 50 python3 -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+4298                nobody              timeout 50 python -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+4328                nobody              timeout 50 python -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+4358                nobody              timeout 50 nginx -v
+4388                nobody              timeout 50 httpd -v
+4418                nobody              timeout 50 apache2 -v
+4448                nobody              timeout 50 java -XX:-UsePerfData -version
+4478                nobody              timeout 50 mariadbd --version
+4509                nobody              timeout 50 mysqld --version
+4539                nobody              timeout 50 postgres --version
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

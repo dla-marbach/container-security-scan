@@ -167,7 +167,9 @@ class Gesamtlauf(unittest.TestCase):
         self.problems = []
         self.info = {}
 
-    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, **web_kw):
+    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, via_urls=None, bekannt=None, **web_kw):
+        """scan_container; liefert (Rückgabewert, Backends, Bericht), Konsole in self.konsole, Webadressen der Ziele
+        in self.ziel_urls."""
         nginx = proc(1, "/usr/sbin/nginx", ports=ports or {"80": "alle"}, maps={"/usr/lib/x86_64-linux-gnu/libssl.so.3"})
         w = web(**dict({"published": {"80": ["0.0.0.0:80"]}}, **web_kw))
         container = FakeContainer()
@@ -185,9 +187,10 @@ class Gesamtlauf(unittest.TestCase):
         for p in patches:
             p.start()
         try:
-            ergebnis = scanner.scan_container("app", self.a, via)
+            ergebnis = scanner.scan_container("app", self.a, via, via_urls, bekannt)
             self.konsole = scanner.sys.stdout.getvalue()
-            return ergebnis
+            self.ziel_urls = ergebnis[3]
+            return ergebnis[:3]
         finally:
             for p in reversed(patches):
                 p.stop()
@@ -203,6 +206,60 @@ class Gesamtlauf(unittest.TestCase):
             self.assertEqual(f.read().split()[0], scanner.datei_sha256(base + ".md"))
         self.assertEqual(scanner.json_datei(os.path.join(self.a.ausgabe, "bekannt_app.json")),
                          [["libssl3", "3.0.15-1~deb12u1", "CVE-2026-9"]])
+
+    def test_webadressen(self):
+        # eigene Website (veröffentlicht an 80) und eine von einem Proxy auf dem Host weitergeleitete Adresse: im
+        # Bericht und auf der Konsole je Dienst (nicht bei jedem Fund) und in der SBOM; Pfade an einen anderen
+        # Container gehen an dessen Scan
+        site = {"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["shop.example.org"], "roots": ["/srv/app/public"],
+                "datei": "/etc/nginx/conf.d/default.conf", "listen": [{"adresse": "*", "port": "80", "ssl": False}],
+                "weiter": [("/api/", "http://api:3000/")]}
+        via_urls = {"80": [{"url": "https://www.example.org/shop/", "erreichbar": True,
+                            "weg": "nginx:443 auf dem Host", "lokal": False}]}
+        code, _, base = self.lauf(via_urls=via_urls, sites=[site], containers={"api": "api"})
+        self.assertEqual(code, 1)
+        with open(base + ".md", encoding="utf-8") as f:
+            bericht = f.read()
+        self.assertIn("## Webadressen", bericht)
+        self.assertIn("| https://www.example.org/shop/ | ja | nginx:80 | nginx:443 auf dem Host → nginx:80 | "
+                      "(weitergeleitet) | – |", bericht)
+        self.assertIn("| http://shop.example.org/ | ja | nginx:80 | nginx:80 | /etc/nginx/conf.d/default.conf | "
+                      "/srv/app/public |", bericht)
+        self.assertIn("| Genutzt von | Titel |", bericht)
+        self.assertIn("app:   Webadressen nginx:80: erreichbar: https://www.example.org/shop/, http://shop.example.org/",
+                      self.konsole)
+        self.assertEqual(self.konsole.count("https://www.example.org/shop/"), 1)
+        self.assertIn("**CVE-2026-9** (HIGH) in libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u2 – genutzt von "
+                      "nginx:80\n", bericht)
+        with open(base + ".cdx.json", encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["services"][0]["endpoints"], [
+                "tcp://0.0.0.0:80", "https://www.example.org/shop/", "http://shop.example.org/"])
+        self.assertEqual([(e["url"], e["weg"]) for e in self.ziel_urls[("api", "3000")]], [
+            ("https://www.example.org/shop/api/", "nginx:443 auf dem Host → nginx:80 in app"),
+            ("http://shop.example.org/api/", "nginx:80 in app")])
+        # ohne Webadressen: kein Abschnitt, keine Zeile auf der Konsole
+        code, _, base = self.lauf()
+        with open(base + ".md", encoding="utf-8") as f:
+            bericht = f.read()
+        self.assertNotIn("## Webadressen", bericht)
+        self.assertNotIn("Webadressen:", self.konsole)
+
+    def test_erneute_pruefung_im_selben_lauf_behaelt_neu(self):
+        # zweite Prüfung desselben Containers im Lauf (neuer Grund bzw. neue Webadressen): Vergleich mit dem Stand
+        # vor dem Lauf, sonst wären die Funde der ersten Prüfung schon "bekannt" und der endgültige Bericht ohne NEU
+        os.makedirs(self.a.ausgabe)
+        with open(os.path.join(self.a.ausgabe, "bekannt_app.json"), "w") as f:
+            f.write("[]")           # voriger Lauf ohne relevante Funde
+        bekannt = {}
+        for _ in range(2):
+            code, _, base = self.lauf(bekannt=bekannt)
+            self.assertIn("app:   NEU: CVE-2026-9", self.konsole)
+            with open(base + ".md", encoding="utf-8") as f:
+                self.assertIn("Davon **1 neu** seit dem letzten Lauf.", f.read())
+        self.assertEqual(bekannt, {"app": set()})
+        # nächster Lauf: bekannt aus der Datei
+        self.lauf(bekannt={})
+        self.assertNotIn("NEU:", self.konsole)
 
     def test_port_eines_mitnutzenden_containers(self):
         # vpn veröffentlicht 8080, darauf lauscht ein Prozess im Container "mit" (network_mode: service:vpn):

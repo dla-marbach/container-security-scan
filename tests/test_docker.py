@@ -16,7 +16,7 @@ Szenario (Lauf mit --alle-container):
 - gehärteter Node.js-Container (read_only, cap_drop: ALL, no-new-privileges, Benutzer node) mit npm-Paketen in
   Verzeichnissen, die nur node lesen darf (im Image und in einem Bind-Mount): root im Container darf dort nicht
   hinein, der Scanner liest dann passiv von außen (docker export, docker cp) und ist trotzdem vollständig
-Geprüft werden Rückgabewert, Erreichbarkeit, Berichte, EOL-Warnungen und dass der Scan im Container nichts
+Geprüft werden Rückgabewert, Erreichbarkeit, Webadressen, Berichte, EOL-Warnungen und dass der Scan im Container nichts
 verändert (docker diff).
 """
 import os
@@ -71,7 +71,7 @@ class Integration(unittest.TestCase):
         cls.hart = cls.id + "-hart"
         conf = os.path.join(cls.tmp, "proxy.conf")
         with open(conf, "w") as f:
-            f.write("events {}\nhttp { server { listen 8080; resolver 127.0.0.11 valid=10s;\n"
+            f.write("events {}\nhttp { server { listen 8080; server_name shop.test; resolver 127.0.0.11 valid=10s;\n"
                     "  location / { proxy_pass http://%s:3000; }\n"
                     "  location /v/ { set $backend http://%s:3001; proxy_pass $backend; } } }\n" % (cls.node, cls.varnode))
         os.chmod(cls.tmp, 0o755)
@@ -286,8 +286,20 @@ class Integration(unittest.TestCase):
 
     @staticmethod
     def dienste(text):
-        """Tabelle "Laufende Dienste" eines Berichts (Erreichbarkeit je Port, Weg dorthin)."""
-        return text.split("## Laufende Dienste", 1)[1].split("\n## ", 1)[0]
+        """Tabellen "Laufende Dienste" und "Webadressen" eines Berichts (Erreichbarkeit je Port, Weg dorthin)."""
+        return text.split("## Laufende Dienste", 1)[1].split("\n## Übersicht", 1)[0]
+
+    def test_webadressen(self):
+        # Website des Proxys (server_name, veröffentlichter Port) mit Pfad beim Ziel, auch über die nginx-Variable
+        port = docker("port", self.proxy, "8080/tcp").split(":")[-1].strip()
+        self.assertIn("| http://shop.test:%s/ | ja | node:3000 | nginx:8080 in %s → node:3000 |" % (port, self.proxy),
+                      self.bericht(self.node))
+        self.assertIn("| http://shop.test:%s/v/ | ja | node:3001 | nginx:8080 in %s → node:3001 |" % (port, self.proxy),
+                      self.bericht(self.varnode))
+        self.assertIn("%s:   Webadressen node:3000: erreichbar: http://shop.test:%s/" % (self.node, port), self.ausgabe)
+        if self.host_nginx:      # nginx direkt auf dem Host, ohne server_name
+            self.assertIn("| http://*:18099/ | ja | node:3006 | nginx:18099 auf dem Host → node:3006 |",
+                          self.bericht(self.hinterhost))
 
     def test_auswahl_wie_im_gesamtlauf(self):
         # nur über einen anderen Container erreichbar (nginx, nginx-Variable, Traefik-Label, Aufruf eines
