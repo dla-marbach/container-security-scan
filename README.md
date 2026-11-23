@@ -231,7 +231,9 @@ Grundsatz: **im Zweifel erreichbar.** Erkannt werden:
   (`proxy_pass`, `fastcgi_pass`, `upstream`, `ProxyPass`, `SetHandler proxy:`, `RewriteRule … [P]`, Variablen aus
   `set`/`map`), Ziel per Container-Name, IP, `127.0.0.1` oder Unix-Socket (der Prozess im selben Container, der
   darauf lauscht); gibt es einen Namen mehrfach (Compose-Dienst `app` in zwei Projekten), zählt zuerst ein
-  Container in einem gemeinsamen Netz mit dem Proxy, dann einer aus demselben Compose-Projekt
+  Container in einem gemeinsamen Netz mit dem Proxy, dann einer aus demselben Compose-Projekt; nginx vor 1.9.2
+  (ohne `-T`): Hauptdatei und `include`-Dateien liest der Scan selbst
+- Ziele eines erreichbaren stunnel (`connect` je Dienst, auch mit `include`)
 - Ziele aus Traefik- und caddy-docker-proxy-Labels
 - Container, die eine erreichbare Anwendung aufruft (Ziel-URLs in Umgebung oder Kommandozeile, offene
   Verbindungen); Datenbanken, Caches und Message Broker als Ziel zählen nicht
@@ -241,7 +243,7 @@ Grundsatz: **im Zweifel erreichbar.** Erkannt werden:
 
 Ein Dienst, der nur auf Loopback lauscht, ist nur über einen Proxy mit demselben Loopback erreichbar.
 
-Ein Proxy **direkt auf dem Host** (nginx, Apache, Tunnel-Agent außerhalb von Docker) gilt als erreichbar, wenn er
+Ein Proxy **direkt auf dem Host** (nginx, Apache, stunnel, Tunnel-Agent außerhalb von Docker) gilt als erreichbar, wenn er
 nicht nur auf Loopback lauscht; eine Firewall des Hosts wird nicht ausgewertet. Seine Ziele erscheinen auf der
 Konsole als `Host: …`. Die Prozesse des Hosts liest der Scan nur als root vollständig, sonst warnt er.
 
@@ -284,7 +286,8 @@ Containernamen.
 Ohne Einfluss auf den Rückgabewert, im Bericht und auf der Konsole:
 
 - **Öffentlicher Dienst als root**, z. B. Node oder Python (nginx, Apache und php-fpm mit unprivilegierten
-  Workern nicht; entfällt mit userns-remap oder rootless Docker).
+  Workern nicht, auch wenn deren Sockets nicht lesbar sind; sshd nicht; entfällt mit userns-remap oder rootless
+  Docker).
 - **Datenbank, Cache oder Message Broker direkt erreichbar** (z. B. `ports: ["5432:5432"]`): `ports:` entfernen
   oder an `127.0.0.1` binden.
 - **Supportende** bzw. Supportende in den nächsten 90 Tagen (Daten von [endoflife.date](https://endoflife.date))
@@ -356,7 +359,7 @@ sudo python3 -I $C --db $DB --alle --container 'app-*' <ausgabeverzeichnis>     
 | JavaScript | eingebettete Bibliotheken (jQuery, Bootstrap, Moment, Vue …) | npm |
 | Laufzeiten, Server | Version von node, php, php-fpm, python, java, nginx, apache, mariadb, postgresql | Distribution, sonst (offizielle Images, nginx.org, NodeSource, Sury, mariadb.org) OSV Bitnami |
 
-Nutzerdaten werden nicht ausgewertet: Dateien im Datenverzeichnis von Nextcloud (mit `.ocdata`) lässt der Scan
+Nutzerdaten werden nicht ausgewertet: Dateien im Datenverzeichnis von Nextcloud (mit `.ocdata` bzw. `.ncdata`) lässt der Scan
 mit `find`/`tar` schon im Container weg. Beim passiven Lesen (ohne Werkzeuge oder Leserechte im Container, über
 `docker export` und `docker cp`) gelangen sie zum Scanner und werden dort im Speicher verworfen. Der Bericht nennt
 das Verzeichnis.
@@ -371,8 +374,9 @@ Feldern und Einträgen, die der Abgleich liest (Ergebnisse identisch mit den vol
 
 - Im Container laufen nur `find`/`tar` und ein sh-Skript, das `/proc` liest, über einen festen Suchpfad statt
   den `PATH` des Images. `docker diff` zeigt vor und nach dem Scan keine Änderung.
-- Versionsabfragen (`node -e`, `php -r` …, mit Zeitlimit) und `nginx -T` bzw. `apache2 -S` laufen **nie mit mehr
-  Rechten als der jeweilige Prozess** bzw. der Hauptprozess des Webservers.
+- Versionsabfragen (`node -e`, `php -r` …, mit Zeitlimit), `nginx -T` bzw. `apache2 -S` und das Lesen der
+  Konfiguration von nginx ohne `-T` und stunnel laufen **nie mit mehr Rechten als der jeweilige Prozess** bzw. der
+  Hauptprozess des Webservers.
 - Ohne Shell im Container wird passiv gelesen (`docker export`, `docker cp`, `/proc` des Hosts); nichts wird auf
   dem Host entpackt.
 - Es werden nur Daten heruntergeladen; Paketlisten verlassen den Server nie.
@@ -392,7 +396,7 @@ Bekannte Grenzen:
 - Nicht erkannt: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung, JavaScript-Bundles ohne Kopfkommentar,
   Fremdpaketquellen außer den genannten.
 - Welche Pakete eine Anwendung tatsächlich importiert, ist von außen nicht sichtbar.
-- Nur nginx und Apache werden als Proxy ausgewertet; andere machen ihre Nachbarn „möglicherweise“ erreichbar
+- Nur nginx, Apache und stunnel werden als Proxy ausgewertet; andere machen ihre Nachbarn „möglicherweise“ erreichbar
   (eher zu viel). Ziele, die nur in Konfigurationsdateien einer Anwendung stehen (z. B. Spring
   `application.yml`), fehlen, wenn gerade keine Verbindung besteht.
 - Apache: `.htaccess` wird nicht ausgewertet.

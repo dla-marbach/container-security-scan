@@ -2,6 +2,7 @@
 import io
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -27,6 +28,27 @@ http {
     server { listen 8080; server_name _; location / { proxy_pass http://127.0.0.1:3000; } }
 }
 """
+
+
+def dateien(tmp, inhalt):
+    """Dateien {relativer Pfad: Text} unter tmp anlegen."""
+    for pfad, text in inhalt.items():
+        os.makedirs(os.path.dirname(os.path.join(tmp, pfad)), exist_ok=True)
+        with open(os.path.join(tmp, pfad), "w") as f:
+            f.write(text)
+
+
+def sh_echt(antworten=None):
+    """exec eines Containers bzw. des Hosts: sh -s (KONFIG_DATEIEN_SH) wirklich ausführen, sonst antworten
+    nach dem letzten Argument. Die Aufrufe stehen in .aufrufe."""
+    def exec_(cmd, input=None, **kw):
+        exec_.aufrufe.append((cmd, kw.get("user")))
+        if cmd[0] == "sh":
+            p = subprocess.run(cmd, input=input, stdout=subprocess.PIPE, universal_newlines=True)
+            return p.returncode, p.stdout
+        return (antworten or {}).get(cmd[-1], (1, ""))
+    exec_.aufrufe = []
+    return exec_
 
 
 class Nginx(unittest.TestCase):
@@ -95,6 +117,40 @@ class Nginx(unittest.TestCase):
         with mock.patch.object(scanner, "run", return_value=(0, "")):
             w = scanner.collect_web(c, {"1": proc(1, "/usr/sbin/nginx")})
         self.assertIn("-T fehlgeschlagen", w["problems"][0])
+
+    def test_ohne_nginx_t_dateien_selbst_gelesen(self):
+        # nginx vor 1.9.2 kennt -T nicht: Hauptdatei aus -c bzw. nginx -V, dazu alle include-Dateien (glob,
+        # relativ zum Verzeichnis der Hauptdatei), mit dem Benutzer des Masters
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        dateien(tmp, {"nginx.conf": "events {}\nhttp {\n  include mime.types;\n  include conf.d/*.conf;  # include x;\n}\n",
+                      "mime.types": "types { text/html html; }\n",
+                      "conf.d/a.conf": "server { listen 80; location / { proxy_pass http://app:3000; } }\n",
+                      "conf.d/b.conf": "include '%s/extra/*.inc';\n" % tmp,
+                      "conf.d/c.txt": "server { location / { proxy_pass http://falsch:1; } }\n",
+                      "extra/x.inc": "upstream api { server api:8000; }\n"})
+        exec_ = sh_echt({"-T": (1, 'nginx: invalid option: "T"'),
+                         "-V": (0, "nginx version: nginx/1.8.1\nconfigure arguments: --prefix=/usr/share/nginx "
+                                   "--conf-path=%s/nginx.conf --user=nginx\n" % tmp)})
+        c = self.container()
+        c.exec.side_effect = exec_
+        master = proc(1, "/usr/sbin/nginx", ["nginx: master process /usr/sbin/nginx"], user="0:0")
+        with mock.patch.object(scanner, "run", return_value=(0, "")):
+            w = scanner.collect_web(c, {"1": master})
+        self.assertEqual((w["problems"], w["unlesbar"]), ([], set()))
+        self.assertEqual(w["backends"]["/usr/sbin/nginx"], ["http://app:3000"])
+        self.assertEqual(w["upstreams"]["api"], ["api:8000"])
+        self.assertEqual([s["datei"] for s in w["sites"]], [tmp + "/conf.d/a.conf"])
+        self.assertTrue(w["raw"][0].startswith("--- /usr/sbin/nginx Dateien (Auszug)"))
+        self.assertEqual({u for _, u in exec_.aufrufe}, {"0:0"})
+        # -c relativ zu -p (nginx -V ohne Angaben)
+        exec_ = sh_echt({"-T": (1, 'nginx: invalid option: "T"')})
+        c.exec.side_effect = exec_
+        master["argv"] = ["nginx: master process nginx -p %s/ -c nginx.conf" % tmp]
+        with mock.patch.object(scanner, "run", return_value=(0, "")):
+            w = scanner.collect_web(c, {"1": master})
+        self.assertEqual((w["problems"], w["backends"]["/usr/sbin/nginx"]), ([], ["http://app:3000"]))
+        self.assertEqual(exec_.aufrufe[2][0][3:], [tmp + "/nginx.conf"])
 
     def test_veroeffentlichte_ports_und_andere_container(self):
         c = self.container()
@@ -268,6 +324,61 @@ class DockerLage(unittest.TestCase):
         with mock.patch.object(scanner, "run", side_effect=run):
             infos, netze = scanner.docker_lage()
         self.assertEqual(([scanner.name_von(d) for d in infos], list(netze)), (["app"], ["back"]))
+
+
+class Stunnel(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        dateien(self.tmp, {
+            "stunnel.conf": "; Kommentar\nsetuid = stunnel4\ninclude = %s/conf.d\n\n[pg]\naccept  = 5433\n"
+                            "connect = db:5432\n[web]\naccept = 0.0.0.0:443\nconnect = 8080\n" % self.tmp,
+            "conf.d/x.conf": "[sock]\naccept = 9000\nconnect = /run/app.sock\n[client]\nclient = yes\n"
+                             "accept = 127.0.0.1:6380\nconnect = remote.example.org:6379\n"})
+
+    def lesen(self, argv, user="0:0"):
+        c = mock.Mock(info={"HostConfig": {"NetworkMode": "bridge"}, "NetworkSettings": {}})
+        c.exec.side_effect = exec_ = sh_echt()
+        procs = {"1": proc(1, "/usr/bin/stunnel4", argv, user=user, ports={"5433": "alle"})}
+        with mock.patch.object(scanner, "run", return_value=(0, "")):
+            return scanner.collect_web(c, procs), exec_.aufrufe
+
+    def test_konfiguration(self):
+        # je Dienst accept -> connect (Server- und Client-Modus), include-Verzeichnis, als Benutzer des Prozesses
+        w, aufrufe = self.lesen(["/usr/bin/stunnel4", self.tmp + "/stunnel.conf"], user="110:117")
+        self.assertEqual((w["problems"], w["unlesbar"]), ([], set()))
+        self.assertEqual(w["backends"]["/usr/bin/stunnel4"],
+                         ["db:5432", "127.0.0.1:8080", "unix:/run/app.sock", "remote.example.org:6379"])
+        self.assertEqual(w["vhosts"]["/usr/bin/stunnel4"][:2],
+                         ["[pg] accept 5433 connect db:5432", "[web] accept 0.0.0.0:443 connect 127.0.0.1:8080"])
+        self.assertEqual({u for _, u in aufrufe}, {"110:117"})
+        self.assertNotIn("stunnel4", scanner.PROXY_UNBEKANNT)
+
+    def test_uebliche_datei_ohne_angabe(self):
+        with mock.patch.object(scanner, "STUNNEL_KONF", [self.tmp + "/fehlt.conf", self.tmp + "/stunnel.conf"]):
+            w, _ = self.lesen(["stunnel4"])
+        self.assertEqual((w["problems"], len(w["backends"]["/usr/bin/stunnel4"])), ([], 4))
+
+    def test_nicht_lesbar_ist_unvollstaendig(self):
+        # Konfiguration über einen Dateideskriptor bzw. Datei fehlt: Weiterleitungen nicht auswertbar
+        for argv in (["stunnel", "-fd", "0"], ["stunnel", self.tmp + "/fehlt.conf"]):
+            w, _ = self.lesen(argv)
+            self.assertEqual(w["unlesbar"], {"/usr/bin/stunnel4"}, argv)
+            self.assertIn("nicht lesbar", w["problems"][0])
+
+    def test_auf_dem_host(self):
+        # stunnel auf dem Host vor der Datenbank eines Containers: genau dieses Ziel, nicht alle Container
+        infos = [inspect("app", ["back"]), inspect("db", ["back"])]
+        ip = infos[1]["NetworkSettings"]["Networks"]["back"]["IPAddress"]
+        dateien(self.tmp, {"host.conf": "[pg]\naccept = 5433\nconnect = %s:5432\n" % ip})
+        procs = ("P\t10\t/usr/bin/stunnel4\t/\t/usr/bin/stunnel4\x1f%s/host.conf\t0:0\t1\nS\t10\t5\n"
+                 "T\t5\t00000000:1539\ttcp\n" % self.tmp)
+        with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 0)), \
+                mock.patch.object(scanner, "run", return_value=(0, procs)), \
+                mock.patch.object(scanner.Host, "exec", side_effect=sh_echt()):
+            ziele, services, warnings, problems, _ = scanner.host_proxys(infos)
+        self.assertEqual(ziele, [("db", "5432", "stunnel4:5433 auf dem Host")])
+        self.assertEqual((warnings, problems, services[0]["unklar"]), ([], [], []))
 
 
 class HostProxys(unittest.TestCase):

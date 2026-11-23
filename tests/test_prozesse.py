@@ -90,6 +90,15 @@ class Prozesse(unittest.TestCase):
         procs, _ = scanner.procs_auswerten(out)
         self.assertEqual((procs["7"]["unix"], procs["1"]["unix"]), ({"/home/redmine/tmp/redmine.socket"}, set()))
 
+    def test_kinder_ohne_lesbares_exe(self):
+        # N: Worker nach dem Wechsel des Benutzers nicht "dumpable" (Apache, php-fpm): nur Benutzer, Eltern, Name
+        out = ("P\t1\t/usr/sbin/apache2\t/\tapache2\t0:0\t0\nS\t1\t5\nT\t5\t00000000:0050\ttcp\n"
+               "N\t7\t33:33\t1\tapache2\nN\t8\t33:33\t1\tapache2\nN\t9\t0:0\t99\tanderes\n")
+        procs, _ = scanner.procs_auswerten(out)
+        self.assertEqual(list(procs), ["1"])
+        self.assertEqual([(k["pid"], k["user"], k["name"]) for k in procs["1"]["kinder"]],
+                         [("7", "33:33", "apache2"), ("8", "33:33", "apache2")])
+
     @unittest.skipUnless(os.path.exists("/proc/self/net/unix"), "nur unter Linux")
     def test_proc_sh_liest_lauschende_unix_sockets(self):
         tmp = tempfile.mkdtemp()
