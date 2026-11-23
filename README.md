@@ -356,8 +356,10 @@ sudo python3 -I $C --db $DB --alle --container 'app-*' <ausgabeverzeichnis>     
 | JavaScript | eingebettete Bibliotheken (jQuery, Bootstrap, Moment, Vue …) | npm |
 | Laufzeiten, Server | Version von node, php, php-fpm, python, java, nginx, apache, mariadb, postgresql | Distribution, sonst (offizielle Images, nginx.org, NodeSource, Sury, mariadb.org) OSV Bitnami |
 
-Nutzerdaten werden nicht ausgewertet: Dateien im Datenverzeichnis von Nextcloud (mit `.ocdata`) verlassen den
-Container nicht; der Bericht nennt das Verzeichnis.
+Nutzerdaten werden nicht ausgewertet: Dateien im Datenverzeichnis von Nextcloud (mit `.ocdata`) lässt der Scan
+mit `find`/`tar` schon im Container weg. Beim passiven Lesen (ohne Werkzeuge oder Leserechte im Container, über
+`docker export` und `docker cp`) gelangen sie zum Scanner und werden dort im Speicher verworfen. Der Bericht nennt
+das Verzeichnis.
 
 **Daten** (Branch [`daten`](https://github.com/dla-marbach/container-security-scan/tree/daten), täglich von
 [`daten.yml`](.github/workflows/daten.yml) erzeugt, ca. 365 MB): ein Auszug aus den OSV-Exporten mit nur den

@@ -2303,11 +2303,15 @@ def mark_usage(comps, procs, owners, web):
                          "bindungen": OrderedDict(p["ports"]),
                          "ports_lokal": OrderedDict((port, port_erreichbar(p, port, "localhost", web)[1])
                                                     for port in p["ports"]),
-                         # Backends eines öffentlichen Dienstes, die keinem Container zugeordnet werden können
-                         # (variable Ziele: siehe unklar)
-                         "unresolved": [b for b in backends if wirkt[label] and not backend_containers(b, web)
-                                        and not ziel_variabel(b) and not socket_prozesse(b, procs, web)
-                                        and not (b.startswith("unix:") and "php" in b and php_servers)],
+                         # Backends eines öffentlichen Dienstes, von deren Zielen (upstream aufgelöst) mindestens
+                         # eines keinem Container bzw. Prozess zugeordnet werden kann (variable Ziele: siehe unklar)
+                         "unresolved": [b for b in backends if wirkt[label]
+                                        and any(not backend_containers(t, web) and not ziel_variabel(t)
+                                                and not socket_prozesse(t, procs, web)
+                                                and not (t.startswith("unix:") and "php" in t and php_servers)
+                                                for t in endziele(b, web))],
+                         # Unix-Sockets, auf denen der Dienst lauscht (Webadressen über nginx unix:/…)
+                         "unix": sorted({u for x in ps for u in x.get("unix", ())}),
                          # öffentlich erreichbare Ziele in anderen Containern (für --oeffentliche/--alle-container)
                          "backends": ([(ct, port, label + (LOOPBACK_GRUND if (ct, port) in ueber_loopback else ""))
                                        for ct, port in OrderedDict.fromkeys(ziele)
@@ -2490,6 +2494,9 @@ def webadressen(services, web):
                                                              "lokal": (ct, port) in ueber_loopback})
                     if ziel.startswith("unix:") and "php" in ziel:
                         backs += [(b, None, True) for b in php]
+                    pfade = {unix_socket(t) for t in endziele(ziel, web)} - {""}
+                    if pfade:      # Prozess, der auf dem Socket lauscht (z.B. puma hinter nginx)
+                        backs += [(b, None, True) for b in services if pfade & set(b.get("unix", ()))]
                     for back, port, lo in backs:
                         if not back or back is front:
                             continue

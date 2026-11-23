@@ -627,6 +627,18 @@ class Backends(unittest.TestCase):
                     self.assertEqual((s["unresolved"], "frontends" in ruby), ([ziel], False), ziel)
                     self.assertEqual(scanner.priority(libssl, {"nginx:80"}), 3)
 
+    def test_upstream_teils_nicht_zuordenbar(self):
+        # ein Ziel des upstream zugeordnet, ein anderes nicht: Warnung für das Backend bleibt (auch bei TCP-Zielen)
+        nginx = proc(1, "/usr/sbin/nginx", ports={"80": "alle"})
+        puma = proc(2, "/usr/bin/ruby", unix=["/run/eigen.sock"])
+        for ziele, erwartet in ((["unix:/run/eigen.sock", "unix:/run/fremd.sock"], ["http://u"]),
+                                (["app:3000", "10.0.0.99:80"], ["http://u"]),
+                                (["unix:/run/eigen.sock", "app:3000"], [])):
+            w = web(published={"80": ["0.0.0.0:80"]}, upstreams={"u": ziele}, containers={"app": "app-c"},
+                    backends={"/usr/sbin/nginx": ["http://u"]})
+            s = scanner.mark_usage([], {"1": nginx, "2": puma}, {}, w)
+            self.assertEqual([x["unresolved"] for x in s if x["label"] == "nginx:80"], [erwartet], ziele)
+
     def test_upstream_ohne_port(self):
         w = web(upstreams={"b": ["app"]}, containers={"app": "app-c"})
         self.assertEqual(scanner.backend_containers("http://b", w), [("app-c", "80")])
@@ -816,6 +828,22 @@ class Webadressen(unittest.TestCase):
                                         ("http://app.example.org:8080/ (\\.php$)", False)])
         self.assertEqual(self.services[2]["webadressen"][0]["weg"], "nginx:443 → httpd-prefork:8080 → php-fpm:9000")
         self.assertEqual(self.w["ziel_urls"], {})        # 10.0.0.7: kein Container
+
+    def test_ziel_ueber_unix_socket(self):
+        # nginx -> upstream auf einen Unix-Socket (Redmine): die Webadresse beim Prozess, der darauf lauscht
+        nginx = proc(1, "/usr/sbin/nginx", ports={"80": "alle"})
+        ruby = proc(2, "/usr/bin/ruby", unix=["/home/redmine/tmp/redmine.socket"])
+        sidekiq = proc(3, "/usr/bin/sidekiq", unix=["/tmp/anderer.sock"])
+        w = web(published={"80": ["0.0.0.0:80"]}, upstreams={"redmine": ["unix:/home/redmine/tmp/redmine.socket"]},
+                backends={"/usr/sbin/nginx": ["http://redmine"]},
+                sites=[{"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["redmine.example.org"], "datei": "r.conf",
+                        "roots": [], "listen": [{"adresse": "*", "port": "80", "ssl": False}],
+                        "weiter": [("/", "http://redmine")]}])
+        services = scanner.mark_usage([], {"1": nginx, "2": ruby, "3": sidekiq}, {}, w)
+        scanner.webadressen(services, w)
+        urls = {s["label"]: [(e["url"], e["erreichbar"], e["weg"]) for e in s["webadressen"]] for s in services}
+        self.assertEqual(urls["ruby"], [("http://redmine.example.org/", True, "nginx:80 → ruby")])
+        self.assertNotIn("sidekiq", urls)
 
     def test_ziele_in_containern(self):
         # nginx auf dem Host leitet Pfade an Container weiter (veröffentlichter Port auf Loopback bzw. Container-IP):
