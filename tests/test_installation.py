@@ -68,6 +68,15 @@ class InstallationTest(unittest.TestCase):
         self.assertEqual(set(aufrufe), {"-I"}, "Code nur über python3 -I starten")
         self.assertNotRegex(wrapper, r"(?m)^\s*\"\$CODE\"", "Code nicht direkt über die Shebang-Zeile starten")
 
+    def test_wrapper_argumente(self):
+        # nur Namen, IDs und Muster (* ?) als --container; alles andere bricht ab, bevor etwas geschieht
+        for arg in ("-x", "--alle", "a b", "../x", "$(id)", "a;b", "a/b", ""):
+            r = subprocess.run(["bash", WRAPPER, "--mail", "app", arg], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, universal_newlines=True, timeout=30)
+            self.assertEqual(r.returncode, 2, arg)
+            self.assertIn("FEHLER: Aufruf:", r.stdout, arg)
+        self.assertIn('ZIEL+=(--container "$m")', lesen(WRAPPER))
+
     def liste(self, text):
         path = os.path.join(self.tmp, "ausnahmen.txt")
         with open(path, "w", encoding="utf-8") as f:
@@ -107,11 +116,6 @@ class BeispieleTest(unittest.TestCase):
             self.assertEqual([t.get("version") for t in tools], [scanner.VERSION], n)
         self.assertTrue(lesen(os.path.join(BEISPIELE, "ausgabe.txt")).startswith(
             "container-security-scan %s\n" % scanner.VERSION))
-        # Einzelscan wie über den Wrapper mit Containername: aktuelle Version, keine Zeilen für den Host
-        einzeln = lesen(os.path.join(BEISPIELE, "ausgabe-einzeln.txt"))
-        self.assertIn("\ncontainer-security-scan %s\n" % scanner.VERSION, einzeln)
-        self.assertNotRegex(einzeln, r"(?m)^Host:")
-        self.assertRegex(einzeln, r"(?m)^app-proxy: .* – Bericht: /var/log/container-security-scan/berichte/scan_app-proxy\.md$")
 
     def test_links_im_readme(self):
         for md in ("README.md", os.path.join("tests", "README.md")):

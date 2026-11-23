@@ -167,8 +167,7 @@ class Gesamtlauf(unittest.TestCase):
         self.problems = []
         self.info = {}
 
-    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, via_urls=None, host_hinweise=None, **web_kw):
-        """scan_container; liefert (Rückgabewert, Backends, Basis), Webadressen der Ziele in self.ziel_urls."""
+    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, **web_kw):
         nginx = proc(1, "/usr/sbin/nginx", ports=ports or {"80": "alle"}, maps={"/usr/lib/x86_64-linux-gnu/libssl.so.3"})
         w = web(**dict({"published": {"80": ["0.0.0.0:80"]}}, **web_kw))
         container = FakeContainer()
@@ -186,29 +185,12 @@ class Gesamtlauf(unittest.TestCase):
         for p in patches:
             p.start()
         try:
-            ergebnis = scanner.scan_container("app", self.a, via, via_urls, host_hinweise)
+            ergebnis = scanner.scan_container("app", self.a, via)
             self.konsole = scanner.sys.stdout.getvalue()
-            self.ziel_urls = ergebnis[3]
-            return ergebnis[:3]
+            return ergebnis
         finally:
             for p in reversed(patches):
                 p.stop()
-
-    def test_webadressen_eines_proxys_auf_dem_host(self):
-        # Pfad, den nginx auf dem Host an den Container weiterleitet: Webadresse des Dienstes im Container
-        e = {"url": "https://www.example.org/app/", "erreichbar": True, "weg": "nginx:443 auf dem Host"}
-        self.lauf(published={}, via={"80": ["nginx:443 auf dem Host"]}, via_urls={"80": [e]})
-        self.assertIn("app:   Webadressen nginx:80: erreichbar: https://www.example.org/app/", self.konsole)
-        self.assertEqual(self.ziel_urls, {})
-
-    def test_hinweise_der_proxys_auf_dem_host(self):
-        # Einzelscan: Probleme der Proxys auf dem Host machen den Container unvollständig, Warnungen bei ihm
-        code, _, base = self.lauf(host_hinweise=(["Prozesse auf dem Host nicht vollständig lesbar (1)"],
-                                                 ["Proxy auf dem Host: /usr/sbin/nginx -T fehlgeschlagen"]))
-        self.assertEqual(code, 2)
-        self.assertIn("app: UNVOLLSTÄNDIG: Proxy auf dem Host: /usr/sbin/nginx -T fehlgeschlagen", self.konsole)
-        with open(base + ".md", encoding="utf-8") as f:
-            self.assertIn("Prozesse auf dem Host nicht vollständig lesbar (1)", f.read())
 
     def test_relevanter_fund_ergibt_1(self):
         code, backends, base = self.lauf()
@@ -428,26 +410,6 @@ class Gesamtlauf(unittest.TestCase):
         self.assertIn("Gefährliche Einstellungen des Containers (privileged, Docker-Socket, pid=host …): keine gezählt.", text)
         self.assertIn("Nicht gezählt (wären sonst relevant):\n- CONF-PID-HOST: pid=host: sieht und beeinflusst alle "
                       "Prozesse des Hosts – Ausnahme bis 2026-12-31: Monitoring-Agent", text)
-
-    def test_einstellung_des_webservers_im_container_nur_warnung(self):
-        # nginx erreichbar mit stub_status ohne Beschränkung: im Container nur Warnung, Rückgabewert unverändert
-        self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2")
-        site = {"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["shop.example.org"], "datei": "default.conf",
-                "roots": [], "weiter": [], "listen": [{"adresse": "*", "port": "80", "ssl": False}]}
-        konf = [{"id": "WEB-STATUS", "exe": "/usr/sbin/nginx", "site": site, "pfad": "/nginx_status",
-                 "text": "nginx: stub_status in location /nginx_status ohne Zugriffsbeschränkung"}]
-        code, _, base = self.lauf(sites=[site], web_konf=konf)
-        self.assertEqual(code, 0)
-        self.assertIn("app: WARNUNG: Einstellung des Webservers (im Container vorerst nur Warnung, zählt nicht für den "
-                      "Rückgabewert): WEB-STATUS: nginx: stub_status", self.konsole)
-        self.assertIn("http://shop.example.org/nginx_status", self.konsole)
-        with open(base + ".md", encoding="utf-8") as f:
-            self.assertIn("Einstellungen der Webserver (Statusseiten, Verzeichnislisten): keine gezählt.", f.read())
-        # mit Ausnahme auch keine Warnung
-        self.a.ausnahmen_liste = [{"id": "WEB-STATUS", "paket": "shop.example.org",
-                                   "bis": scanner.datetime.date(2026, 12, 31), "grund": "Monitoring", "zeile": 1}]
-        self.lauf(sites=[site], web_konf=konf)
-        self.assertNotIn("Einstellung des Webservers", self.konsole)
 
     def test_root_dienst_ist_nur_warnung(self):
         self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2")

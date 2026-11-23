@@ -68,6 +68,17 @@ class Prozesse(unittest.TestCase):
         self.assertEqual(node["files"], {"/app/data.db"})
         self.assertEqual((procs["1"]["ppid"], node["ppid"]), ("0", "1"))
 
+    def test_mehrere_sockets_am_selben_port(self):
+        # 0.0.0.0:8080 und [::1]:8080 bzw. 127.0.0.1:9000 und 10.0.0.5:9000: die weiteste Bindung zählt, gleich in
+        # welcher Reihenfolge /proc/net/tcp und tcp6 die Sockets liefern
+        for reihe in ((1, 2, 3, 4), (2, 1, 4, 3)):
+            sockets = {1: "T\t1\t00000000:1F90\ttcp\n", 2: "T\t2\t00000000000000000000000001000000:1F90\ttcp\n",
+                       3: "T\t3\t0100007F:2328\ttcp\n", 4: "T\t4\t0500000A:2328\ttcp\n"}
+            out = "P\t1\t/usr/bin/app\t/\tapp\t0:0\t0\n" + "".join("S\t1\t%d\n" % i for i in reihe) + \
+                "".join(sockets[i] for i in reihe)
+            procs, _ = scanner.procs_auswerten(out)
+            self.assertEqual(procs["1"]["ports"], {"8080": "alle", "9000": "10.0.0.5"}, reihe)
+
     def test_ohne_shell_ueber_proc_des_hosts(self):
         c = mock.Mock(has_sh=False, id="abc")
         with mock.patch.object(scanner, "run", side_effect=[(0, "PID\n4242\n"), (0, "P\t4242\t/app\t/\tapp\t:\n")]) as run:

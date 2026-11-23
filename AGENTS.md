@@ -4,9 +4,8 @@ Hinweise für Coding-Agenten. Für Nutzer gilt das [README](README.md), für die
 
 ## Projekt
 
-Schwachstellen-Scan für laufende Docker-Container und den Host selbst (`--host`: Dienste direkt auf dem Server,
-z. B. nginx/Apache unter SLES 15). Der Scanner läuft auf Servern **als root**; jede Änderung ist
-sicherheitsrelevant.
+Schwachstellen-Scan für laufende Docker-Container. Der Scanner läuft auf Servern **als root**; jede Änderung
+ist sicherheitsrelevant.
 
 ```
 container-security-scan.py   der gesamte Scanner (eine Datei), enthält VERSION
@@ -16,7 +15,7 @@ tests/                       unittest, eine Datei je Bereich (Übersicht in test
 .github/workflows/           tests.yml (Unit-Tests; Docker-Test bei PRs und auf main), daten.yml (Daten, täglich)
 ```
 
-Die Daten (OSV-Auszug, EOL, KEV, Schweregrade von SUSE) liegen im Branch `daten` und werden nur von `daten.yml` geschrieben. Lokal
+Die Daten (OSV-Auszug, EOL, KEV) liegen im Branch `daten` und werden nur von `daten.yml` geschrieben. Lokal
 liegen sie unter `daten/` (in `.gitignore`), geholt mit `./container-security-scan.py --db-aktualisieren`.
 Den Branch `daten` nie von Hand ändern.
 
@@ -37,7 +36,7 @@ Den Branch `daten` nie von Hand ändern.
 
 ```bash
 python3 -m unittest discover -s tests                                        # schnell, ohne Docker; vor jedem Commit
-CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit Docker und daten/ (auch SLES-Host)
+CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit Docker und daten/
 sudo bash beispiele/erzeugen.sh                                              # Beispiele neu (Docker, daten/)
 ```
 
@@ -71,6 +70,7 @@ was welche Datei prüft, und wird mitgepflegt. Tests nie abschalten oder übersp
 
 - Kein automatisches Update des Codes auf Servern einführen (Code nur von Hand, aus einem Tag).
 - Den Umfang nicht ohne konkreten Anlass erweitern (README: Abgrenzung und Grenzen): keine allgemeinen Härtungsprüfungen,
-  keine weiteren Paketfilter neben firewalld, keine weiteren `WEB-…`- oder `CONF-…`-Prüfungen.
+  keine Prüfungen von Firewall oder Webserver-Einstellungen, keine weiteren `CONF-…`-Prüfungen, kein Scan des Hosts
+  selbst (bis 0.4.x `--host`, wegen des Patch-Prozesses der Distribution wieder entfernt).
 - Keine Tags oder Releases anlegen; das macht der Maintainer nach dem Merge.
 - Nicht direkt nach `main` pushen; Änderungen über einen Branch und Pull Request.

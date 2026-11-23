@@ -196,27 +196,22 @@ class Dienste(unittest.TestCase):
         self.assertEqual(ha["unklar"], ["haproxy: Konfiguration wird nicht ausgewertet"])
         self.assertEqual(ha["backends"], [("shop", "*", "haproxy:8080")])
 
-    def test_mehrstufig_im_selben_container_bzw_host(self):
+    def test_mehrstufig_im_selben_container(self):
         # nginx (erreichbar) -> Apache auf 127.0.0.1:8080 -> php-fpm auf 127.0.0.1:9000: was php-fpm nutzt, ist
         # über nginx erreichbar (P1), nicht nur über den nicht erreichbaren Apache
         nginx = proc(1, "/usr/sbin/nginx", ports={"80": "alle"})
-        apache = proc(2, "/usr/sbin/httpd-prefork", ports={"8080": "localhost"})
-        fpm = proc(3, "/usr/sbin/php-fpm", ports={"9000": "localhost"}, maps={"/usr/lib64/libxml2.so.2"})
+        apache = proc(2, "/usr/sbin/apache2", ports={"8080": "localhost"})
+        fpm = proc(3, "/usr/sbin/php-fpm", ports={"9000": "localhost"}, maps={"/usr/lib/libxml2.so.2"})
         w = web(published={"80": ["0.0.0.0:80"]}, backends={"/usr/sbin/nginx": ["http://127.0.0.1:8080"],
-                                                            "/usr/sbin/httpd-prefork": ["fcgi://127.0.0.1:9000"]})
-        xml = C("os-paket", "libxml2-2", "2.10")
+                                                            "/usr/sbin/apache2": ["fcgi://127.0.0.1:9000"]})
+        xml = C("os-paket", "libxml2", "2.10")
         services = scanner.mark_usage([xml], {"1": nginx, "2": apache, "3": fpm},
-                                      {"/lib64/libxml2.so.2": {"libxml2-2"}}, w)
-        self.assertEqual(fpm["frontends"], ["httpd-prefork:8080", "nginx:80"])
+                                      {"/lib/libxml2.so.2": {"libxml2"}}, w)
+        self.assertEqual(fpm["frontends"], ["apache2:8080", "nginx:80"])
+        self.assertIn("nginx:80 (über php-fpm)", xml["aktiv"])
         self.assertEqual(scanner.priority(xml, {s["label"] for s in services if s["exposed"]}), 1)
-        self.assertIn("hinter httpd-prefork:8080, nginx:80 (gleicher Container)",
+        self.assertIn("hinter apache2:8080, nginx:80 (gleicher Container)",
                       [s for s in services if s["name"] == "php-fpm"][0]["description"])
-        self.assertEqual(scanner.nutzer_text(xml), "php-fpm:9000, httpd-prefork:8080 (über php-fpm), "
-                                                   "nginx:80 (über php-fpm)")
-        w["ist_host"] = True
-        nginx.pop("frontends", None), apache.pop("frontends", None), fpm.pop("frontends", None)
-        services = scanner.mark_usage([], {"1": nginx, "2": apache, "3": fpm}, {}, w)
-        self.assertIn("(gleicher Host)", [s for s in services if s["name"] == "php-fpm"][0]["description"])
 
     def test_php_fpm_ueber_unix_socket(self):
         # php-fpm ohne TCP-Port hinter dem erreichbaren nginx: offene Verbindungen der Worker zählen
@@ -290,13 +285,6 @@ class Prioritaet(unittest.TestCase):
         self.assertEqual(scanner.priority(c, {"nginx:80"}), 1)
         c["dev"] = True
         self.assertEqual(scanner.priority(c, {"nginx:80"}), 4)
-
-    def test_nutzer_text(self):
-        c = C("composer", "a", "1")
-        c["aktiv"] = ["php-fpm:9000", "httpd:8080 (über php-fpm)", "nginx:80 (über php-fpm)", "httpd:8080",
-                      "nginx:80 (über httpd)"]
-        self.assertEqual(scanner.nutzer_text(c), "php-fpm:9000, nginx:80 (über php-fpm), httpd:8080")
-        self.assertEqual(scanner.nutzer_text(C("npm", "b", "1")), "–")
 
     def test_npm_root(self):
         self.assertEqual(scanner.npm_root("/app/node_modules/express"), "/app")

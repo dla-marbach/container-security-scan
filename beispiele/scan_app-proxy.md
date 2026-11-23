@@ -1,57 +1,60 @@
 # Container-Scan: app-proxy
 
-- Image: nginx:1.31-alpine (sha256:fed7e14be83c)  
+- Image: nginx:1.31-alpine (sha256:fb4658584bd9)  
 - OS: Alpine Linux v3.24  
-- Zeitpunkt: 2026-11-14 08:48  
-- Scanner: container-security-scan 0.4.1  
-- Datenbank: OSV, Stand 2026-11-14 07:57 UTC (daten)  
+- Zeitpunkt: 2026-11-22 15:59  
+- Scanner: container-security-scan 0.5.0  
+- Datenbank: OSV, Stand 2026-11-22 11:25 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
 ## Ergebnis
 
-**2 relevante Schwachstellen** (Kriterium: P1 CRITICAL, P1 HIGH, P2 CRITICAL; aktiv ausgenutzte (KEV) unabhängig von Priorität und Schweregrad; nur mit verfügbarem Fix)
+**9 relevante Schwachstellen** (Kriterium: P1 CRITICAL, P1 HIGH, P2 CRITICAL; aktiv ausgenutzte (KEV) unabhängig von Priorität und Schweregrad; nur mit verfügbarem Fix)
 
-- **CVE-2026-4738** (HIGH) in zlib 1.3.2-r1 – behoben in 1.4-r0 – genutzt von nginx:80 – Webadressen: http://shop.example.org:8080/
-- **CVE-2026-125350** (HIGH KEV) in libxslt 1.1.43-r3 – behoben in 1.1.43-r4 – genutzt von – – **aktiv ausgenutzt** (KEV seit 2026-11-10)
+- **CVE-2026-107496** (HIGH) in libcrypto3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
+- **CVE-2026-88823** (HIGH) in libcrypto3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
+- **CVE-2026-95691** (HIGH) in libcrypto3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
+- **CVE-2026-95692** (HIGH) in libcrypto3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
+- **CVE-2026-107496** (HIGH) in libssl3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
+- **CVE-2026-88823** (HIGH) in libssl3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
+- **CVE-2026-95691** (HIGH) in libssl3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
+- **CVE-2026-95692** (HIGH) in libssl3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
+- **CVE-2026-4738** (HIGH) in zlib 1.3.2-r1 – behoben in 1.4-r0 – genutzt von nginx:80
 
 Gefährliche Einstellungen des Containers (privileged, Docker-Socket, pid=host …): keine gezählt.
-
-Einstellungen der Webserver (Statusseiten, Verzeichnislisten): keine gezählt.
 
 ## Laufende Dienste
 
 | Dienst | Programm | Ports / Konfiguration |
 |---|---|---|
-| nginx:80 | nginx 1.31.8 | Port 80/tcp (alle) veröffentlicht als 127.0.0.1:8080 (nur lokal – vermutlich hinter einem Reverse Proxy auf dem Host); Konfiguration: listen 80 server_name shop.example.org root /srv/app/public; Backend http://app-node:3000 -> Container app-node; Backend app-php:9000 -> Container app-php |
-
-## Webadressen
-
-Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen bzw. vHost, TLS); Pfade, die ein Proxy auf denselben Container weiterleitet, beim Ziel. „Erreichbar“ wie der Port, über den die Anfrage hereinkommt.
-
-| Webadresse | Erreichbar | Dienst | Weg | Website | Docroot / Ziel |
-|---|---|---|---|---|---|
-| http://shop.example.org:8080/ | ja | nginx:80 | nginx:80 | /etc/nginx/conf.d/default.conf | /srv/app/public |
+| nginx:80 | nginx 1.31.9 | Port 80/tcp (alle) veröffentlicht als 127.0.0.1:8080 (nur lokal – vermutlich hinter einem Reverse Proxy auf dem Host); Konfiguration: listen 80 server_name shop.example.org root /srv/app/public; Backend http://app-node:3000 -> Container app-node; Backend app-php:9000 -> Container app-php |
 
 ## Übersicht (Anzahl Befunde)
 
 | Priorität | CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN |
 |---|---|---|---|---|---|
-| P1 Dienst mit veröffentlichtem Port | 0 | 1 | 1 | 0 | 0 |
+| P1 Dienst mit veröffentlichtem Port | 0 | 9 | 3 | 0 | 0 |
 | P2 Dienst intern | 0 | 0 | 0 | 0 | 0 |
 | P3 Prozess ohne Port | 0 | 0 | 0 | 0 | 0 |
-| P4 nicht genutzt / dev | 0 | 3 | 1 | 0 | 0 |
+| P4 nicht genutzt / dev | 0 | 1 | 0 | 0 | 0 |
 
-## Befunde (5 von 6; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
+## Befunde (13 von 13; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
 
-| P | Schwere | ID | Paket | Installiert | Behoben in | Genutzt von | Webadressen | Titel |
-|---|---|---|---|---|---|---|---|---|
-| 1 | HIGH | CVE-2026-4738 | zlib | 1.3.2-r1 | 1.4-r0 | nginx:80 | http://shop.example.org:8080/ | Improper Restriction of Operations within the Bounds of a Memory Buffer vulnerability in O |
-| 1 | MEDIUM | CVE-2025-1695 | nginx | 1.31.8 | kein Fix | nginx:80 | http://shop.example.org:8080/ | NGINX Unit Java Vulnerability |
-| 4 | HIGH KEV | CVE-2026-125350 | libxslt | 1.1.43-r3 | 1.1.43-r4 | – | – | Use after free in XML in Google Chrome prior to 157.0.8103.50 allowed a remote attacker to |
-| 4 | HIGH | CVE-2026-87636 | libxslt | 1.1.43-r3 | 1.1.43-r4 | – | – | Type confusion in XML in Google Chrome prior to 153.0.8010.36 allowed a remote attacker to |
-| 4 | HIGH | CVE-2026-9947 | libxslt | 1.1.43-r3 | 1.1.43-r4 | – | – | Use after free in XML in Google Chrome prior to 148.0.7778.216 allowed a remote attacker t |
-
-KEV: im Katalog aktiv ausgenutzter Schwachstellen der CISA (Known Exploited Vulnerabilities).
+| P | Schwere | ID | Paket | Installiert | Behoben in | Genutzt von | Titel |
+|---|---|---|---|---|---|---|---|
+| 1 | HIGH | CVE-2026-107496 | libcrypto3 | 3.5.9-r0 | 3.5.9-r1 | nginx:80 | Issue summary: Encrypting a CMS message to an EC certificate whose group order |
+| 1 | HIGH | CVE-2026-88823 | libcrypto3 | 3.5.9-r0 | 3.5.9-r1 | nginx:80 | Issue summary: The AES-GCM-SIV implementation treats a zero-length Additional |
+| 1 | HIGH | CVE-2026-95691 | libcrypto3 | 3.5.9-r0 | 3.5.9-r1 | nginx:80 | Issue summary: A retransmitted QUIC CRYPTO frame can release packet storage |
+| 1 | HIGH | CVE-2026-95692 | libcrypto3 | 3.5.9-r0 | 3.5.9-r1 | nginx:80 | Issue summary: Setting an AES-GCM-SIV IV shorter than the expected nonce |
+| 1 | HIGH | CVE-2026-107496 | libssl3 | 3.5.9-r0 | 3.5.9-r1 | nginx:80 | Issue summary: Encrypting a CMS message to an EC certificate whose group order |
+| 1 | HIGH | CVE-2026-88823 | libssl3 | 3.5.9-r0 | 3.5.9-r1 | nginx:80 | Issue summary: The AES-GCM-SIV implementation treats a zero-length Additional |
+| 1 | HIGH | CVE-2026-95691 | libssl3 | 3.5.9-r0 | 3.5.9-r1 | nginx:80 | Issue summary: A retransmitted QUIC CRYPTO frame can release packet storage |
+| 1 | HIGH | CVE-2026-95692 | libssl3 | 3.5.9-r0 | 3.5.9-r1 | nginx:80 | Issue summary: Setting an AES-GCM-SIV IV shorter than the expected nonce |
+| 1 | HIGH | CVE-2026-4738 | zlib | 1.3.2-r1 | 1.4-r0 | nginx:80 | Improper Restriction of Operations within the Bounds of a Memory Buffer vulnerability in O |
+| 1 | MEDIUM | CVE-2026-88822 | libcrypto3 | 3.5.9-r0 | 3.5.9-r1 | nginx:80 | Issue summary: QUIC, when performing automated peer detection, may allow |
+| 1 | MEDIUM | CVE-2026-88822 | libssl3 | 3.5.9-r0 | 3.5.9-r1 | nginx:80 | Issue summary: QUIC, when performing automated peer detection, may allow |
+| 1 | MEDIUM | CVE-2025-1695 | nginx | 1.31.9 | kein Fix | nginx:80 | NGINX Unit Java Vulnerability |
+| 4 | HIGH | CVE-2026-86144 | libxml2 | 2.13.9-r2 | 2.13.9-r3 | – | In xinclude in libxml2 before 2.15.4, xmlXIncludeProcess and xmlXIncludeProcessTree do not |
 
 ## Nicht automatisch geprüft – bitte gesondert prüfen
 
@@ -59,10 +62,10 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 
 | Typ | Name | Version | Fundort | Genutzt von |
 |---|---|---|---|---|
-| host | linux-kernel | 6.18.44-fc-v470 | Host | Host |
-| host | docker-engine | 29.9.2 | Host | Host |
+| host | linux-kernel | 6.18.44-fc-v726 | Host | Host |
+| host | docker-engine | 29.10.0 | Host | Host |
 | host | containerd | v2.4.2 | Host | Host |
-| host | runc | 1.5.2 | Host | Host |
+| host | runc | 1.5.3 | Host | Host |
 | host | docker-init | 0.19.0 | Host | Host |
 
 ## Anhang
@@ -78,37 +81,36 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        0b974da9f52854af5b7902056737eebc2e79cffa24b14fb9a8557eb7f3ecb4b2
-Gestartet: 2026-11-14T08:48:12.106882256Z
+ID:        3f4de9f79abd7dea5e37b13ea2b37012f1304b3cadc15c4020b2e38172564855
+Gestartet: 2026-11-22T15:59:24.741189866Z
 Kommando:  ["/docker-entrypoint.sh"] ["nginx", "-g", "daemon off;"]
 Mounts:    /home/user/container-security-scan/beispiele/umgebung/nginx.conf->/etc/nginx/conf.d/default.conf
-Host:      Kernel 6.18.44-fc-v470
+Host:      Kernel 6.18.44-fc-v726
 ```
 
 ### Laufende Prozesse
 
 ```
 PID                 USER                COMMAND
-7797                root                nginx: master process nginx -g daemon off;
-7875                redis               nginx: worker process
-7876                redis               nginx: worker process
-7877                redis               nginx: worker process
-7878                redis               nginx: worker process
-8592                nobody              timeout 50 nginx -v
-8623                nobody              timeout 50 httpd -v
-8653                nobody              timeout 50 apache2 -v
-8683                nobody              timeout 50 java -XX:-UsePerfData -version
-8713                nobody              timeout 50 mariadbd --version
-8743                nobody              timeout 50 mysqld --version
-8773                nobody              timeout 50 postgres --version
+3172                root                nginx: master process nginx -g daemon off;
+3230                redis               nginx: worker process
+3231                redis               nginx: worker process
+3232                redis               nginx: worker process
+3233                redis               nginx: worker process
+3898                nobody              timeout 50 httpd -v
+3929                nobody              timeout 50 apache2 -v
+3959                nobody              timeout 50 java -XX:-UsePerfData -version
+3989                nobody              timeout 50 mariadbd --version
+4019                nobody              timeout 50 mysqld --version
+4048                nobody              timeout 50 postgres --version
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher
 
-- PID 20 (/usr/sbin/nginx): /[aio] (deleted)
 - PID 21 (/usr/sbin/nginx): /[aio] (deleted)
 - PID 22 (/usr/sbin/nginx): /[aio] (deleted)
 - PID 23 (/usr/sbin/nginx): /[aio] (deleted)
+- PID 24 (/usr/sbin/nginx): /[aio] (deleted)
 
 ACHTUNG: Diese Prozesse nutzen noch alte Dateiversionen – Dienst neu starten.
 
