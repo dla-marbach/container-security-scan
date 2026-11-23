@@ -173,7 +173,7 @@ class Kommandozeile(unittest.TestCase):
         os.mkdir(db)
         gesehen = []
 
-        def scan(name, a, via=None, urls=None):
+        def scan(name, a, via=None, urls=None, bekannt=None):
             alt = os.umask(0)
             os.umask(alt)
             gesehen.append(alt)
@@ -198,7 +198,7 @@ class Kommandozeile(unittest.TestCase):
         os.makedirs(db, exist_ok=True)
         gesehen = []
 
-        def scan(name, a, via=None, urls=None):
+        def scan(name, a, via=None, urls=None, bekannt=None):
             if name in weg:
                 raise scanner.ScanError("Container '%s' nicht gefunden" % name)
             gesehen.append((name, via))
@@ -222,7 +222,7 @@ class Kommandozeile(unittest.TestCase):
         for namen in (["app-1", "app-2"], ["app-1", "app-1"]):
             namen_iter = iter(namen)
 
-            def scan(name, a, via=None, urls=None):
+            def scan(name, a, via=None, urls=None, bekannt=None):
                 base = os.path.join(self.tmp, next(namen_iter) if name == "app" else name)
                 for ext in (".md", ".cdx.json", ".sha256"):
                     with open(base + ext, "w") as f:
@@ -287,7 +287,7 @@ class Kommandozeile(unittest.TestCase):
 
         self.voll_urls = {}
 
-        def scan(name, a, via=None, urls=None):
+        def scan(name, a, via=None, urls=None, bekannt=None):
             voll.append((name, via))
             self.voll_urls[name] = urls
             return 1 if name.startswith("surveyor") else 0, backends.get(name, []), None, {}

@@ -794,6 +794,38 @@ class Webadressen(unittest.TestCase):
         self.assertEqual([(x["url"], x["erreichbar"]) for x in node["webadressen"]],
                          [("https://www.example.org/app/", False)])
 
+    def test_website_nur_an_loopback(self):
+        # nginx lauscht an Port 80 öffentlich und mit einer zweiten Website nur an 127.0.0.1: diese ist nicht
+        # erreichbar (auch nicht ihre Ziele), außer über einen Proxy mit demselben Loopback
+        sites = [{"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["public.example"], "datei": "a.conf", "roots": [],
+                  "listen": [{"adresse": "*", "port": "80", "ssl": False}], "weiter": []},
+                 {"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["intern.example"], "datei": "b.conf", "roots": [],
+                  "listen": [{"adresse": "127.0.0.1", "port": "80", "ssl": False}],
+                  "weiter": [("/", "http://127.0.0.1:9000/")]}]
+        for lokal_offen, erwartet in ((False, False), (True, True)):
+            nginx = dienst("nginx:80", "/usr/sbin/nginx", ["80"], exposed=True)
+            nginx["ports_lokal"] = {"80": lokal_offen}
+            backend = dienst("python3:9000", "/usr/bin/python3", ["9000"])
+            scanner.webadressen([nginx, backend], web(self="app", sites=sites))
+            self.assertEqual(sorted((e["url"], e["erreichbar"]) for e in nginx["webadressen"]),
+                             [("http://intern.example/", erwartet), ("http://public.example/", True)])
+            self.assertEqual([(e["url"], e["erreichbar"]) for e in backend["webadressen"]],
+                             [("http://intern.example/", erwartet)])
+
+    def test_ziel_im_selben_container_ueber_namen(self):
+        # proxy_pass über den eigenen Containernamen bzw. die Container-IP: erreicht keinen Dienst, der nur auf
+        # Loopback lauscht; über 127.0.0.1 schon
+        for ziel, bindung, erwartet in (("http://app:3000/", "localhost", (False, False)),
+                                        ("http://app:3000/", "alle", (True, False)),
+                                        ("http://127.0.0.1:3000/", "localhost", (True, True))):
+            site = {"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["www.example.org"], "datei": "a.conf",
+                    "roots": [], "listen": [{"adresse": "*", "port": "80", "ssl": False}], "weiter": [("/", ziel)]}
+            nginx = dienst("nginx:80", "/usr/sbin/nginx", ["80"], exposed=True)
+            node = dienst("node:3000", "/usr/local/bin/node", ["3000"])
+            node["bindungen"] = {"3000": bindung}
+            scanner.webadressen([nginx, node], web(self="app", sites=[site], containers={"app": "app"}))
+            self.assertEqual([(e["erreichbar"], e["lokal"]) for e in node["webadressen"]], [erwartet], (ziel, bindung))
+
     def test_nur_loopback_je_weg(self):
         # Dienst nur auf Loopback, Port erreichbar über einen Proxy mit demselben Loopback: die Adresse eines
         # zweiten Proxys über die Container-IP erreicht ihn trotzdem nicht

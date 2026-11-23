@@ -2213,6 +2213,8 @@ def mark_usage(comps, procs, owners, web):
                          # Port -> (Beschreibung, erreichbar) bzw. Adresse (alle, localhost, IP) für die Webadressen
                          "ports": OrderedDict((port, port_erreichbar(p, port, addr, web)) for port, addr in p["ports"].items()),
                          "bindungen": OrderedDict(p["ports"]),
+                         "ports_lokal": OrderedDict((port, port_erreichbar(p, port, "localhost", web)[1])
+                                                    for port in p["ports"]),
                          # Backends eines öffentlichen Dienstes, die keinem Container zugeordnet werden können
                          # (variable Ziele: siehe unklar)
                          "unresolved": [b for b in backends if wirkt[label] and not backend_containers(b, web)
@@ -2292,6 +2294,19 @@ def url_pfad(url, pfad):
     return "%s (%s)" % (url, re.sub(r"^~\*?\s*", "", pfad))
 
 
+def loopback_adresse(adresse):
+    """Adresse aus listen bzw. einem Ziel nur auf Loopback (127.x, ::1, localhost)?"""
+    return adresse in ("localhost", "::1") or adresse.startswith("127.")
+
+
+def ziel_hosts(target, web, depth=0):
+    """(Host, Port) eines Backend-Ziels, upstream-Namen aufgelöst; Unix-Sockets und leere Ziele: []."""
+    host, port = split_target(target)
+    if host in web["upstreams"] and depth < 3:
+        return [x for t in web["upstreams"][host] for x in ziel_hosts(t, web, depth + 1)]
+    return [(host, port)] if host else []
+
+
 def dienst_sites(svc, web):
     """Websites des Webservers eines Dienstes, an deren Ports der Dienst lauscht."""
     return [s for s in web.get("sites", []) if s["exe"] == svc.get("exe")
@@ -2347,7 +2362,10 @@ def webadressen(services, web):
             for l in site["listen"]:
                 if l["port"] not in svc["ports"]:
                     continue
-                offen = svc["ports"][l["port"]][1]
+                # Website nur an Loopback: erreicht nur ein Proxy über dasselbe Loopback, auch wenn der Webserver
+                # am selben Port zugleich an einer anderen Adresse lauscht
+                offen = svc.get("ports_lokal", {}).get(l["port"], False) if loopback_adresse(l["adresse"]) \
+                    else svc["ports"][l["port"]][1]
                 for url in site_urls(dict(site, listen=[l]), web):
                     adresse_zufuegen(svc["webadressen"], {"url": url, "erreichbar": offen, "weg": svc["label"],
                                                           "site": site, "port": l["port"], "lokal": False})
@@ -2365,28 +2383,35 @@ def webadressen(services, web):
             for site in dienst_sites(front, web):
                 eintraege = [e for e in front["webadressen"] if fuer_site(e, site)]
                 for pfad, ziel in site["weiter"]:
-                    # über dasselbe Loopback (Host-Netzwerk, gemeinsamer Netzwerk-Namespace; auch über upstream-Blöcke)
-                    # kommt die Anfrage von 127.0.0.1, über Container-IP bzw. veröffentlichten Port nicht
-                    ueber_loopback = set(backend_containers(ziel, web, nur_loopback=True))
                     backs = []
-                    for ct, port in backend_containers(ziel, web):
-                        if ct == web["self"]:
-                            backs.append((ziel_von.get(port), port))
-                        elif port != "*":
-                            liste = web["ziel_urls"].setdefault((ct, port), [])
-                            for e in eintraege:
-                                adresse_zufuegen(liste, {"url": url_pfad(e["url"], pfad), "erreichbar": e["erreichbar"],
-                                                         "weg": e["weg"] + wo, "lokal": (ct, port) in ueber_loopback})
+                    for host, zport in ziel_hosts(ziel, web):
+                        # über Loopback (im selben Container bzw. auf dem Host, Host-Netzwerk, gemeinsamer
+                        # Netzwerk-Namespace) kommt die Anfrage von 127.0.0.1, über Name, Container-IP bzw.
+                        # veröffentlichten Port nicht
+                        lo = loopback_adresse(host)
+                        t = "[%s]:%s" % (host, zport) if ":" in host else "%s:%s" % (host, zport)
+                        ueber_loopback = set(backend_containers(t, web, nur_loopback=True))
+                        for ct, port in backend_containers(t, web):
+                            if ct == web["self"]:
+                                backs.append((ziel_von.get(port), port, lo))
+                            elif port != "*":
+                                liste = web["ziel_urls"].setdefault((ct, port), [])
+                                for e in eintraege:
+                                    adresse_zufuegen(liste, {"url": url_pfad(e["url"], pfad),
+                                                             "erreichbar": e["erreichbar"], "weg": e["weg"] + wo,
+                                                             "lokal": (ct, port) in ueber_loopback})
                     if ziel.startswith("unix:") and "php" in ziel:
-                        backs += [(b, None) for b in php]
-                    for back, port in backs:
+                        backs += [(b, None, True) for b in php]
+                    for back, port, lo in backs:
                         if not back or back is front:
                             continue
-                        for e in eintraege:      # gleiche Maschine: auch über Loopback erreichbar
+                        # Ziel lauscht nur auf Loopback: über Name bzw. Container-IP nicht erreichbar
+                        offen = lo or port is None or not nur_lokal(back.get("bindungen", {}).get(port, ""))
+                        for e in eintraege:
                             neu = adresse_zufuegen(back["webadressen"], {
-                                "url": url_pfad(e["url"], pfad), "erreichbar": e["erreichbar"],
+                                "url": url_pfad(e["url"], pfad), "erreichbar": e["erreichbar"] and offen,
                                 "weg": e["weg"] + " → " + back["label"], "site": None, "port": port,
-                                "lokal": True}) or neu
+                                "lokal": lo}) or neu
         if not neu:
             break
     for svc in services:
@@ -3636,9 +3661,10 @@ def erreichbarkeit_pruefen(name, a, via_proxy=None, via_urls=None):
     return None, backends_von(services, c.name), None, web["ziel_urls"]
 
 
-def scan_container(name, a, via_proxy=None, via_urls=None):
+def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None):
     """Einen Container scannen. via_proxy: {Port: [Grund]} (Ziel eines erreichbaren Proxys), via_urls: {Port:
-    [Webadresse]} (dessen Webadressen, siehe webadressen). Liefert (Rückgabewert, öffentliche Backends [(Container,
+    [Webadresse]} (dessen Webadressen, siehe webadressen), bekannt: {Container: bekannte Funde} je Lauf – eine
+    erneute Prüfung im selben Lauf vergleicht mit dem Stand vor dem Lauf, nicht mit der eigenen ersten. Liefert (Rückgabewert, öffentliche Backends [(Container,
     Port, Dienst)], Basis der Berichtsdateien, Webadressen der Ziele in anderen Containern {(Container, Port):
     [Webadresse]})."""
     c = Container(name, a.user)
@@ -3690,10 +3716,15 @@ def scan_container(name, a, via_proxy=None, via_urls=None):
             db_date.strftime("%Y-%m-%d"), DB_MAX_ALTER_TAGE))
     db_info = {"problems": problems, "text": "OSV, Stand %s UTC (%s)" % (db_date.strftime("%Y-%m-%d %H:%M") if db_date else "?", ", ".join(a.dbdirs))}
     known_file = os.path.join(a.ausgabe, "bekannt_%s.json" % c.name)    # relevante Funde des letzten Laufs
-    try:
-        known = {tuple(k) for k in json_datei(known_file)}
-    except (OSError, ValueError):
-        known = None
+    if bekannt is not None and c.name in bekannt:
+        known = bekannt[c.name]
+    else:
+        try:
+            known = {tuple(k) for k in json_datei(known_file)}
+        except (OSError, ValueError):
+            known = None
+        if bekannt is not None:
+            bekannt[c.name] = known
     for k in konf_relevant:
         k["neu"] = known is None or (k["pkg"], k["quelle"], k["id"]) not in known
 
@@ -4079,10 +4110,10 @@ def main():
                                                                  ", ".join(muster), GESAMT_TEXT[code]))
         return code
 
-    reports = {}
+    reports, bekannt = {}, {}
 
     def pruefen(name, via, urls):
-        code, backends, base, neue_urls = scan_container(name, a, via, urls)
+        code, backends, base, neue_urls = scan_container(name, a, via, urls, bekannt)
         if reports.get(name) and reports[name] != base:   # erneute Prüfung ersetzt den ersten Bericht dieses Laufs
             # (bei gleichem Namen – Prüfung in derselben Sekunde – ist er schon überschrieben)
             for ext in (".md", ".cdx.json", ".sha256"):

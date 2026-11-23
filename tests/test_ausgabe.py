@@ -167,7 +167,7 @@ class Gesamtlauf(unittest.TestCase):
         self.problems = []
         self.info = {}
 
-    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, via_urls=None, **web_kw):
+    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, via_urls=None, bekannt=None, **web_kw):
         """scan_container; liefert (Rückgabewert, Backends, Bericht), Konsole in self.konsole, Webadressen der Ziele
         in self.ziel_urls."""
         nginx = proc(1, "/usr/sbin/nginx", ports=ports or {"80": "alle"}, maps={"/usr/lib/x86_64-linux-gnu/libssl.so.3"})
@@ -187,7 +187,7 @@ class Gesamtlauf(unittest.TestCase):
         for p in patches:
             p.start()
         try:
-            ergebnis = scanner.scan_container("app", self.a, via, via_urls)
+            ergebnis = scanner.scan_container("app", self.a, via, via_urls, bekannt)
             self.konsole = scanner.sys.stdout.getvalue()
             self.ziel_urls = ergebnis[3]
             return ergebnis[:3]
@@ -243,6 +243,23 @@ class Gesamtlauf(unittest.TestCase):
             bericht = f.read()
         self.assertNotIn("## Webadressen", bericht)
         self.assertNotIn("Webadressen:", self.konsole)
+
+    def test_erneute_pruefung_im_selben_lauf_behaelt_neu(self):
+        # zweite Prüfung desselben Containers im Lauf (neuer Grund bzw. neue Webadressen): Vergleich mit dem Stand
+        # vor dem Lauf, sonst wären die Funde der ersten Prüfung schon "bekannt" und der endgültige Bericht ohne NEU
+        os.makedirs(self.a.ausgabe)
+        with open(os.path.join(self.a.ausgabe, "bekannt_app.json"), "w") as f:
+            f.write("[]")           # voriger Lauf ohne relevante Funde
+        bekannt = {}
+        for _ in range(2):
+            code, _, base = self.lauf(bekannt=bekannt)
+            self.assertIn("app:   NEU: CVE-2026-9", self.konsole)
+            with open(base + ".md", encoding="utf-8") as f:
+                self.assertIn("Davon **1 neu** seit dem letzten Lauf.", f.read())
+        self.assertEqual(bekannt, {"app": set()})
+        # nächster Lauf: bekannt aus der Datei
+        self.lauf(bekannt={})
+        self.assertNotIn("NEU:", self.konsole)
 
     def test_port_eines_mitnutzenden_containers(self):
         # vpn veröffentlicht 8080, darauf lauscht ein Prozess im Container "mit" (network_mode: service:vpn):
