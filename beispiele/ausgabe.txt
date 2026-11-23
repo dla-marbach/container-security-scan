@@ -142,7 +142,7 @@ app-traefik:   CVE-2026-97032 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 –
 Erfasse Container 'app-node' ...
 Abgleich mit OSV-Daten daten ...
 app-node: WARNUNG: Öffentlicher Dienst node:3000 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image
-app-node: RELEVANTE SCHWACHSTELLEN – 170 Befunde, davon 13 relevant (0 neu, 1 aktiv ausgenutzt); öffentlich: node:3000 – Bericht: beispiele/scan_app-node.md
+app-node: RELEVANTE SCHWACHSTELLEN – 170 Befunde, davon 13 relevant (13 neu, 1 aktiv ausgenutzt); öffentlich: node:3000 – Bericht: beispiele/scan_app-node.md
 app-node:   Webadressen node:3000: erreichbar: http://shop.example.org:8080/
 app-node:   CVE-2026-111497 (CRITICAL KEV) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000 – aktiv ausgenutzt (KEV seit 2026-10-27)
 app-node:   CVE-2021-23337 (HIGH) in lodash 4.17.20 – behoben in 4.17.21 – genutzt von node:3000
