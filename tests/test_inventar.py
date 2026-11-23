@@ -293,10 +293,11 @@ class Dateisuche(unittest.TestCase):
             skript = skript.replace("| tar -cf", "| %s -cf" % pfad)
         p = subprocess.run(["sh", "-s", "--"] + list(wurzeln), input=skript.encode(), stdout=subprocess.PIPE,
                            stderr=subprocess.PIPE, timeout=60)
-        namen = []
+        namen, self.alle = [], []
         if not tar:
             with tarfile.open(fileobj=io.BytesIO(p.stdout)) as tf:
-                namen = [n for n in tf.getnames() if n.endswith("package.json")]
+                self.alle = tf.getnames()
+                namen = [n for n in self.alle if n.endswith("package.json")]
         return p.returncode, namen, p.stderr.decode()
 
     def test_vollstaendig(self):
@@ -323,6 +324,38 @@ class Dateisuche(unittest.TestCase):
         self.assertIn("Permission denied", err)
         rc, _, err = self.suche(self.tmp, tar="exit 2\n")
         self.assertEqual((rc, err), (3, "tar: Fehler ohne Meldung\n"))
+
+    def test_leeres_archiv_von_busybox_ist_kein_fehler(self):
+        # BusyBox-tar ohne gefundene Dateien (reiner Daten-Container): "tar: empty archive" mit Fehlercode 1
+        self.assertEqual(self.suche(self.tmp, tar='echo "tar: empty archive" >&2\nexit 1\n')[:3:2], (0, ""))
+        self.assertEqual(self.suche(self.tmp, tar='echo "tar: empty archive: x" >&2\nexit 1\n')[0], 3)
+
+    def test_nextcloud_nutzerdaten_nicht_ausgewertet(self):
+        # hochgeladene Dateien im Datenverzeichnis (.ocdata) verlassen den Container nicht; daneben alles wie bisher
+        for pfad in ("nc/data/.ocdata", "nc/data/admin/files/package.json", "nc/data/admin/files/x/lib.jar",
+                     "nc/data2/package.json", "nc/apps/package.json"):
+            os.makedirs(os.path.dirname(os.path.join(self.tmp, pfad)), exist_ok=True)
+            with open(os.path.join(self.tmp, pfad), "w") as f:
+                f.write("{}")
+        rc, namen, err = self.suche(self.tmp)
+        self.assertEqual((rc, err), (0, ""))
+        self.assertEqual(sorted(n[len(self.tmp.lstrip("/")):] for n in namen),
+                         ["/app/package.json", "/nc/apps/package.json", "/nc/data2/package.json"])
+        self.assertIn(self.tmp.lstrip("/") + "/nc/data/.ocdata", [n.lstrip("/") for n in self.alle])
+        self.assertFalse([n for n in self.alle if "/nc/data/admin" in n])
+        # Lesen von außen (docker export, docker cp) liefert die Nutzerdaten mit: im Ergebnis entfernt, vermerkt
+        c = mock.Mock(has_find_tar=False, user="0", id="abc", mounts=[])
+
+        def stream(cmd, files, extra, input=None, meldungen=None, prefix="", **kw):
+            files.update({"/var/www/html/data/.ocdata": b"", "/var/www/html/data/u/files/package.json": b"{}",
+                          "/var/www/html/package.json": b"{}"})
+            extra += [{"datei": "/var/www/html/data/u/files/a.jar"}, {"datei": "/var/www/html/lib/b.jar"}]
+            return True
+        with mock.patch.object(scanner, "stream_tar", side_effect=stream):
+            files, extra, how, problems = scanner.collect_files(c)
+        self.assertEqual((sorted(files), extra, problems),
+                         (["/var/www/html/package.json"], [{"datei": "/var/www/html/lib/b.jar"}], []))
+        self.assertTrue(how.endswith("; Nutzerdaten nicht ausgewertet (Nextcloud: /var/www/html/data)"), how)
 
     def test_meldungen_im_bericht(self):
         meldungen = []

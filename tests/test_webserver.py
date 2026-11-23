@@ -230,6 +230,29 @@ class DockerLage(unittest.TestCase):
         self.assertEqual(w["label_ziele"], {"traefik": []})
         self.assertEqual(w["containers"]["app.back"], "app")     # Docker-DNS: <name>.<netz>
 
+    def test_mehrdeutiger_dienstname(self):
+        # Compose-Dienst app in zwei Projekten; der fremde steht bei docker ps zuerst
+        def ct(name, projekt, netze, **kw):
+            return inspect(name, netze, labels={"com.docker.compose.project": projekt,
+                                                "com.docker.compose.service": "app"}, **kw)
+        fremd = ct("other-app-1", "other", ["other_default"])
+        eigen = ct("dla-app-1", "dla", ["dla_default"])
+        nginx = ct("dla-nginx-1", "dla", ["dla_default", "proxy"])
+        nginx["Config"]["Labels"]["com.docker.compose.service"] = "nginx"
+        infos = [fremd, eigen, nginx]
+        self.assertEqual(scanner.container_index(infos)["app"], "other-app-1")      # ohne Bezug wie bisher
+        self.assertEqual(scanner.container_index(infos, nginx)["app"], "dla-app-1")
+        # gemeinsames Netz vor gleichem Projekt: nur dort löst Dockers DNS den Namen auf
+        eigen_ohne_netz = ct("dla-app-1", "dla", ["dla_intern"])
+        im_netz = ct("other-app-1", "other", ["proxy"])
+        self.assertEqual(scanner.container_index([eigen_ohne_netz, im_netz, nginx], nginx)["app"], "other-app-1")
+        # beide im gemeinsamen Netz: das eigene Projekt
+        self.assertEqual(scanner.container_index([im_netz, ct("dla-app-1", "dla", ["proxy"]), nginx], nginx)["app"],
+                         "dla-app-1")
+        # gemeinsamer Netzwerk-Namespace: Netze des Spenders zählen
+        mit = inspect("mit", [], mode="container:" + nginx["Id"])
+        self.assertEqual(scanner.container_index(infos + [mit], mit)["app"], "dla-app-1")
+
     def test_docker_nicht_erreichbar(self):
         with mock.patch.object(scanner, "run", return_value=(1, "")):
             self.assertRaises(scanner.ScanError, scanner.docker_lage)
@@ -570,6 +593,52 @@ class Backends(unittest.TestCase):
                                                           backends={"/usr/sbin/nginx": ["http://$host"]}))[0]
         self.assertEqual(s["backends"], [("app-api", "*", "nginx:443"), ("app", "*", "nginx:443 (über Loopback)")])
 
+    def test_unix_socket(self):
+        self.assertEqual(scanner.unix_socket("unix:/home/redmine/tmp/redmine.socket"), "/home/redmine/tmp/redmine.socket")
+        self.assertEqual(scanner.unix_socket("http://unix:/run/app.sock:/api/"), "/run/app.sock")
+        self.assertEqual(scanner.unix_socket("unix:/run/app.sock|http://localhost/"), "/run/app.sock")   # Apache
+        self.assertEqual(scanner.unix_socket("http://app:3000"), "")
+        self.assertEqual(scanner.endziele("http://r", web(upstreams={"r": ["unix:/a.sock", "app:80"]})),
+                         ["unix:/a.sock", "app:80"])
+
+    def test_upstream_auf_unix_socket_im_container(self):
+        # Redmine (sameersbn/redmine): nginx -> upstream redmine { server unix:/home/redmine/tmp/redmine.socket; }
+        # Der Besitzer des Sockets ist genau bekannt (Socket-Inode); andere Prozesse (Sidekiq, cron) nicht dahinter.
+        socket = "/home/redmine/tmp/redmine.socket"
+        libssl = scanner.comp("os-paket", "libssl3", "3.0")
+        for ziel in ("http://redmine", "http://unix:%s:/" % socket):
+            for besitzer in ([socket], []):     # [] = Socket gehört einem anderen Container (gemeinsames Volume)
+                nginx = proc(1, "/usr/sbin/nginx", ports={"80": "alle"})
+                worker = proc(2, "/usr/sbin/nginx", ppid=1)
+                ruby = proc(3, "/usr/bin/ruby", maps={"/usr/lib/libssl.so.3"}, unix=besitzer)
+                sidekiq = proc(4, "/usr/bin/ruby2", maps={"/usr/lib/libssl.so.3"}, unix=["/tmp/anderer.sock"])
+                libssl["aktiv"], libssl["aktiv_ohne_port"] = [], []
+                w = web(published={"80": ["0.0.0.0:80"]}, upstreams={"redmine": ["unix:" + socket]},
+                        backends={"/usr/sbin/nginx": [ziel]})
+                services = scanner.mark_usage([libssl], {"1": nginx, "2": worker, "3": ruby, "4": sidekiq},
+                                              {"/lib/libssl.so.3": {"libssl3"}}, w)
+                s = [s for s in services if s["label"] == "nginx:80"][0]
+                self.assertNotIn("frontends", worker)
+                self.assertNotIn("frontends", sidekiq)
+                if besitzer:
+                    self.assertEqual((s["unresolved"], ruby["frontends"]), ([], ["nginx:80"]), ziel)
+                    self.assertEqual(scanner.priority(libssl, {"nginx:80"}), 1)
+                else:
+                    self.assertEqual((s["unresolved"], "frontends" in ruby), ([ziel], False), ziel)
+                    self.assertEqual(scanner.priority(libssl, {"nginx:80"}), 3)
+
+    def test_upstream_teils_nicht_zuordenbar(self):
+        # ein Ziel des upstream zugeordnet, ein anderes nicht: Warnung für das Backend bleibt (auch bei TCP-Zielen)
+        nginx = proc(1, "/usr/sbin/nginx", ports={"80": "alle"})
+        puma = proc(2, "/usr/bin/ruby", unix=["/run/eigen.sock"])
+        for ziele, erwartet in ((["unix:/run/eigen.sock", "unix:/run/fremd.sock"], ["http://u"]),
+                                (["app:3000", "10.0.0.99:80"], ["http://u"]),
+                                (["unix:/run/eigen.sock", "app:3000"], [])):
+            w = web(published={"80": ["0.0.0.0:80"]}, upstreams={"u": ziele}, containers={"app": "app-c"},
+                    backends={"/usr/sbin/nginx": ["http://u"]})
+            s = scanner.mark_usage([], {"1": nginx, "2": puma}, {}, w)
+            self.assertEqual([x["unresolved"] for x in s if x["label"] == "nginx:80"], [erwartet], ziele)
+
     def test_upstream_ohne_port(self):
         w = web(upstreams={"b": ["app"]}, containers={"app": "app-c"})
         self.assertEqual(scanner.backend_containers("http://b", w), [("app-c", "80")])
@@ -759,6 +828,22 @@ class Webadressen(unittest.TestCase):
                                         ("http://app.example.org:8080/ (\\.php$)", False)])
         self.assertEqual(self.services[2]["webadressen"][0]["weg"], "nginx:443 → httpd-prefork:8080 → php-fpm:9000")
         self.assertEqual(self.w["ziel_urls"], {})        # 10.0.0.7: kein Container
+
+    def test_ziel_ueber_unix_socket(self):
+        # nginx -> upstream auf einen Unix-Socket (Redmine): die Webadresse beim Prozess, der darauf lauscht
+        nginx = proc(1, "/usr/sbin/nginx", ports={"80": "alle"})
+        ruby = proc(2, "/usr/bin/ruby", unix=["/home/redmine/tmp/redmine.socket"])
+        sidekiq = proc(3, "/usr/bin/sidekiq", unix=["/tmp/anderer.sock"])
+        w = web(published={"80": ["0.0.0.0:80"]}, upstreams={"redmine": ["unix:/home/redmine/tmp/redmine.socket"]},
+                backends={"/usr/sbin/nginx": ["http://redmine"]},
+                sites=[{"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["redmine.example.org"], "datei": "r.conf",
+                        "roots": [], "listen": [{"adresse": "*", "port": "80", "ssl": False}],
+                        "weiter": [("/", "http://redmine")]}])
+        services = scanner.mark_usage([], {"1": nginx, "2": ruby, "3": sidekiq}, {}, w)
+        scanner.webadressen(services, w)
+        urls = {s["label"]: [(e["url"], e["erreichbar"], e["weg"]) for e in s["webadressen"]] for s in services}
+        self.assertEqual(urls["ruby"], [("http://redmine.example.org/", True, "nginx:80 → ruby")])
+        self.assertNotIn("sidekiq", urls)
 
     def test_ziele_in_containern(self):
         # nginx auf dem Host leitet Pfade an Container weiter (veröffentlichter Port auf Loopback bzw. Container-IP):

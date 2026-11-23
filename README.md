@@ -152,7 +152,7 @@ chmod 440 /etc/sudoers.d/rundeck-container-scan && visudo -c
 
 Gründe für `2` sind z. B.: Docker nicht erreichbar, Daten fehlen oder sind 3 Tage oder älter, Dateien, Prozesse
 oder Webserver-Konfiguration nicht vollständig lesbar (auch die eines Proxys auf dem Host), Distribution ohne
-Sicherheitsupdates (Supportende), Ausnahmeliste fehlerhaft.
+Sicherheitsupdates (Supportende) oder nicht unterstützt (z. B. Oracle Linux), Ausnahmeliste fehlerhaft.
 
 [Warnungen](#warnungen) (Supportende, Dienst als root …) ändern den Rückgabewert nicht. Der Server selbst (seine
 Pakete und Dienste) ist nicht Teil des Scans, siehe [Abgrenzung](#abgrenzung-und-grenzen).
@@ -229,7 +229,9 @@ Grundsatz: **im Zweifel erreichbar.** Erkannt werden:
   gemeinsamer Netzwerk-Namespace (`network_mode: container:…`)
 - Backends eines erreichbaren nginx oder Apache – im Container oder direkt auf dem Host, auch über mehrere Stufen
   (`proxy_pass`, `fastcgi_pass`, `upstream`, `ProxyPass`, `SetHandler proxy:`, `RewriteRule … [P]`, Variablen aus
-  `set`/`map`), Ziel per Container-Name, IP oder `127.0.0.1`
+  `set`/`map`), Ziel per Container-Name, IP, `127.0.0.1` oder Unix-Socket (der Prozess im selben Container, der
+  darauf lauscht); gibt es einen Namen mehrfach (Compose-Dienst `app` in zwei Projekten), zählt zuerst ein
+  Container in einem gemeinsamen Netz mit dem Proxy, dann einer aus demselben Compose-Projekt
 - Ziele aus Traefik- und caddy-docker-proxy-Labels
 - Container, die eine erreichbare Anwendung aufruft (Ziel-URLs in Umgebung oder Kommandozeile, offene
   Verbindungen); Datenbanken, Caches und Message Broker als Ziel zählen nicht
@@ -353,6 +355,11 @@ sudo python3 -I $C --db $DB --alle --container 'app-*' <ausgabeverzeichnis>     
 | Go | Build-Info in Go-Programmen | Go |
 | JavaScript | eingebettete Bibliotheken (jQuery, Bootstrap, Moment, Vue …) | npm |
 | Laufzeiten, Server | Version von node, php, php-fpm, python, java, nginx, apache, mariadb, postgresql | Distribution, sonst (offizielle Images, nginx.org, NodeSource, Sury, mariadb.org) OSV Bitnami |
+
+Nutzerdaten werden nicht ausgewertet: Dateien im Datenverzeichnis von Nextcloud (mit `.ocdata`) lässt der Scan
+mit `find`/`tar` schon im Container weg. Beim passiven Lesen (ohne Werkzeuge oder Leserechte im Container, über
+`docker export` und `docker cp`) gelangen sie zum Scanner und werden dort im Speicher verworfen. Der Bericht nennt
+das Verzeichnis.
 
 **Daten** (Branch [`daten`](https://github.com/dla-marbach/container-security-scan/tree/daten), täglich von
 [`daten.yml`](.github/workflows/daten.yml) erzeugt, ca. 365 MB): ein Auszug aus den OSV-Exporten mit nur den

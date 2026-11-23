@@ -85,7 +85,7 @@ from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "0.5.1"
+VERSION = "0.5.2"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
@@ -500,7 +500,8 @@ WANTED = re.compile(r"""^/(etc/os-release|usr/lib/os-release|etc/alpine-release|
                        |lib/apk/db/installed)$
                       |/(package\.json|\.?package-lock\.json)$
                       |\.dist-info/METADATA$|\.egg-info/PKG-INFO$|\.egg-info$
-                      |/vendor/composer/installed\.json$|/pyvenv\.cfg$""", re.X)
+                      |/vendor/composer/installed\.json$|/pyvenv\.cfg$
+                      |/\.ocdata$""", re.X)
 
 # Eingebettete JavaScript-Bibliotheken (wie Retire.js): npm-Name, Dateiname (regulärer Ausdruck),
 # Version im Dateikopf. Abgleich über die npm-Daten von OSV.
@@ -535,8 +536,29 @@ GO_MAGIC = b"\xff Go buildinf:"
 # verloren. Alle übrigen Meldungen und Fehler ohne Meldung ergeben Exit-Code 3 (Meldungen auf stderr). Die
 # Auswertung nutzt nur die Shell selbst (grep, sed fehlen in manchen Containern).
 # grep/xargs liefern auch ohne Treffer einen Fehlercode und werden nicht gewertet (wie bisher).
+# Nutzerdaten (Nextcloud: Datenverzeichnis mit .ocdata) werden vor tar aus der Liste entfernt: hochgeladene
+# Dateien verlassen den Container nicht und werden nicht ausgewertet; übertragen wird nur .ocdata selbst (leer).
+# BusyBox-tar meldet eine leere Liste (nichts gefunden) als Fehler "tar: empty archive"; das ist keiner.
 FIND_SH = r"""
 LC_ALL=C; export LC_ALL
+ohne_nutzerdaten() (
+  liste=$(cat)
+  case "$liste" in
+    */.ocdata|*/.ocdata"
+"*) ;;
+    *) [ -z "$liste" ] || printf '%s\n' "$liste"; exit 0 ;;
+  esac
+  set -f; IFS='
+'
+  nc=
+  for f in $liste; do case "$f" in */.ocdata) nc="$nc${f%.ocdata}
+" ;; esac; done
+  for f in $liste; do
+    weg=
+    case "$f" in */.ocdata) ;; *) for d in $nc; do case "$f" in "$d"*) weg=1; break ;; esac; done ;; esac
+    [ -n "$weg" ] || printf '%s\n' "$f"
+  done
+)
 exec 4>&1
 meldungen=$( { for r in / "$@"; do
   find "$r" -xdev \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f \( \
@@ -545,10 +567,10 @@ meldungen=$( { for r in / "$@"; do
     -o -path /lib/apk/db/installed -o -name package.json -o -name .package-lock.json -o -name package-lock.json \
     -o -path '*.dist-info/METADATA' -o -path '*.egg-info/PKG-INFO' -o -name '*.egg-info' \
     -o -path '*/vendor/composer/installed.json' -o -name '*.jar' -o -name '*.war' -o -name '*.ear' \
-    -o -name pyvenv.cfg JSGLOBS \) -print 2>&3 || echo "@find $r" >&3
+    -o -name pyvenv.cfg -o -name .ocdata JSGLOBS \) -print 2>&3 || echo "@find $r" >&3
   { find "$r" -xdev \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -perm -100 -size +1000k -print \
       2>&3 || echo "@find $r" >&3; } | xargs grep -l 'Go buildinf:' 2>/dev/null
-done | sort -u | tar -cf - -T - 2>&3 || echo "@tar" >&3; } 3>&1 1>&4 )
+done | sort -u | ohne_nutzerdaten | tar -cf - -T - 2>&3 || echo "@tar" >&3; } 3>&1 1>&4 )
 exec 4>&-
 [ -n "$meldungen" ] || exit 0
 printf '%s\n' "$meldungen" | {
@@ -562,6 +584,7 @@ printf '%s\n' "$meldungen" | {
 " ;;
       *"emoving leading"*|*"Exiting with failure status"*) ;;
       *"No such file or directory"*|*"changed as we read it"*|*"shrank by"*) ;;
+      "tar: empty archive") ;;
       *) rest="$rest$z
 " ;;
     esac
@@ -726,8 +749,26 @@ def stream_tar(cmd, files, extra, prefix="", input=None, timeout=1800, meldungen
     return rc == 0
 
 
+def nutzerdaten_entfernen(files, extra):
+    """Nutzerdaten (Nextcloud: Verzeichnis mit .ocdata) aus dem Ergebnis entfernen. FIND_SH lässt sie schon im
+    Container weg; docker export und docker cp liefern sie aber mit. Liefert die Verzeichnisse (sortiert)."""
+    dirs = sorted({posixpath.dirname(p) for p in files if posixpath.basename(p) == ".ocdata"})
+    for p in [p for p in files if any(under(p, d) for d in dirs)]:
+        del files[p]
+    extra[:] = [x for x in extra if not any(under(x.get("datei") or "", d) for d in dirs)]
+    return dirs
+
+
 def collect_files(c):
     """Liefert (Dateien, weitere Komponenten, Beschreibung, Probleme)."""
+    files, extra, how, problems = _collect_files(c)
+    dirs = nutzerdaten_entfernen(files, extra)
+    if dirs:
+        how += "; Nutzerdaten nicht ausgewertet (Nextcloud: %s)" % ", ".join(dirs)
+    return files, extra, how, problems
+
+
+def _collect_files(c):
     files, extra, problems = {}, [], []
     grund = ""
     if c.has_find_tar:
@@ -971,6 +1012,7 @@ def pypi_packages(files):
 #                   F <pid> <offene datei> | E <pid> <PATH=... bzw. VIRTUAL_ENV=...> | S <pid> <socket-inode>
 #                   T <inode> <lokale-adresse:port> <tcp|udp>  (lauschende Sockets)
 #                   C <inode> <lokale-adresse:port> <entfernte-adresse:port>  (bestehende TCP-Verbindungen)
+#                   U <inode> <pfad>  (lauschende Unix-Sockets mit Pfad; nur des eigenen Netzwerk-Namespace)
 # Nur die übergebenen PIDs (ohne Argumente: nichts) – über den Host aufgerufen sonst alle Host-Prozesse.
 PROC_SH = r"""
 self=$$
@@ -998,6 +1040,8 @@ done
 [ -n "$first" ] && cat "/proc/$first/net/tcp" "/proc/$first/net/tcp6" 2>/dev/null | awk '$4 == "0A" { print "T\t" $10 "\t" $2 "\ttcp" }
     $4 == "01" && $10 != "0" { print "C\t" $10 "\t" $2 "\t" $3 }'
 [ -n "$first" ] && cat "/proc/$first/net/udp" "/proc/$first/net/udp6" 2>/dev/null | awk '$4 == "07" { print "T\t" $10 "\t" $2 "\tudp" }'
+[ -n "$first" ] && awk '$4 == "00010000" && $8 ~ /^\// { f = $8; for (i = 9; i <= NF; i++) f = f " " $i; print "U\t" $7 "\t" f }' \
+    "/proc/$first/net/unix" 2>/dev/null
 """
 
 
@@ -1058,9 +1102,9 @@ def collect_procs(c):
 
 def procs_auswerten(out):
     """Ausgabe von PROC_SH auswerten: (Prozesse, lauschende Ports ohne sichtbaren Prozess {Port: (Adresse, Inode)}).
-    Je Prozess auch die
-    ausgehenden TCP-Verbindungen (Ziel-Adresse, Ziel-Port), z.B. eines API-Gateways zu seinen Zielen."""
-    procs, sockets, listen, conns = OrderedDict(), defaultdict(set), {}, []
+    Je Prozess auch die ausgehenden TCP-Verbindungen (Ziel-Adresse, Ziel-Port), z.B. eines API-Gateways zu seinen
+    Zielen, und die Pfade seiner lauschenden Unix-Sockets (z.B. puma hinter nginx per unix:/…/app.sock)."""
+    procs, sockets, listen, conns, unix = OrderedDict(), defaultdict(set), {}, [], {}
     for line in out.splitlines():
         f = line.split("\t")
         if f[0] == "P" and len(f) >= 5:
@@ -1068,7 +1112,7 @@ def procs_auswerten(out):
                            "argv": [a for a in f[4].split("\x1f") if a], "user": f[5] if len(f) > 5 and f[5] != ":" else "",
                            "ppid": f[6] if len(f) > 6 else "",
                            "maps": set(), "files": set(), "env": {}, "ports": OrderedDict(),
-                           "verbindungen": OrderedDict()}
+                           "verbindungen": OrderedDict(), "unix": set()}
         elif f[0] == "E" and f[1] in procs and "=" in f[2]:
             k, _, v = f[2].partition("=")
             procs[f[1]]["env"][k] = v
@@ -1084,6 +1128,8 @@ def procs_auswerten(out):
             listen[(f[1], port)] = (port, decode_addr(addr))
         elif f[0] == "C" and len(f) > 3 and ":" in f[2] and ":" in f[3]:
             conns.append(f[1:4])
+        elif f[0] == "U" and len(f) > 2:
+            unix[f[1]] = f[2]
     fremd = OrderedDict()
     for (inode, _), (port, addr) in listen.items():
         owners = [pid for pid in sockets.get(inode, ()) if pid in procs]
@@ -1103,6 +1149,10 @@ def procs_auswerten(out):
         for pid in sockets.get(inode, ()):
             if pid in procs:
                 procs[pid]["verbindungen"][(decode_ip(addr), str(int(port, 16)))] = None
+    for inode, pfad in unix.items():
+        for pid in sockets.get(inode, ()):
+            if pid in procs:
+                procs[pid]["unix"].add(pfad)
     for p in procs.values():
         p["base"] = posixpath.basename(p["exe"])
         p["label"] = p["base"] + (":" + ",".join(p["ports"]) if p["ports"] else "")
@@ -1779,14 +1829,29 @@ def collect_web(c, procs):
         web["loopback_ziele"] = loopback_ziele(loopback_ports(web), infos, name_von(c.info))
     for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
         web["label_ziele"][proxy] = label_ziele(proxy, infos)
-    web["containers"] = container_index(infos)
+    web["containers"] = container_index(infos, c.info)
     web["env"] = [tuple(e.split("=", 1)) for e in (c.info.get("Config") or {}).get("Env") or [] if "=" in e]
     return web
 
 
-def container_index(infos):
+def projekt_von(d):
+    return ((d.get("Config") or {}).get("Labels") or {}).get("com.docker.compose.project")
+
+
+def container_index(infos, von=None):
     """Namen, Aliase und IPs aller laufenden Container -> Containername (für Backends wie http://app:3000,
-    app.netz oder 172.18.0.5)."""
+    app.netz oder 172.18.0.5). Gibt es einen Namen mehrfach (Compose-Dienst app in zwei Projekten), gilt aus
+    Sicht von von (inspect des Containers mit dem Proxy) zuerst ein Container in einem gemeinsamen Netz (nur dort
+    löst Dockers DNS den Namen auf), dann einer aus demselben Compose-Projekt; bei gemeinsamem
+    Netzwerk-Namespace zählen die Netze des Spenders."""
+    if von is not None:
+        netze = set(netze_von(spender_von(von, infos) or von))
+        projekt = projekt_von(von)
+
+        def vorrang(d):
+            gemeinsam = bool(netze & set(netze_von(spender_von(d, infos) or d)))
+            return (not gemeinsam, not (projekt and projekt_von(d) == projekt))
+        infos = sorted(infos, key=vorrang)     # stabil: sonst Reihenfolge von docker ps
     index = {}
     for d in infos:
         name = name_von(d)
@@ -1890,6 +1955,28 @@ def ziel_variabel(target):
     """Enthält Host oder Port eines Ziels eine (nicht aufgelöste) Variable (nginx $host, Apache %{HTTP_HOST}, $1)?"""
     teile = "".join(split_target(target))
     return "$" in teile or "%{" in teile
+
+
+def unix_socket(target):
+    """Pfad eines Ziels per Unix-Socket (nginx unix:/pfad und http://unix:/pfad:/uri, Apache unix:/pfad|http://…)
+    oder ""."""
+    m = re.match(r"^(?:[a-z]+://)?unix:(/[^:|]+)", target)
+    return m.group(1) if m else ""
+
+
+def endziele(target, web, depth=0):
+    """Ziele eines Backends, upstream-Namen aufgelöst."""
+    host = split_target(target)[0]
+    if host in web["upstreams"] and depth < 3:
+        return [x for t in web["upstreams"][host] for x in endziele(t, web, depth + 1)]
+    return [target]
+
+
+def socket_prozesse(target, procs, web):
+    """Prozesse im selben Container, die auf einem Unix-Socket des Ziels lauschen (genau über die Socket-Inode;
+    ein Socket aus einem anderen Container, etwa in einem gemeinsamen Volume, gehört nicht dazu)."""
+    pfade = {unix_socket(t) for t in endziele(target, web)} - {""}
+    return [p for p in procs.values() if pfade & p.get("unix", set())] if pfade else []
 
 
 def backend_containers(target, web, depth=0, nur_loopback=False):
@@ -2045,6 +2132,7 @@ def mark_usage(comps, procs, owners, web):
                        for p in procs.values() if port in p["ports"]]
             if t.startswith("unix:") and "php" in t:
                 targets += [p for p in procs.values() if p["base"].startswith("php-fpm")]
+            targets += socket_prozesse(t, procs, web)
             for p in targets:
                 if p is not front and front["label"] not in p.setdefault("frontends", []):
                     p["frontends"].append(front["label"])
@@ -2215,11 +2303,15 @@ def mark_usage(comps, procs, owners, web):
                          "bindungen": OrderedDict(p["ports"]),
                          "ports_lokal": OrderedDict((port, port_erreichbar(p, port, "localhost", web)[1])
                                                     for port in p["ports"]),
-                         # Backends eines öffentlichen Dienstes, die keinem Container zugeordnet werden können
-                         # (variable Ziele: siehe unklar)
-                         "unresolved": [b for b in backends if wirkt[label] and not backend_containers(b, web)
-                                        and not ziel_variabel(b)
-                                        and not (b.startswith("unix:") and "php" in b and php_servers)],
+                         # Backends eines öffentlichen Dienstes, von deren Zielen (upstream aufgelöst) mindestens
+                         # eines keinem Container bzw. Prozess zugeordnet werden kann (variable Ziele: siehe unklar)
+                         "unresolved": [b for b in backends if wirkt[label]
+                                        and any(not backend_containers(t, web) and not ziel_variabel(t)
+                                                and not socket_prozesse(t, procs, web)
+                                                and not (t.startswith("unix:") and "php" in t and php_servers)
+                                                for t in endziele(b, web))],
+                         # Unix-Sockets, auf denen der Dienst lauscht (Webadressen über nginx unix:/…)
+                         "unix": sorted({u for x in ps for u in x.get("unix", ())}),
                          # öffentlich erreichbare Ziele in anderen Containern (für --oeffentliche/--alle-container)
                          "backends": ([(ct, port, label + (LOOPBACK_GRUND if (ct, port) in ueber_loopback else ""))
                                        for ct, port in OrderedDict.fromkeys(ziele)
@@ -2402,6 +2494,9 @@ def webadressen(services, web):
                                                              "lokal": (ct, port) in ueber_loopback})
                     if ziel.startswith("unix:") and "php" in ziel:
                         backs += [(b, None, True) for b in php]
+                    pfade = {unix_socket(t) for t in endziele(ziel, web)} - {""}
+                    if pfade:      # Prozess, der auf dem Socket lauscht (z.B. puma hinter nginx)
+                        backs += [(b, None, True) for b in services if pfade & set(b.get("unix", ()))]
                     for back, port, lo in backs:
                         if not back or back is front:
                             continue
@@ -3702,8 +3797,13 @@ def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None):
     # nach osv_scan: erst dort werden Laufzeiten aus Fremdquellen (nginx.org, NodeSource …) erkannt
     warnings.extend(eol_warnungen(comps, [os.path.join(d, "eol-daten.json") for d in a.dbdirs]))
     warnings.extend(kev_markieren(findings, [os.path.join(d, "kev.json") for d in a.dbdirs]))
-    if missing:
-        problems.append("Daten fehlen für: " + ", ".join(missing) + " (--db-aktualisieren --oekosysteme " + ",".join(missing) + ")")
+    # "(OS ol wird nicht unterstützt)": eigenes Problem, keine Empfehlung für --oekosysteme
+    fehlt = [m for m in missing if not m.startswith("(")]
+    for m in missing:
+        if m.startswith("("):
+            problems.append("%s – OS-Pakete nicht geprüft" % m[1:-1])
+    if fehlt:
+        problems.append("Daten fehlen für: " + ", ".join(fehlt) + " (--db-aktualisieren --oekosysteme " + ",".join(fehlt) + ")")
     if not pkgs:
         problems.append("keine OS-Paketdatenbank gefunden (%s)" % how["pkgdb"])
     elif not missing and db_date and (not os_newest or (db_date - os_newest).days > OS_DATEN_MAX_TAGE):
