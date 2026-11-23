@@ -207,6 +207,17 @@ class Gesamtlauf(unittest.TestCase):
         self.assertEqual(scanner.json_datei(os.path.join(self.a.ausgabe, "bekannt_app.json")),
                          [["libssl3", "3.0.15-1~deb12u1", "CVE-2026-9"]])
 
+    def test_nicht_unterstuetztes_os_ergibt_2_mit_klarer_meldung(self):
+        # Oracle Linux: keine OSV-Daten; keine Empfehlung für --oekosysteme, OS-Pakete nicht geprüft
+        self.files["/etc/os-release"] = b'ID="ol"\nVERSION_ID="9.4"\nPRETTY_NAME="Oracle Linux Server 9.4"\n'
+        code, _, base = self.lauf()
+        with open(base + ".md", encoding="utf-8") as f:
+            bericht = f.read()
+        self.assertEqual(code, 2)
+        self.assertIn("OS ol wird nicht unterstützt – OS-Pakete nicht geprüft", bericht)
+        self.assertNotIn("--oekosysteme (", bericht + self.konsole)
+        self.assertNotIn("Daten fehlen für", bericht)
+
     def test_webadressen(self):
         # eigene Website (veröffentlicht an 80) und eine von einem Proxy auf dem Host weitergeleitete Adresse: im
         # Bericht und auf der Konsole je Dienst (nicht bei jedem Fund) und in der SBOM; Pfade an einen anderen

@@ -1,5 +1,9 @@
 """Prozesse aus /proc: Programm, Ports, geladene Dateien, Umgebung – je Prozess-Benutzer gelesen."""
+import os
+import shutil
+import socket
 import subprocess
+import tempfile
 import unittest
 from unittest import mock
 
@@ -78,6 +82,27 @@ class Prozesse(unittest.TestCase):
                 "".join(sockets[i] for i in reihe)
             procs, _ = scanner.procs_auswerten(out)
             self.assertEqual(procs["1"]["ports"], {"8080": "alle", "9000": "10.0.0.5"}, reihe)
+
+    def test_unix_sockets_dem_besitzer_zugeordnet(self):
+        # U: lauschende Unix-Sockets des Netzwerk-Namespace; zugeordnet über die Socket-Inode der Prozesse
+        out = ("P\t1\t/usr/sbin/nginx\t/\tnginx\t0:0\t0\nP\t7\t/usr/bin/ruby\t/\tpuma\t999:999\t1\n"
+               "S\t7\t4711\nS\t1\t4712\nU\t4711\t/home/redmine/tmp/redmine.socket\nU\t4713\t/run/fremd mit leer.sock\n")
+        procs, _ = scanner.procs_auswerten(out)
+        self.assertEqual((procs["7"]["unix"], procs["1"]["unix"]), ({"/home/redmine/tmp/redmine.socket"}, set()))
+
+    @unittest.skipUnless(os.path.exists("/proc/self/net/unix"), "nur unter Linux")
+    def test_proc_sh_liest_lauschende_unix_sockets(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        pfad = os.path.join(tmp, "app mit leer.sock")
+        s = socket.socket(socket.AF_UNIX)
+        self.addCleanup(s.close)
+        s.bind(pfad)
+        s.listen(1)
+        p = subprocess.run(["sh", "-s", "--", str(os.getpid())], input=scanner.PROC_SH, stdout=subprocess.PIPE,
+                           universal_newlines=True, timeout=60)
+        procs, _ = scanner.procs_auswerten(p.stdout)
+        self.assertIn(pfad, procs[str(os.getpid())]["unix"])
 
     def test_ohne_shell_ueber_proc_des_hosts(self):
         c = mock.Mock(has_sh=False, id="abc")
