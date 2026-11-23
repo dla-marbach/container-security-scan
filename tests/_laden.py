@@ -26,7 +26,7 @@ def web(**kw):
     w = {"docroots": {}, "backends": {}, "vhosts": {}, "upstreams": {}, "modphp": set(), "raw": [],
          "published": {}, "containers": {}, "via_proxy": {}, "problems": [], "host_network": False,
          "self": "app", "venvs": set(), "lan": [], "spender": None, "nachbarn": [], "netz_gruppe": [],
-         "label_ziele": {}, "unlesbar": set()}
+         "label_ziele": {}, "unlesbar": set(), "sites": [], "via_urls": {}, "ziel_urls": {}}
     w.update(kw)
     return w
 

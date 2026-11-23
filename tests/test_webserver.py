@@ -277,7 +277,7 @@ class HostProxys(unittest.TestCase):
         with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 0)), \
                 mock.patch.object(scanner, "run", return_value=(0, procs)), \
                 mock.patch.object(scanner.Host, "exec", return_value=(0, conf)) as ex:
-            ziele, services, warnings, problems = scanner.host_proxys(infos)
+            ziele, services, warnings, problems, _ = scanner.host_proxys(infos)
         self.assertEqual(ex.call_args[0][0], ["/usr/sbin/nginx", "-T"])
         self.assertEqual(ex.call_args[1]["user"], "0:0")
         self.assertEqual(ziele, [("app", "3000", "nginx:443 auf dem Host")])
@@ -300,7 +300,7 @@ class HostProxys(unittest.TestCase):
                 mock.patch.object(scanner, "run", return_value=(0, procs)), \
                 mock.patch.object(scanner, "socket_besitzer", return_value={}), \
                 mock.patch.object(scanner.Host, "exec", return_value=(0, conf_lo)):
-            ziele, services, warnings, problems = scanner.host_proxys(infos + [hostnetz])
+            ziele, services, warnings, problems, _ = scanner.host_proxys(infos + [hostnetz])
         self.assertEqual(ziele, [("hostnetz", "7777", "nginx:443 auf dem Host (über Loopback)")])
         self.assertIn("Backend http://127.0.0.1:7777 (Host; Loopback gemeinsam mit hostnetz)", services[0]["description"])
         self.assertEqual((warnings, problems), ([], []))
@@ -309,7 +309,7 @@ class HostProxys(unittest.TestCase):
         with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 2)), \
                 mock.patch.object(scanner, "run", return_value=(0, procs)), \
                 mock.patch.object(scanner.Host, "exec", return_value=(0, conf)):
-            ziele, services, warnings, problems = scanner.host_proxys(infos)
+            ziele, services, warnings, problems, _ = scanner.host_proxys(infos)
         self.assertEqual(ziele, [("app", "*", "nginx:443 auf dem Host"), ("db", "*", "nginx:443 auf dem Host")])
         self.assertIn("nicht vollständig lesbar (2;", warnings[0])
         self.assertIn("Weiterleitungen von nginx:443 auf dem Host nicht vollständig auswertbar", warnings[1])
@@ -332,7 +332,7 @@ class HostProxys(unittest.TestCase):
                                   return_value={("127.0.0.1", "7777"): ["gvp"], ("127.0.0.1", "7775"): ["selfreg"],
                                                 ("::1", "7775"): ["selfreg"], ("127.0.0.1", "7443"): [None]}) as sb, \
                 mock.patch.object(scanner.Host, "exec", return_value=(0, conf)):
-            ziele, services, warnings, problems = scanner.host_proxys(infos)
+            ziele, services, warnings, problems, _ = scanner.host_proxys(infos)
         # veröffentlichte Ports werden nicht mehr nach dem lauschenden Prozess gesucht; localhost: IPv4 und IPv6
         self.assertEqual(sb.call_args[0][0], [("127.0.0.1", "7443"), ("127.0.0.1", "7775"), ("127.0.0.1", "7777"),
                                               ("::1", "7775")])
@@ -591,6 +591,308 @@ class Backends(unittest.TestCase):
         self.assertEqual(scanner.resolve_backend("http://$host", self.w, "app"), "http://$host (Variable, nicht auswertbar)")
         self.assertEqual(scanner.resolve_backend("http://example.com", self.w, "app"), "http://example.com (extern/unbekannt)")
         self.assertIn("-> Container app-api", scanner.resolve_backend("http://api", self.w, "app"))
+
+
+class ApacheSites(unittest.TestCase):
+    def test_vhosts_aus_S(self):
+        out = """VirtualHost configuration:
+*:443                  www.example.org (/etc/apache2/vhosts.d/www-ssl.conf:2)
+*:80                   is a NameVirtualHost
+         default server www.example.org (/etc/apache2/vhosts.d/www.conf:1)
+         port 80 namevhost www.example.org (/etc/apache2/vhosts.d/www.conf:1)
+                 alias example.org
+                 wild alias *.example.org
+         port 80 namevhost intranet (/etc/apache2/vhosts.d/intra.conf:1)
+127.0.0.1:8080         app.example.org (/etc/apache2/vhosts.d/app.conf:3)
+ServerRoot: "/srv/www"
+"""
+        self.assertEqual(scanner.apache_vhosts(out), [
+            {"adresse": "*", "port": "443", "name": "www.example.org", "aliase": [],
+             "datei": "/etc/apache2/vhosts.d/www-ssl.conf", "zeile": 2},
+            {"adresse": "*", "port": "80", "name": "www.example.org", "aliase": ["example.org", "*.example.org"],
+             "datei": "/etc/apache2/vhosts.d/www.conf", "zeile": 1},
+            {"adresse": "*", "port": "80", "name": "intranet", "aliase": [], "datei": "/etc/apache2/vhosts.d/intra.conf",
+             "zeile": 1},
+            {"adresse": "127.0.0.1", "port": "8080", "name": "app.example.org", "aliase": [],
+             "datei": "/etc/apache2/vhosts.d/app.conf", "zeile": 3}])
+        self.assertEqual(scanner.apache_name("https://www.example.org:443"), ("www.example.org", "https"))
+        self.assertEqual(scanner.apache_name("www.example.org"), ("www.example.org", ""))
+
+    def apache(self, dateien, s_out):
+        c = mock.Mock(has_sh=False, info={"Config": {"Env": []}})
+        antworten = {"-S": (0, s_out), "-M": (0, ""),
+                     "-t": (0, "Included configuration files:\n" + "".join("  (*) %s\n" % d for d in dateien))}
+        c.exec.side_effect = lambda cmd, **kw: antworten[next(x for x in cmd if x in antworten)]
+        c.read_file.side_effect = lambda p: dateien[p]
+        w = scanner.web_leer()
+        scanner.parse_apache(c, "/usr/sbin/httpd-prefork", w)
+        return w
+
+    DATEIEN = {"/etc/apache2/httpd.conf": """Listen 80
+<IfDefine SSL>
+    Listen 443
+</IfDefine>
+ServerName web01.example.com
+""", "/etc/apache2/vhosts.d/www.conf": """
+<VirtualHost \\
+    *:443>
+    ServerName https://www.example.org:443
+    ServerAlias example.org
+    SSLEngine on
+    DocumentRoot /srv/www/htdocs
+    ProxyPass /api/ http://127.0.0.1:3000/ \\
+        retry=0
+    <LocationMatch "^/app/">
+        ProxyPass http://app:8080/
+    </LocationMatch>
+    <FilesMatch \\.php$>
+        SetHandler "proxy:fcgi://php:9000"
+    </FilesMatch>
+    RewriteRule ^/shop/(.*)$ http://shop:3000/$1 [P]
+</VirtualHost>
+"""}
+
+    def test_websites(self):
+        # vHost aus -S (Zeile des Blockanfangs, auch über eine Fortsetzungszeile), TLS, Docroot und Weiterleitungen
+        # aus dem Block; der Hauptserver an den Ports ohne vHost
+        s_out = "VirtualHost configuration:\n*:443                  www.example.org (/etc/apache2/vhosts.d/www.conf:2)\n"
+        www, haupt = self.apache(self.DATEIEN, s_out)["sites"]
+        self.assertEqual((www["namen"], www["listen"], www["roots"], www["datei"]), (
+            ["www.example.org"], [{"adresse": "*", "port": "443", "ssl": True}], ["/srv/www/htdocs"],
+            "/etc/apache2/vhosts.d/www.conf:2"))
+        self.assertEqual(www["weiter"], [("/api/", "http://127.0.0.1:3000/"), ("~ ^/app/", "http://app:8080/"),
+                                         ("~ \\.php$", "fcgi://php:9000"), ("~ ^/shop/(.*)$", "http://shop:3000/$1")])
+        self.assertEqual((haupt["namen"], haupt["listen"], haupt["datei"]), (
+            ["web01.example.com"], [{"adresse": "*", "port": "80", "ssl": False}], "(Hauptserver)"))
+
+    def test_websites_ohne_S(self):
+        # -S ohne vHosts: die Blöcke aus den Dateien (Name und TLS aus ServerName https://…)
+        www, haupt = self.apache(self.DATEIEN, "")["sites"]
+        self.assertEqual((www["namen"], www["listen"]), (["www.example.org", "example.org"],
+                                                         [{"adresse": "*", "port": "443", "ssl": True}]))
+        self.assertEqual([l["port"] for l in haupt["listen"]], ["80"])
+
+
+NGINX_SITES = """# configuration file /etc/nginx/nginx.conf:
+http {
+    server { listen 80; server_name localhost; root /srv/www/htdocs/; }
+    include /etc/nginx/vhosts.d/*.conf;
+}
+stream { server { listen 5432; proxy_pass db:5432; } }
+# configuration file /etc/nginx/vhosts.d/www.conf:
+server {
+    listen 80;
+    listen [::]:443 ssl http2;
+    listen 127.0.0.1:8443 ssl;
+    listen 443 quic;
+    server_name www.example.org .example.net ~^(?<sub>.+)\\.example\\.com$;
+    root /srv/www/htdocs;
+    location /app/ { proxy_pass http://127.0.0.1:8080/; }
+    location ~ \\.php$ { fastcgi_pass unix:/run/php-fpm.sock; }
+}
+server { listen 8080; ssl on; server_name _; }
+"""
+
+
+class NginxSites(unittest.TestCase):
+    def setUp(self):
+        self.w = scanner.web_leer()
+        scanner.parse_nginx(NGINX_SITES, self.w, "/usr/sbin/nginx")
+
+    def test_sites(self):
+        lokal, www, alt = self.w["sites"]          # stream-Server: keine Website
+        self.assertEqual((lokal["namen"], lokal["datei"], lokal["roots"]),
+                         (["localhost"], "/etc/nginx/nginx.conf", ["/srv/www/htdocs/"]))
+        self.assertEqual(www["datei"], "/etc/nginx/vhosts.d/www.conf")
+        self.assertEqual(www["listen"], [{"adresse": "*", "port": "80", "ssl": False, "udp": False},
+                                         {"adresse": "::", "port": "443", "ssl": True, "udp": False},
+                                         {"adresse": "127.0.0.1", "port": "8443", "ssl": True, "udp": False}])
+        self.assertEqual(www["weiter"], [("/app/", "http://127.0.0.1:8080/"), ("~ \\.php$", "unix:/run/php-fpm.sock")])
+        self.assertEqual((alt["namen"], alt["listen"][0]["ssl"]), ([], True))      # ssl on; "_" ist kein Name
+        self.assertIn("db:5432", self.w["backends"]["/usr/sbin/nginx"])
+
+    def test_webadressen_einer_site(self):
+        www = self.w["sites"][1]
+        self.assertEqual(scanner.site_urls(www, self.w), [
+            "http://www.example.org/", "http://example.net/", "http://*.example.net/", "https://www.example.org/",
+            "https://example.net/", "https://*.example.net/", "https://www.example.org:8443/",
+            "https://example.net:8443/", "https://*.example.net:8443/"])
+        # ohne Namen: "*"; im Container: veröffentlichter Port statt des Ports im Container
+        self.assertEqual(scanner.site_urls(self.w["sites"][2], self.w), ["https://*:8080/"])
+        w = web(published={"8080": ["0.0.0.0:18080", "127.0.0.1:9000 (nur lokal – vermutlich hinter …)"]})
+        self.assertEqual(scanner.site_urls(self.w["sites"][2], w), ["https://*:18080/"])
+        self.assertEqual(scanner.url_pfad("https://a/", "/app/"), "https://a/app/")
+        self.assertEqual(scanner.url_pfad("https://a/", "= /x"), "https://a/x")
+        self.assertEqual(scanner.url_pfad("https://a/", "~* \\.php$"), "https://a/ (\\.php$)")
+
+
+def dienst(label, exe, ports, exposed=False):
+    return {"label": label, "name": os.path.basename(exe), "exe": exe, "exposed": exposed,
+            "ports": scanner.OrderedDict((p, ("…", exposed)) for p in ports), "backends": [], "unresolved": [],
+            "unklar": [], "endpoints": [], "description": ""}
+
+
+class Webadressen(unittest.TestCase):
+    """nginx (öffentlich) -> Apache (Loopback) -> php-fpm im selben Container."""
+
+    def setUp(self):
+        self.w = web(self="app",
+                     sites=[{"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["www.example.org"], "datei": "www.conf",
+                             "roots": ["/srv/www/htdocs"], "listen": [{"adresse": "*", "port": "443", "ssl": True}],
+                             "weiter": [("/app/", "http://127.0.0.1:8080/"), ("/api/", "http://10.0.0.7:3000/")]},
+                            {"exe": "/usr/sbin/httpd-prefork", "art": "apache", "namen": ["app.example.org"],
+                             "datei": "app.conf:1", "roots": ["/srv/www/app/public"],
+                             "listen": [{"adresse": "127.0.0.1", "port": "8080", "ssl": False}],
+                             "weiter": [("~ \\.php$", "fcgi://127.0.0.1:9000")]}])
+        self.services = [dienst("nginx:443", "/usr/sbin/nginx", ["443"], exposed=True),
+                         dienst("httpd-prefork:8080", "/usr/sbin/httpd-prefork", ["8080"]),
+                         dienst("php-fpm:9000", "/usr/sbin/php-fpm", ["9000"])]
+        scanner.webadressen(self.services, self.w)
+
+    def urls(self, i):
+        return [(e["url"], e["erreichbar"]) for e in self.services[i]["webadressen"]]
+
+    def test_kette(self):
+        self.assertEqual(self.urls(0), [("https://www.example.org/", True)])
+        self.assertEqual(self.urls(1), [("https://www.example.org/app/", True), ("http://app.example.org:8080/", False)])
+        self.assertEqual(self.urls(2), [("https://www.example.org/app/ (\\.php$)", True),
+                                        ("http://app.example.org:8080/ (\\.php$)", False)])
+        self.assertEqual(self.services[2]["webadressen"][0]["weg"], "nginx:443 → httpd-prefork:8080 → php-fpm:9000")
+        self.assertEqual(self.w["ziel_urls"], {})        # 10.0.0.7: kein Container
+
+    def test_ziele_in_containern(self):
+        # nginx auf dem Host leitet Pfade an Container weiter (veröffentlichter Port auf Loopback bzw. Container-IP):
+        # deren Webadressen gehen an den Scan des Containers, mit dem Port im Container
+        w = dict(self.w, self="Host", containers={"172.18.0.5": "api"},
+                 loopback_ziele={("127.0.0.1", "7776"): [("regdido", "3000")]})
+        w["sites"] = [dict(w["sites"][0], weiter=[("/regdido/", "http://127.0.0.1:7776/"),
+                                                  ("/api/", "http://172.18.0.5:8080")])]
+        services = [dienst("nginx:443", "/usr/sbin/nginx", ["443"], exposed=True)]
+        scanner.webadressen(services, w)
+        self.assertEqual(list(w["ziel_urls"]), [("regdido", "3000"), ("api", "8080")])
+        self.assertEqual(w["ziel_urls"][("regdido", "3000")], [
+            {"url": "https://www.example.org/regdido/", "erreichbar": True, "weg": "nginx:443 auf dem Host",
+             "lokal": False}])
+        # im Scan des Containers: Webadressen des Dienstes an diesem Port
+        node = dienst("node:3000", "/usr/local/bin/node", ["3000"], exposed=True)
+        cw = web(self="regdido", via_urls={"3000": w["ziel_urls"][("regdido", "3000")]})
+        scanner.webadressen([node], cw)
+        self.assertEqual([(e["url"], e["erreichbar"], e["weg"]) for e in node["webadressen"]], [
+            ("https://www.example.org/regdido/", True, "nginx:443 auf dem Host → node:3000")])
+        self.assertEqual(cw["ziel_urls"], {})
+        # Proxy in einem anderen Container: Weg mit dessen Namen
+        w = dict(self.w, self="proxy", containers={"app": "app"})
+        w["sites"] = [dict(w["sites"][0], weiter=[("/", "http://app:3000")])]
+        scanner.webadressen([dienst("nginx:443", "/usr/sbin/nginx", ["443"], exposed=True)], w)
+        self.assertEqual([e["weg"] for e in w["ziel_urls"][("app", "3000")]], ["nginx:443 in proxy"])
+
+    def test_ziel_nur_auf_loopback(self):
+        # Proxy von außerhalb (Container-IP), Dienst lauscht nur auf Loopback: Adresse nicht erreichbar
+        node = dienst("node:3000", "/usr/local/bin/node", ["3000"], exposed=False)
+        e = {"url": "https://www.example.org/app/", "erreichbar": True, "weg": "nginx:443 auf dem Host", "lokal": False}
+        scanner.webadressen([node], web(self="app", via_urls={"3000": [e]}))
+        self.assertEqual([(x["url"], x["erreichbar"]) for x in node["webadressen"]],
+                         [("https://www.example.org/app/", False)])
+
+    def test_nur_loopback_je_weg(self):
+        # Dienst nur auf Loopback, Port erreichbar über einen Proxy mit demselben Loopback: die Adresse eines
+        # zweiten Proxys über die Container-IP erreicht ihn trotzdem nicht
+        node = dienst("node:3000", "/usr/local/bin/node", ["3000"], exposed=True)
+        node["bindungen"] = {"3000": "localhost"}
+        via = [{"url": "https://a.example/", "erreichbar": True, "weg": "nginx:443 in proxy", "lokal": True},
+               {"url": "https://b.example/", "erreichbar": True, "weg": "nginx:443 auf dem Host", "lokal": False}]
+        scanner.webadressen([node], web(self="app", via_urls={"3000": via}))
+        self.assertEqual([(e["url"], e["erreichbar"]) for e in node["webadressen"]],
+                         [("https://a.example/", True), ("https://b.example/", False)])
+
+    def test_weitergeleitete_adressen_je_port(self):
+        # nginx im Container mit getrennten Websites an 80 und 8080: eine an Port 80 weitergeleitete Adresse gilt
+        # nicht für die Website an 8080 (und deren Ziel)
+        sites = [{"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["public.example"], "datei": "a.conf",
+                  "roots": [], "listen": [{"adresse": "*", "port": "80", "ssl": False}], "weiter": []},
+                 {"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["intern.example"], "datei": "b.conf",
+                  "roots": [], "listen": [{"adresse": "*", "port": "8080", "ssl": False}],
+                  "weiter": [("/private/", "http://127.0.0.1:9000/")]}]
+        e = {"url": "https://public.example/app/", "erreichbar": True, "weg": "nginx:443 auf dem Host", "lokal": False}
+        nginx = dienst("nginx:80,8080", "/usr/sbin/nginx", ["80", "8080"], exposed=True)
+        backend = dienst("python3:9000", "/usr/bin/python3", ["9000"])
+        scanner.webadressen([nginx, backend], web(self="app", sites=sites, via_urls={"80": [e]}))
+        self.assertIn("https://public.example/app/", [x["url"] for x in nginx["webadressen"]])
+        self.assertEqual([x["url"] for x in backend["webadressen"]], ["http://intern.example:8080/private/"])
+
+    def test_erreichbarer_weg_ersetzt_nicht_erreichbaren(self):
+        # dieselbe Adresse für dasselbe Ziel über einen internen und einen öffentlichen Webserver: erreichbar
+        w = dict(self.w, self="Host", containers={"172.18.0.5": "api"})
+        w["sites"] = [dict(w["sites"][1], namen=["www.example.org"], listen=[{"adresse": "127.0.0.1", "port": "80",
+                                                                               "ssl": False}],
+                           weiter=[("/api/", "http://172.18.0.5:8080/")]),
+                      dict(w["sites"][0], namen=["www.example.org"], listen=[{"adresse": "*", "port": "80", "ssl": False}],
+                           weiter=[("/api/", "http://172.18.0.5:8080/")])]
+        services = [dienst("httpd-prefork:80", "/usr/sbin/httpd-prefork", ["80"]),
+                    dienst("nginx:80", "/usr/sbin/nginx", ["80"], exposed=True)]
+        scanner.webadressen(services, w)
+        self.assertEqual([(x["url"], x["erreichbar"], x["weg"]) for x in w["ziel_urls"][("api", "8080")]],
+                         [("http://www.example.org/api/", True, "nginx:80 auf dem Host")])
+        liste = [{"url": "u", "erreichbar": False, "weg": "a"}]
+        self.assertTrue(scanner.adresse_zufuegen(liste, {"url": "u", "erreichbar": True, "weg": "b"}))
+        self.assertFalse(scanner.adresse_zufuegen(liste, {"url": "u", "erreichbar": False, "weg": "c"}))
+        self.assertEqual(liste, [{"url": "u", "erreichbar": True, "weg": "b"}])
+
+    def test_gleiche_url_eigene_website_und_proxy(self):
+        # dieselbe URL vom Proxy übernommen und als eigene Website: beide bleiben (Zuordnung zur Website mit Docroot),
+        # ebenso bei anderer Herkunft (lokal)
+        site = {"exe": "/usr/sbin/nginx", "art": "nginx", "namen": ["www.example.org"], "datei": "www.conf",
+                "roots": ["/var/www/html"], "listen": [{"adresse": "*", "port": "80", "ssl": False}], "weiter": []}
+        via = [{"url": "http://www.example.org/", "erreichbar": True, "weg": "nginx:443 auf dem Host", "lokal": False},
+               {"url": "http://www.example.org/", "erreichbar": True, "weg": "nginx:443 in proxy", "lokal": True}]
+        nginx = dienst("nginx:80", "/usr/sbin/nginx", ["80"], exposed=True)
+        scanner.webadressen([nginx], web(self="app", sites=[site], via_urls={"80": via}))
+        self.assertEqual(sorted((e["site"] is site, e["lokal"]) for e in nginx["webadressen"]),
+                         [(False, False), (False, True), (True, False)])
+
+    def test_lokal_ueber_upstream(self):
+        # upstream mit 127.0.0.1 im Host-Netzwerk: Anfrage kommt über Loopback (lokal), über die Container-IP nicht
+        w = dict(self.w, self="Host", containers={"172.18.0.5": "api"}, loopback=["hostapp"],
+                 upstreams={"status": ["127.0.0.1:8080"], "api": ["172.18.0.5:3000"]})
+        w["sites"] = [dict(w["sites"][0], weiter=[("/status/", "http://status/"), ("/api/", "http://api/")])]
+        services = [dienst("nginx:443", "/usr/sbin/nginx", ["443"], exposed=True)]
+        scanner.webadressen(services, w)
+        self.assertEqual([e["lokal"] for e in w["ziel_urls"][("hostapp", "8080")]], [True])
+        self.assertEqual([e["lokal"] for e in w["ziel_urls"][("api", "3000")]], [False])
+
+    def test_urls_zufuegen(self):
+        # je Container und Port gesammelt, im gemeinsamen Netzwerk-Namespace auch für die übrigen Container der
+        # Gruppe; eine schon übergebene Liste bleibt unverändert
+        urls = {}
+        e = {"url": "https://a/", "erreichbar": False, "weg": "x", "lokal": False}
+        self.assertEqual(scanner.urls_zufuegen(urls, {("app", "80"): [e]}, {"app": ["vpn"]}), {"app", "vpn"})
+        uebergeben = urls["app"]["80"]
+        self.assertEqual(scanner.urls_zufuegen(urls, {("app", "80"): [e]}, {}), set())
+        self.assertEqual(scanner.urls_zufuegen(urls, {("app", "80"): [dict(e, erreichbar=True)]}, {}), {"app"})
+        self.assertEqual((uebergeben[0]["erreichbar"], urls["app"]["80"][0]["erreichbar"]), (False, True))
+
+
+class HostWebadressen(unittest.TestCase):
+    def test_webadressen_der_ziele(self):
+        # nginx direkt auf dem Host: die Webadressen seiner Ziele in Containern (Container-IP, veröffentlichter Port
+        # auf Loopback) gehen an deren Scan, ohne Scan des Hosts
+        infos = [inspect("app", ["back"]),
+                 inspect("regdido", ["back"], ports={"3000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "7776"}]})]
+        ip = infos[0]["NetworkSettings"]["Networks"]["back"]["IPAddress"]
+        procs = ("P\t10\t/usr/sbin/nginx\t/\tnginx: master process /usr/sbin/nginx\t0:0\t1\nS\t10\t5\n"
+                 "T\t5\t00000000:01BB\ttcp\n")
+        conf = ("http { server { listen 443 ssl; server_name www.example.org; location /app/ { proxy_pass "
+                "http://%s:3000/; } location /reg/ { proxy_pass http://127.0.0.1:7776/; } } }" % ip)
+        with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 0)), \
+                mock.patch.object(scanner, "run", return_value=(0, procs)), \
+                mock.patch.object(scanner.Host, "exec", return_value=(0, conf)):
+            ziele, services, _, _, ziel_urls = scanner.host_proxys(infos)
+        self.assertEqual(ziel_urls, {
+            ("app", "3000"): [{"url": "https://www.example.org/app/", "erreichbar": True,
+                               "weg": "nginx:443 auf dem Host", "lokal": False}],
+            ("regdido", "3000"): [{"url": "https://www.example.org/reg/", "erreichbar": True,
+                                   "weg": "nginx:443 auf dem Host", "lokal": False}]})
+        self.assertEqual(services[0]["label"], "nginx:443 auf dem Host")
 
 
 if __name__ == "__main__":

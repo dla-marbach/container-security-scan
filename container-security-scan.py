@@ -30,7 +30,7 @@ Aufruf:
      wie --alle-container, aber nur die erreichbaren Container und deren Backends
   Daten: daten/ (Branch daten) und osv-db/ neben diesem Skript (oder --db DIR, auch mehrfach)
 
-Ergebnis: scan_<name>_<zeit>.md        Bericht: Ergebnis, Dienste, Befunde nach Priorität, Anhang
+Ergebnis: scan_<name>_<zeit>.md        Bericht: Ergebnis, Dienste, Webadressen, Befunde nach Priorität, Anhang
           scan_<name>_<zeit>.cdx.json  SBOM (CycloneDX 1.5) als Beleg; auch mit Trivy/Grype/Dependency-Track nutzbar
           scan_<name>_<zeit>.sha256    Prüfsummen
 Rückgabewert: 0 = keine relevanten Schwachstellen, 1 = relevante Schwachstellen gefunden (siehe RELEVANT;
@@ -53,6 +53,8 @@ Nicht erfasst: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung.
 "Genutzt von" je Komponente: OS-Paket/Laufzeit = Programm oder geladene Bibliothek (/proc/<pid>/maps);
 npm/composer/pypi = Projektverzeichnis passt zu Arbeitsverzeichnis/Skript bzw. Docroot (welche Pakete eine
 Anwendung wirklich importiert, ist von außen nicht sichtbar).
+Webadressen je Dienst (nur zur Information): aus nginx (listen, server_name, TLS) und Apache (vHosts aus
+-S) im Container, in Proxys davor (andere Container, direkt auf dem Host) und über mehrere Stufen mit Pfad.
 """
 import argparse
 import concurrent.futures
@@ -83,7 +85,7 @@ from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
@@ -1256,19 +1258,53 @@ def nginx_ziele(target, variables, depth=0):
             for t in nginx_ziele(target[:m.start()] + value + target[m.end():], variables, depth + 1)]
 
 
+NGINX_PASS = ("proxy_pass", "fastcgi_pass", "uwsgi_pass", "grpc_pass", "scgi_pass")
+
+
+def nginx_listen(args):
+    """Argumente einer listen-Anweisung -> {"adresse", "port", "ssl", "udp"}; Unix-Sockets: None."""
+    if not args or args[0].startswith("unix:"):
+        return None
+    a = args[0]
+    m = re.match(r"^\[([^\]]+)\](?::(\d+))?$", a)
+    if m:
+        adresse, port = m.group(1), m.group(2) or "80"
+    elif a.isdigit():
+        adresse, port = "*", a
+    elif re.search(r":\d+$", a):
+        adresse, _, port = a.rpartition(":")
+    else:
+        adresse, port = a, "80"
+    return {"adresse": "*" if adresse in ("*", "0.0.0.0") else adresse, "port": port, "ssl": "ssl" in args[1:],
+            "udp": "quic" in args[1:]}
+
+
+def location_pfad(stack):
+    """Pfad des innersten location-Blocks ("/app/", "~ \\.php$", "= /x"); "" außerhalb."""
+    for words in reversed(stack):
+        if words[:1] == ["location"]:
+            return " ".join(words[1:])
+    return ""
+
+
 def parse_nginx(conf, web, exe):
     """Ausgabe von 'nginx -T' auswerten: server-Blöcke, root, *_pass, upstream; Variablen aus set und map
-    (proxy_pass $backend mit resolver, damit nginx auch ohne laufendes Backend startet)."""
-    conf = re.sub(r"#[^\n]*", "", conf)
+    (proxy_pass $backend mit resolver, damit nginx auch ohne laufendes Backend startet). Je server-Block im
+    http-Kontext eine Website (listen, server_name, TLS, Weiterleitungen je location) für die Webadressen."""
+    marken = [(m.start(), m.group(1)) for m in re.finditer(r"^# configuration file (.+?):\s*$", conf, re.M)]
+    conf = re.sub(r"#[^\n]*", lambda m: " " * len(m.group(0)), conf)     # Kommentare, Positionen bleiben
     stack, stmt, vhost = [], "", None
-    targets, variables = [], defaultdict(list)
-    for tok in re.findall(r"\$\{\w+\}|[{};]|(?:[^{};$]|\$(?!\{))+", conf):     # ${var} gehört zur Anweisung
+    targets, variables, sites = [], defaultdict(list), []
+    for mt in re.finditer(r"\$\{\w+\}|[{};]|(?:[^{};$]|\$(?!\{))+", conf):     # ${var} gehört zur Anweisung
+        tok = mt.group(0)
         if tok == "{":
             words = stmt.split()
             stack.append(words)
             stmt = ""
             if words[:1] == ["server"]:
-                vhost = {"listen": [], "server_name": "", "root": []}
+                vhost = {"listen": [], "server_name": "", "root": [], "listen_info": [], "namen": [], "weiter": [],
+                         "ssl": False, "datei": next((f for pos, f in reversed(marken) if pos < mt.start()), ""),
+                         "http": not any(b[:1] in (["stream"], ["mail"]) for b in stack[:-1])}
         elif tok == ";":
             words, stmt = stmt.split(), ""
             if not words:
@@ -1283,14 +1319,22 @@ def parse_nginx(conf, web, exe):
                 variables[arg.lstrip("$")].append(words[2].strip("'\""))
             elif key == "listen" and vhost is not None:
                 vhost["listen"].append(arg)
+                info = nginx_listen(words[1:])
+                if info:
+                    vhost["listen_info"].append(info)
             elif key == "server_name" and vhost is not None:
                 vhost["server_name"] = " ".join(words[1:])
+                vhost["namen"] = [n.strip("'\"") for n in words[1:]]
+            elif key == "ssl" and arg == "on" and vhost is not None:
+                vhost["ssl"] = True
             elif key == "root":
                 web["docroots"][exe].append(arg)
                 if vhost is not None:
                     vhost["root"].append(arg)
-            elif key in ("proxy_pass", "fastcgi_pass", "uwsgi_pass", "grpc_pass", "scgi_pass"):
+            elif key in NGINX_PASS:
                 targets.append(arg.strip("'\""))
+                if vhost is not None:
+                    vhost["weiter"].append((location_pfad(stack) or "/", arg.strip("'\"")))
             elif key == "fastcgi_param" and arg == "SCRIPT_FILENAME" and len(words) > 2:
                 prefix = words[2].split("$")[0]
                 if prefix.startswith("/"):
@@ -1300,11 +1344,19 @@ def parse_nginx(conf, web, exe):
                 web["vhosts"][exe].append("listen " + ",".join(vhost["listen"]) +
                                           (" server_name " + vhost["server_name"] if vhost["server_name"] not in ("", "_") else "") +
                                           (" root " + ",".join(vhost["root"]) if vhost["root"] else ""))
+                if vhost["http"]:
+                    sites.append(vhost)
                 vhost = None
         else:
             stmt += tok
     for t in targets:
         web["backends"][exe].extend(nginx_ziele(t, variables))
+    for v in sites:
+        listen = v["listen_info"] or ([] if v["listen"] else [{"adresse": "*", "port": "80", "ssl": False, "udp": False}])
+        web["sites"].append({"exe": exe, "art": "nginx", "namen": [n for n in v["namen"] if n not in ("", "_", '""')],
+                             "listen": [dict(l, ssl=l["ssl"] or v["ssl"]) for l in listen if not l["udp"]],
+                             "roots": list(OrderedDict.fromkeys(v["root"])), "datei": v["datei"],
+                             "weiter": [(pfad, z) for pfad, t in v["weiter"] for z in nginx_ziele(t, variables)]})
 
 
 def server_masters(procs, exe):
@@ -1341,9 +1393,77 @@ def apache_optionen(argv):
 APACHE_REWRITE_PROXY = re.compile(r"(?i)^\[(?:.*,)?\s*(?:P|proxy)\s*(?:,.*)?\]$")
 
 
+def apache_vhosts(out):
+    """vHosts aus 'httpd -S': [{"adresse", "port", "name", "aliase", "datei", "zeile"}] – maßgeblich, denn Apache
+    hat dabei Include, Define und IfDefine schon ausgewertet."""
+    result, nvh = [], None
+    for line in out.splitlines():
+        m = re.match(r"^(\S+):(\d+|\*)\s+is a NameVirtualHost\s*$", line)
+        if m:
+            nvh = m.groups()
+            continue
+        m = re.match(r"^(\S+):(\d+|\*)\s+(\S+) \((.+):(\d+)\)\s*$", line)
+        if m:
+            result.append({"adresse": m.group(1), "port": m.group(2), "name": m.group(3), "aliase": [],
+                           "datei": m.group(4), "zeile": int(m.group(5))})
+            nvh = None
+            continue
+        m = re.match(r"^\s+port (\d+|\*) namevhost (\S+) \((.+):(\d+)\)\s*$", line)
+        if m and nvh:
+            result.append({"adresse": nvh[0], "port": m.group(1), "name": m.group(2), "aliase": [],
+                           "datei": m.group(3), "zeile": int(m.group(4))})
+            continue
+        m = re.match(r"^\s+(?:wild )?alias (\S+)\s*$", line)
+        if m and result:
+            result[-1]["aliase"].append(m.group(1))
+        elif not line.startswith((" ", "\t")):
+            nvh = None
+    return result
+
+
+def apache_name(word):
+    """ServerName "https://www.example.org:443" -> ("www.example.org", "https" bzw. "")."""
+    m = re.match(r"^(?:(https?)://)?([^/:]+|\[[^\]]+\])(?::\d+)?/?$", word)
+    return (m.group(2), m.group(1) or "") if m else (word, "")
+
+
+def apache_sites(exe, s_out, bloecke, haupt):
+    """Websites aus den vHosts von -S (Namen, Aliase, Adressen), ergänzt um TLS, Docroots und Weiterleitungen aus
+    dem Block in der Datei; ohne vHosts in -S die Blöcke aus den Dateien; dazu der Hauptserver an den Ports aus
+    Listen ohne eigenen vHost."""
+    vhs = apache_vhosts(s_out)
+    sites = []
+    for v in vhs:
+        b = bloecke.get((v["datei"], v["zeile"])) or {"roots": [], "weiter": [], "ssl": False}
+        adr = v["adresse"].strip("[]")
+        sites.append({"exe": exe, "art": "apache", "namen": [v["name"]] + v["aliase"], "roots": b["roots"],
+                      "weiter": b["weiter"], "datei": "%s:%d" % (v["datei"], v["zeile"]),
+                      "listen": [{"adresse": "*" if adr in ("*", "_default_", "0.0.0.0", "::") else adr,
+                                  "port": v["port"], "ssl": b["ssl"]}]})
+    if not vhs:                  # -S ohne vHosts bzw. fehlgeschlagen: Blöcke aus den Dateien
+        for (datei, zeile), b in sorted(bloecke.items()):
+            listen = []
+            for a in b["adressen"]:
+                adr, _, port = a.rpartition(":") if ":" in a else (a, "", "*")
+                listen.append({"adresse": "*" if adr in ("*", "_default_", "0.0.0.0", "[::]") else adr.strip("[]"),
+                               "port": port, "ssl": b["ssl"]})
+            sites.append({"exe": exe, "art": "apache", "namen": [x for x in [b["name"]] + b["aliase"] if x],
+                          "roots": b["roots"], "weiter": b["weiter"], "datei": "%s:%d" % (datei, zeile),
+                          "listen": listen})
+    belegt = {l["port"] for s in sites for l in s["listen"]}
+    haupt_listen = [l for l in haupt["listen"] if l["port"] not in belegt]
+    for s in sites:              # Port "*" im vHost: alle Listen-Ports
+        s["listen"] = [dict(l, port=h["port"]) for l in s["listen"] for h in (haupt["listen"] if l["port"] == "*" else [l])]
+    if haupt_listen:             # Hauptserver: Ports ohne vHost
+        sites.append({"exe": exe, "art": "apache", "namen": haupt["namen"], "roots": haupt["roots"],
+                      "weiter": haupt["weiter"], "datei": "(Hauptserver)",
+                      "listen": [dict(l, ssl=l["ssl"] or haupt["ssl"] or l["port"] == "443") for l in haupt_listen]})
+    return sites
+
+
 def parse_apache(c, exe, web, user=NOBODY, optionen=()):
     """Apache-Konfiguration: -S (vHosts), -M (Module), -t -D DUMP_INCLUDES (Dateien) mit den Optionen des
-    Hauptprozesses; die Dateien selbst für Docroots und Weiterleitungen."""
+    Hauptprozesses; die Dateien selbst für Docroots, Weiterleitungen und TLS (Websites für die Webadressen)."""
     fehler = []
     optionen = list(optionen)
 
@@ -1357,7 +1477,8 @@ def parse_apache(c, exe, web, user=NOBODY, optionen=()):
         if rc != 0 and args[0] in ("-S", "-t"):
             fehler.append(" ".join(args))
         return out
-    raw = "--- %s -S\n%s--- %s -M\n%s" % (" ".join([exe] + optionen), ap("-S"), exe, ap("-M"))
+    s_out = ap("-S")
+    raw = "--- %s -S\n%s--- %s -M\n%s" % (" ".join([exe] + optionen), s_out, exe, ap("-M"))
     web["raw"].append(raw)
     env = dict(e.split("=", 1) for e in c.info["Config"].get("Env") or [] if "=" in e)
 
@@ -1365,6 +1486,7 @@ def parse_apache(c, exe, web, user=NOBODY, optionen=()):
         word = re.sub(r"\$\{(\w+)\}", lambda m: env.get(m.group(1), m.group(0)), word)
         return word if word.startswith("/") and "${" not in word else None
     m = re.search(r'Main DocumentRoot: "([^"]+)"', raw)
+    haupt = {"namen": [], "roots": [m.group(1)] if m else [], "listen": [], "weiter": [], "ssl": False}
     if m:
         web["docroots"][exe].append(m.group(1))
     if re.search(r"^\s*php\d*_module", raw, re.M):
@@ -1374,11 +1496,14 @@ def parse_apache(c, exe, web, user=NOBODY, optionen=()):
         web["unlesbar"].add(exe)
         web["problems"].append("%s %s fehlgeschlagen: Konfiguration (vHosts, Proxy-Backends) nicht lesbar"
                                % (exe, " bzw. ".join(fehler)))
+    bloecke = {}              # (Datei, Zeile von <VirtualHost>) -> vHost
     for conf in sorted(set(re.findall(r"(/\S+)\s*$", includes, re.M))):
-        vhost, weiter = None, ""
-        for line in c.read_file(conf).splitlines():
+        stack, vhost, weiter, start = [], None, "", 0
+        for n, line in enumerate(c.read_file(conf).splitlines(), 1):
             if weiter:                     # Fortsetzungszeile (\ am Zeilenende)
                 line, weiter = weiter + " " + line.strip(), ""
+            else:
+                start = n
             if line.rstrip().endswith("\\"):
                 weiter = line.rstrip()[:-1]
                 continue
@@ -1386,26 +1511,65 @@ def parse_apache(c, exe, web, user=NOBODY, optionen=()):
                 continue
             words = [w.strip('"') for w in line.split()]
             key = words[0].lower() if words else ""
-            if key == "<virtualhost":
-                vhost = {"listen": words[1].rstrip(">") if len(words) > 1 else "", "name": "", "root": ""}
-            elif key == "servername" and vhost is not None and len(words) > 1:
-                vhost["name"] = words[1]
+            # innerster Block mit Pfad (für den Pfad von Weiterleitungen)
+            ort = next((b for b in reversed(stack) if b[0] in ("<location", "<locationmatch", "<files", "<filesmatch",
+                                                              "<directory", "<directorymatch")), None)
+            if key.startswith("</"):
+                if stack:
+                    stack.pop()
+                if key == "</virtualhost>" and vhost is not None:
+                    web["vhosts"][exe].append("VirtualHost " + vhost["listen"] + (" ServerName " + vhost["name"] if vhost["name"] else "") +
+                                              (" DocumentRoot " + vhost["root"] if vhost["root"] else ""))
+                    vhost = None
+                continue
+            if key.startswith("<"):
+                stack.append((key, " ".join(words[1:]).rstrip(">").strip().strip('"') if len(words) > 1 else ""))
+                if key == "<virtualhost":
+                    vhost = {"listen": words[1].rstrip(">") if len(words) > 1 else "", "name": "", "root": "",
+                             "adressen": [w.rstrip(">") for w in words[1:] if w.rstrip(">")], "aliase": [],
+                             "roots": [], "weiter": [], "ssl": False}
+                    bloecke[(conf, start)] = vhost
+                continue
+            ziel = vhost if vhost is not None else haupt
+            if key == "servername" and len(words) > 1:
+                name, schema = apache_name(words[1])
+                if vhost is not None:
+                    vhost["name"] = name
+                else:
+                    haupt["namen"] = [name]
+                if schema == "https":
+                    ziel["ssl"] = True
+            elif key == "serveralias" and vhost is not None:
+                vhost["aliase"] += words[1:]
+            elif key == "sslengine" and len(words) > 1 and words[1].lower() == "on":
+                ziel["ssl"] = True
+            elif key == "listen" and len(words) > 1 and vhost is None:
+                adr, _, port = words[1].rpartition(":") if ":" in words[1] else ("*", "", words[1])
+                haupt["listen"].append({"adresse": "*" if adr in ("", "*", "0.0.0.0", "[::]") else adr.strip("[]"),
+                                        "port": port, "ssl": len(words) > 2 and words[2].lower() == "https"})
             elif key == "documentroot" and len(words) > 1 and path(words[1]):
                 web["docroots"][exe].append(path(words[1]))
                 if vhost is not None:
                     vhost["root"] = path(words[1])
+                    vhost["roots"].append(path(words[1]))
             elif key == "alias" and len(words) > 2 and path(words[2]):
                 web["docroots"][exe].append(path(words[2]))
             elif key in ("proxypass", "proxypassmatch"):
-                web["backends"][exe] += [w for w in words[1:] if "://" in w]
+                urls = [w for w in words[1:] if "://" in w]
+                web["backends"][exe] += urls
+                pfad = words[1] if len(words) > 2 and "://" not in words[1] else (ort[1] if ort else "/")
+                if key == "proxypassmatch" or (ort and ort[0].endswith("match")):
+                    pfad = "~ " + pfad
+                ziel["weiter"] += [(pfad, u) for u in urls]
             elif key == "rewriterule" and len(words) > 3 and "://" in words[2] and APACHE_REWRITE_PROXY.match(words[3]):
                 web["backends"][exe].append(words[2])
+                ziel["weiter"].append(("~ " + words[1], words[2]))
             elif key == "sethandler" and len(words) > 1 and words[1].lower().startswith("proxy:"):
                 web["backends"][exe].append(words[1][6:])
-            elif key == "</virtualhost>" and vhost is not None:
-                web["vhosts"][exe].append("VirtualHost " + vhost["listen"] + (" ServerName " + vhost["name"] if vhost["name"] else "") +
-                                          (" DocumentRoot " + vhost["root"] if vhost["root"] else ""))
-                vhost = None
+                pfad = ort[1] if ort and ort[0] in ("<location", "<locationmatch") else \
+                    "~ " + ort[1] if ort and ort[0] in ("<files", "<filesmatch") else "/"
+                ziel["weiter"].append((pfad, words[1][6:]))
+    web["sites"] += apache_sites(exe, s_out, bloecke, haupt)
 
 
 # Proxys und Weiterleitungen, deren Ziele das Skript nicht (vollständig) aus der Konfiguration liest. Ist einer
@@ -1598,7 +1762,8 @@ def web_leer():
     return {"docroots": defaultdict(list), "backends": defaultdict(list), "vhosts": defaultdict(list),
             "upstreams": defaultdict(list), "modphp": set(), "raw": [], "published": defaultdict(list), "containers": {},
             "via_proxy": {}, "problems": [], "unlesbar": set(), "label_ziele": {}, "host_network": False, "lan": [],
-            "spender": None, "nachbarn": [], "netz_gruppe": [], "loopback": []}
+            "spender": None, "nachbarn": [], "netz_gruppe": [], "loopback": [], "sites": [], "via_urls": {},
+            "ziel_urls": OrderedDict()}
 
 
 def collect_web(c, procs):
@@ -2045,6 +2210,9 @@ def mark_usage(comps, procs, owners, web):
                          "endpoints": [("udp://" if port.endswith("/udp") else "tcp://") + e.split(" ")[0]
                                        for port in p["ports"] for e in web["published"].get(port, [])],
                          "exposed": exposed, "unklar": unklar,
+                         # Port -> (Beschreibung, erreichbar) bzw. Adresse (alle, localhost, IP) für die Webadressen
+                         "ports": OrderedDict((port, port_erreichbar(p, port, addr, web)) for port, addr in p["ports"].items()),
+                         "bindungen": OrderedDict(p["ports"]),
                          # Backends eines öffentlichen Dienstes, die keinem Container zugeordnet werden können
                          # (variable Ziele: siehe unklar)
                          "unresolved": [b for b in backends if wirkt[label] and not backend_containers(b, web)
@@ -2090,6 +2258,158 @@ def port_erreichbar(p, port, addr, web):
         return "nicht veröffentlicht; aufgerufen von " + ", ".join(web["via_proxy"][port]) + \
             " (Datenbank/Cache/Message Broker: dadurch nicht erreichbar)", False
     return "nicht veröffentlicht", False
+
+
+# ===========================================================================
+# 7a. Webadressen: unter welchen Adressen ein Dienst Anfragen bekommt (nur zur Information, ohne Einfluss auf
+# Priorität und Rückgabewert)
+# ===========================================================================
+def site_urls(site, web):
+    """Webadressen einer Website (eine je Name und Adresse): Schema aus TLS, Name aus server_name/ServerName/
+    ServerAlias (ohne Namen "*": jeder Name), Port – im Container der veröffentlichte Port des Hosts, falls
+    vorhanden."""
+    namen = []
+    for n in site["namen"]:
+        if n.startswith("~"):            # regulärer Ausdruck (nginx): nicht als Adresse darstellbar
+            continue
+        namen += [n[1:], "*" + n] if n.startswith(".") else [n]
+    namen = list(OrderedDict.fromkeys(namen)) or ["*"]
+    urls = []
+    for l in site["listen"]:
+        schema = "https" if l["ssl"] else "http"
+        pub = [e.split(" ")[0].rpartition(":")[2] for e in web["published"].get(l["port"], [])]
+        port = pub[0] if pub else l["port"]
+        for n in namen:
+            urls.append("%s://%s%s/" % (schema, n, "" if port == {"http": "80", "https": "443"}[schema] else ":" + port))
+    return list(OrderedDict.fromkeys(urls))
+
+
+def url_pfad(url, pfad):
+    """Webadresse und Pfad einer Weiterleitung: Präfix anhängen, reguläre Ausdrücke in Klammern."""
+    m = re.match(r"^(?:= |\^~ )?(/\S*)$", pfad or "/")
+    if m:
+        return url if m.group(1) == "/" else url.rstrip("/") + m.group(1)
+    return "%s (%s)" % (url, re.sub(r"^~\*?\s*", "", pfad))
+
+
+def dienst_sites(svc, web):
+    """Websites des Webservers eines Dienstes, an deren Ports der Dienst lauscht."""
+    return [s for s in web.get("sites", []) if s["exe"] == svc.get("exe")
+            and any(l["port"] in svc.get("ports", {}) for l in s["listen"])]
+
+
+def adresse_zufuegen(liste, eintrag):
+    """Webadresse in eine Liste übernehmen: neu anhängen bzw. eine vorhandene durch einen erreichbaren Weg
+    ersetzen (der erste erreichbare Weg bleibt). Zusammengeführt wird nur bei gleicher URL, Website, gleichem
+    Eingangsport und gleicher Herkunft (lokal), sonst ginge die Zuordnung zum Docroot bzw. zu einem Dienst nur auf
+    Loopback verloren. Liefert, ob sich die Liste geändert hat."""
+    for i, e in enumerate(liste):
+        if e["url"] == eintrag["url"] and e.get("site") is eintrag.get("site") and \
+                e.get("port") == eintrag.get("port") and e.get("lokal") == eintrag.get("lokal"):
+            if eintrag["erreichbar"] and not e["erreichbar"]:
+                liste[i] = eintrag
+                return True
+            return False
+    liste.append(eintrag)
+    return True
+
+
+def fuer_site(e, site):
+    """Gilt eine Webadresse für diese Website: ihre eigene bzw. eine weitergeleitete, die an einem ihrer Ports
+    ankommt (Port unbekannt, z.B. Unix-Socket: für alle)?"""
+    return e["site"] is site or (e["site"] is None and (e.get("port") is None or
+                                                        any(l["port"] == e["port"] for l in site["listen"])))
+
+
+def webadressen(services, web):
+    """Webadressen je Dienst (svc["webadressen"] = [{"url", "erreichbar", "weg", "site", "port", "lokal"}]): die
+    eigenen Websites (an Ports, an denen er lauscht), die Pfade, die ein Webserver im selben Container bzw. auf
+    dem Host an ihn weiterleitet (auch mehrstufig: nginx -> Apache -> php-fpm), und die, die ein Proxy auf dem
+    Host bzw. in einem anderen Container an ihn weiterleitet (web["via_urls"]: {Port: [{"url", "erreichbar",
+    "weg", "lokal"}]}). "erreichbar" wie der Port, über den die Anfrage hereinkommt (von außerhalb zusätzlich nur,
+    wenn der Port des Dienstes für den Proxy erreichbar ist, siehe port_erreichbar); "site" nur bei eigenen
+    Websites; "port": Port, an dem die Anfrage beim Dienst ankommt (None: unbekannt, z.B. Unix-Socket) –
+    weitergeleitete Adressen gelten nur für Websites an diesem Port; "lokal": die Anfrage kommt über dasselbe
+    Loopback (erreicht auch einen Dienst, der nur auf Loopback lauscht). Weiterleitungen in andere Container:
+    web["ziel_urls"] = {(Container, Port): [{"url", "erreichbar", "weg", "lokal"}]}."""
+    for svc in services:
+        svc["webadressen"] = []
+        for port in svc.get("ports", {}):
+            offen = svc["ports"][port][1]
+            for e in web.get("via_urls", {}).get(port, []):
+                # nur auf Loopback: erreicht nur ein Proxy über dasselbe Loopback, auch wenn ein anderer Weg den Port
+                # erreichbar macht
+                weg_offen = offen and (e.get("lokal", False) or not nur_lokal(svc.get("bindungen", {}).get(port, "")))
+                adresse_zufuegen(svc["webadressen"], {
+                    "url": e["url"], "erreichbar": e["erreichbar"] and weg_offen, "weg": e["weg"] + " → " + svc["label"],
+                    "site": None, "port": port, "lokal": e.get("lokal", False)})
+        for site in dienst_sites(svc, web):
+            for l in site["listen"]:
+                if l["port"] not in svc["ports"]:
+                    continue
+                offen = svc["ports"][l["port"]][1]
+                for url in site_urls(dict(site, listen=[l]), web):
+                    adresse_zufuegen(svc["webadressen"], {"url": url, "erreichbar": offen, "weg": svc["label"],
+                                                          "site": site, "port": l["port"], "lokal": False})
+    ziel_von = {}            # Port -> Dienst im selben Container bzw. auf dem Host
+    for svc in services:
+        for port in svc.get("ports", {}):
+            ziel_von.setdefault(port, svc)
+    php = [svc for svc in services if svc.get("name", "").startswith("php-fpm")]
+    web["ziel_urls"] = OrderedDict()
+    wo = " auf dem Host" if web["self"] == "Host" else " in " + web["self"]
+
+    for _ in range(3):       # Weiterleitungen, auch über mehrere Stufen
+        neu = False
+        for front in services:
+            for site in dienst_sites(front, web):
+                eintraege = [e for e in front["webadressen"] if fuer_site(e, site)]
+                for pfad, ziel in site["weiter"]:
+                    # über dasselbe Loopback (Host-Netzwerk, gemeinsamer Netzwerk-Namespace; auch über upstream-Blöcke)
+                    # kommt die Anfrage von 127.0.0.1, über Container-IP bzw. veröffentlichten Port nicht
+                    ueber_loopback = set(backend_containers(ziel, web, nur_loopback=True))
+                    backs = []
+                    for ct, port in backend_containers(ziel, web):
+                        if ct == web["self"]:
+                            backs.append((ziel_von.get(port), port))
+                        elif port != "*":
+                            liste = web["ziel_urls"].setdefault((ct, port), [])
+                            for e in eintraege:
+                                adresse_zufuegen(liste, {"url": url_pfad(e["url"], pfad), "erreichbar": e["erreichbar"],
+                                                         "weg": e["weg"] + wo, "lokal": (ct, port) in ueber_loopback})
+                    if ziel.startswith("unix:") and "php" in ziel:
+                        backs += [(b, None) for b in php]
+                    for back, port in backs:
+                        if not back or back is front:
+                            continue
+                        for e in eintraege:      # gleiche Maschine: auch über Loopback erreichbar
+                            neu = adresse_zufuegen(back["webadressen"], {
+                                "url": url_pfad(e["url"], pfad), "erreichbar": e["erreichbar"],
+                                "weg": e["weg"] + " → " + back["label"], "site": None, "port": port,
+                                "lokal": True}) or neu
+        if not neu:
+            break
+    for svc in services:
+        svc["webadressen"].sort(key=lambda e: not e["erreichbar"])
+
+
+def webadressen_text(urls, limit=3):
+    return ", ".join(urls[:limit]) + (" (+%d)" % (len(urls) - limit) if len(urls) > limit else "")
+
+
+def urls_zufuegen(urls, ziel_urls, gruppen):
+    """Webadressen der Ziele {(Container, Port): [Webadresse]} je Container sammeln: urls = {Container: {Port:
+    [Webadresse]}}, bei gemeinsamem Netzwerk-Namespace für jeden Container der Gruppe; ein erreichbarer Weg ersetzt
+    einen nicht erreichbaren. Liefert die Container, deren Webadressen sich geändert haben."""
+    neu = set()
+    for (ct, port), liste in ziel_urls.items():
+        for ziel in [ct] + gruppen.get(ct, []):
+            # neue Liste: die an eine frühere Prüfung übergebene bleibt unverändert
+            vorhanden = list(urls.setdefault(ziel, {}).get(port, []))
+            if [adresse_zufuegen(vorhanden, e) for e in liste].count(True):
+                urls[ziel][port] = vorhanden
+                neu.add(ziel)
+    return neu
 
 
 # ===========================================================================
@@ -2205,7 +2525,9 @@ def write_cdx(path, c, osinfo, comps, services):
         ("components", components),
         ("services", [OrderedDict([("bom-ref", "dienst:" + s["label"]), ("name", s["name"])] +
                                   ([("version", s["version"])] if s["version"] else []) +
-                                  ([("endpoints", s["endpoints"])] if s["endpoints"] else []) +
+                                  ([("endpoints", list(OrderedDict.fromkeys(
+                                      s["endpoints"] + [e["url"].split(" ")[0] for e in s.get("webadressen", [])])))]
+                                   if s["endpoints"] or s.get("webadressen") else []) +
                                   [("description", s["description"]),
                                    ("properties", [{"name": "container-security-scan:aktiv", "value": s["label"]},
                                                    {"name": "container-security-scan:programm", "value": s["exe"]}])])
@@ -3149,6 +3471,20 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
             w("| %s | %s %s | %s |" % (s["label"], s["name"], s["version"], md(s["description"])))
     else:
         w("Keine Prozesse mit offenen TCP-Ports gefunden.")
+    adressen = [(s, e) for s in services for e in s.get("webadressen", [])]
+    if adressen:
+        w("\n## Webadressen\n")
+        w("Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen bzw. vHost, TLS) in "
+          "diesem Container, in anderen Containern und direkt auf dem Host; Pfade, die ein Proxy weiterleitet, beim "
+          "Ziel. „Erreichbar“ wie der Port, über den die Anfrage hereinkommt.\n")
+        w("| Webadresse | Erreichbar | Dienst | Weg | Website | Docroot / Ziel |\n|---|---|---|---|---|---|")
+        for s, e in adressen:
+            site = e["site"]
+            ziel = ", ".join((site or {}).get("roots") or []) or ", ".join(
+                "%s → %s" % (pf, z) for pf, z in ((site or {}).get("weiter") or [])[:3])
+            w("| %s | %s | %s | %s | %s | %s |" % (md(e["url"]), "ja" if e["erreichbar"] else "nein", s["label"],
+                                                  md(e["weg"]), md(site["datei"]) if site else "(weitergeleitet)",
+                                                  md(ziel) or "–"))
 
     w("\n## Übersicht (Anzahl Befunde)\n")
     cnt = Counter((r["prio"], r["sev"]) for r in rows)
@@ -3209,9 +3545,10 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
 
 # ===========================================================================
 def dienste_ermitteln(a, comps, procs, owners, web, fremd, how_procs):
-    """Dienste eines Containers mit Erreichbarkeit und öffentlichen Backends in anderen Containern, dazu Warnungen
-    zu nicht zuordenbaren Ports und Weiterleitungen. Gemeinsam für scan_container und erreichbarkeit_pruefen
-    (dort ohne Komponenten): die Erreichbarkeit hängt nur von Prozessen, Ports und Konfiguration ab."""
+    """Dienste eines Containers mit Erreichbarkeit, Webadressen und öffentlichen Backends in anderen Containern
+    (deren Webadressen in web["ziel_urls"]), dazu Warnungen zu nicht zuordenbaren Ports und Weiterleitungen.
+    Gemeinsam für scan_container und erreichbarkeit_pruefen (dort ohne Komponenten): beides hängt nur von
+    Prozessen, Ports und Konfiguration ab."""
     services = mark_usage(comps, procs, owners, web)
 
     # Ports, auf denen ein Container lauscht, der den Netzwerk-Namespace mitnutzt: dort bewertet
@@ -3273,6 +3610,7 @@ def dienste_ermitteln(a, comps, procs, owners, web, fremd, how_procs):
                 svc["label"], "; ".join(svc["unklar"]),
                 "Container in denselben Docker-Netzen gelten als möglicherweise öffentlich: " + ", ".join(web["nachbarn"])
                 if web.get("nachbarn") else "keine Container in denselben Docker-Netzen"))
+    webadressen(services, web)
     return services, warnings
 
 
@@ -3281,23 +3619,28 @@ def backends_von(services, name):
     return [(ct, port, "%s in %s" % (label, name)) for s in services for ct, port, label in s["backends"]]
 
 
-def erreichbarkeit_pruefen(name, a, via_proxy=None):
+def erreichbarkeit_pruefen(name, a, via_proxy=None, via_urls=None):
     """Nur die Erreichbarkeit eines Containers, ohne Inventar und Abgleich mit den Daten (Einzelscan, --container):
     Prozesse, Ports und Konfiguration der Webserver wie in scan_container, in Sekunden statt Minuten. Liefert wie
-    scan_container (Rückgabewert, öffentliche Backends, Bericht), Rückgabewert und Bericht None."""
+    scan_container (Rückgabewert, öffentliche Backends, Bericht, Webadressen der Ziele), Rückgabewert und Bericht
+    None."""
     c = Container(name, a.user)
     log("Ermittle Erreichbarkeit über Container '%s' ..." % c.name)
     procs, how_procs, fremd = collect_procs(c)
     web = collect_web(c, procs)
     web["self"] = c.name
     web["via_proxy"] = via_proxy or {}
+    web["via_urls"] = via_urls or {}
     web["venvs"] = set()
     services, _ = dienste_ermitteln(a, [], procs, {}, web, fremd, how_procs)
-    return None, backends_von(services, c.name), None
+    return None, backends_von(services, c.name), None, web["ziel_urls"]
 
 
-def scan_container(name, a, via_proxy=None):
-    """Einen Container scannen. Liefert (Rückgabewert, öffentliche Backends [(Container, Port, Dienst)])."""
+def scan_container(name, a, via_proxy=None, via_urls=None):
+    """Einen Container scannen. via_proxy: {Port: [Grund]} (Ziel eines erreichbaren Proxys), via_urls: {Port:
+    [Webadresse]} (dessen Webadressen, siehe webadressen). Liefert (Rückgabewert, öffentliche Backends [(Container,
+    Port, Dienst)], Basis der Berichtsdateien, Webadressen der Ziele in anderen Containern {(Container, Port):
+    [Webadresse]})."""
     c = Container(name, a.user)
     log("Erfasse Container '%s' ..." % c.name)
     how = {}
@@ -3318,6 +3661,7 @@ def scan_container(name, a, via_proxy=None):
     problems.extend(web["problems"])
     web["self"] = c.name
     web["via_proxy"] = via_proxy or {}
+    web["via_urls"] = via_urls or {}
     web["venvs"] = {posixpath.dirname(f) for f in files if f.endswith("/pyvenv.cfg")}
     services, warnings = dienste_ermitteln(a, comps, procs, owners, web, fremd, how["procs"])
     warnings.extend(root_dienste(c, procs, web))
@@ -3380,13 +3724,21 @@ def scan_container(name, a, via_proxy=None):
         ", P1 ohne Schweregrad: %d" % unknown if unknown else "",
         ", %d gefährliche Einstellungen" % len(konf_relevant) if konf_relevant else "",
         ", ".join(public) or "nichts", base))
+    for svc in services:          # Webadressen der Dienste, erreichbare zuerst
+        if svc.get("webadressen"):
+            offen = list(OrderedDict.fromkeys(e["url"] for e in svc["webadressen"] if e["erreichbar"]))
+            intern = list(OrderedDict.fromkeys(e["url"] for e in svc["webadressen"]
+                                               if not e["erreichbar"] and e["url"] not in offen))
+            print("%s:   Webadressen %s: %s" % (c.name, svc["label"], "; ".join(
+                x for x in ("erreichbar: " + webadressen_text(offen, 8) if offen else "",
+                            "nicht von außen: " + webadressen_text(intern, 4) if intern else "") if x)))
     # relevante Funde auch auf der Konsole (Rundeck-Log, Mail), neue zuerst – Details im Bericht
     for k in sorted(konf_relevant, key=lambda k: not k["neu"]):
         print("%s:   %s%s" % (c.name, "NEU: " if k["neu"] and known is not None else "", konf_text(k)))
     for r in relevant:
         print("%s:   %s%s" % (c.name, "NEU: " if r["neu"] and known is not None else "", fund_text(r)))
     sys.stdout.flush()
-    return code, backends_von(services, c.name), base
+    return code, backends_von(services, c.name), base, web["ziel_urls"]
 
 
 def container_liste(infos, netze):
@@ -3465,14 +3817,15 @@ def host_proxy_pids(infos, proc="/proc"):
 
 def host_proxys(infos):
     """Reverse Proxys und Tunnel direkt auf dem Host, z.B. nginx vor einem Container ohne veröffentlichten Port
-    (proxy_pass http://172.18.0.5:3000). Liefert (Ziele [(Container, Port, Grund)], Dienste, Warnungen, Probleme).
-    Ziele per Container-IP; nicht auswertbare Weiterleitungen machen alle Container mit Docker-Netz möglicherweise
-    erreichbar (der Host erreicht sie über ihre IP)."""
+    (proxy_pass http://172.18.0.5:3000). Liefert (Ziele [(Container, Port, Grund)], Dienste, Warnungen, Probleme,
+    Webadressen der Ziele {(Container, Port): [Webadresse]}). Ziele per Container-IP; nicht auswertbare
+    Weiterleitungen machen alle Container mit Docker-Netz möglicherweise erreichbar (der Host erreicht sie über
+    ihre IP)."""
     pids, gesperrt = host_proxy_pids(infos)
     warnings = ["Prozesse auf dem Host nicht vollständig lesbar (%d; Skript nicht als root?) – Reverse Proxys auf "
                 "dem Host ggf. nicht erkannt" % gesperrt] if gesperrt else []
     if not pids:
-        return [], [], warnings, []
+        return [], [], warnings, [], {}
     rc, out = run(["sh", "-s", "--"] + pids, input=PROC_SH)
     procs, _ = procs_auswerten(out)
     web = web_leer()
@@ -3484,6 +3837,7 @@ def host_proxys(infos):
     for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
         web["label_ziele"][proxy] = label_ziele(proxy, infos)
     services = mark_usage([], procs, {}, web)
+    webadressen(services, web)
     ziele = [(ct, port, grund.replace(svc["label"], svc["label"] + " auf dem Host", 1))
              for svc in services for ct, port, grund in svc["backends"]]
     for svc in services:
@@ -3493,7 +3847,7 @@ def host_proxys(infos):
         if svc["unklar"]:
             warnings.append("Weiterleitungen von %s nicht vollständig auswertbar (%s) – alle Container mit einem "
                             "Docker-Netz gelten als möglicherweise öffentlich" % (svc["label"], "; ".join(svc["unklar"])))
-    return ziele, services, warnings, web["problems"]
+    return ziele, services, warnings, web["problems"], web["ziel_urls"]
 
 
 def host_ausgeben(services, warnings, problems):
@@ -3529,12 +3883,17 @@ def container_auswahl(infos, muster):
     return sorted(treffer)
 
 
-def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None):
-    """Reihenfolge und Weitergabe der Erreichbarkeit: zuerst die erreichbaren Container und (wiederholt) die Backends
-    ihrer Proxys in anderen Containern – vorgezogen, damit sie schon mit ihrer Erreichbarkeit geprüft werden –,
-    danach die übrigen (spaeter). pruefen(Name, via) -> (Rückgabewert, Backends, Bericht): scan_container bzw.
-    erreichbarkeit_pruefen. Liefert (via je Container, Container mit Fehler); codes: Rückgabewerte je Container."""
+def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None, ziel_urls=None):
+    """Reihenfolge und Weitergabe der Erreichbarkeit und der Webadressen: zuerst die erreichbaren Container und
+    (wiederholt) die Backends ihrer Proxys in anderen Containern – vorgezogen, damit sie schon mit ihrer
+    Erreichbarkeit geprüft werden –, danach die übrigen (spaeter). Ein schon geprüftes Ziel, für das neue
+    Webadressen hinzukommen, wird erneut geprüft (wie bei neuen Gründen höchstens dreimal). pruefen(Name, via,
+    urls) -> (Rückgabewert, Backends, Bericht, Webadressen der Ziele): scan_container bzw. erreichbarkeit_pruefen.
+    ziele, ziel_urls: Ziele der Proxys auf dem Host und deren Webadressen. Liefert (via je Container, Webadressen
+    je Container {Container: {Port: [Webadresse]}}, Container mit Fehler); codes: Rückgabewerte je Container."""
     codes = {} if codes is None else codes
+    urls = {}
+    urls_zufuegen(urls, ziel_urls or {}, gruppen)
     queue = OrderedDict((n, {}) for n in public)
     for ct, port, reason in ziele:          # Ziele von Proxys auf dem Host: erreichbar, vorgezogen
         for ziel in [ct] + gruppen.get(ct, []):
@@ -3552,15 +3911,20 @@ def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None):
         vias[name] = via
         runs[name] += 1
         try:
-            codes[name], backends, _ = pruefen(name, via)
+            codes[name], backends, _, neue_urls = pruefen(name, via, dict(urls[name]) if name in urls else None)
         except ScanError as e:
             if run(["docker", "ps", "-q"])[0] == 0 and run(["docker", "inspect", "--type", "container", name])[0] != 0:
                 print("%s: übersprungen – Container nicht mehr vorhanden (z.B. mit --rm beendet)" % name)
                 del vias[name]
                 continue
             log("FEHLER bei %s: %s" % (name, e))
-            codes[name], backends = 2, []
+            codes[name], backends, neue_urls = 2, [], {}
             fehler.append(name)
+        # schon geprüfte Ziele mit neuen Webadressen erneut (wie bei neuen Gründen, höchstens dreimal)
+        for ziel in sorted(urls_zufuegen(urls, neue_urls, gruppen)):
+            if ziel in vias and ziel not in queue and runs[ziel] < 3:
+                queue[ziel] = vias[ziel]
+                queue.move_to_end(ziel, last=False)
         for ct, port, reason in backends:
             # bei gemeinsamem Netzwerk-Namespace lauscht ggf. ein anderer Container der Gruppe auf dem Port
             for ziel in [ct] + gruppen.get(ct, []):
@@ -3572,7 +3936,7 @@ def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None):
                     continue          # Schutz vor Endlosschleifen bei gegenseitigen Proxys
                 queue[ziel] = merged
                 queue.move_to_end(ziel, last=False)
-    return vias, fehler
+    return vias, urls, fehler
 
 
 def main():
@@ -3685,7 +4049,7 @@ def main():
     try:
         infos, netze = docker_lage()
         public, rest, gruppen = container_liste(infos, netze)
-        ziele, services, warnings, problems = host_proxys(infos)
+        ziele, services, warnings, problems, ziel_urls = host_proxys(infos)
     except ScanError as e:
         log("FEHLER: %s" % e)
         return 2
@@ -3698,11 +4062,12 @@ def main():
         if not auswahl:
             log("FEHLER: kein laufender Container passt zu %s" % ", ".join(muster))
             return 2
-        vias, fehler = durchlauf(public, rest, ziele, gruppen, lambda n, via: erreichbarkeit_pruefen(n, a, via))
+        vias, urls, fehler = durchlauf(public, rest, ziele, gruppen,
+                                       lambda n, via, u: erreichbarkeit_pruefen(n, a, via, u), ziel_urls=ziel_urls)
         codes = {}
         for name in auswahl:
             try:
-                codes[name] = scan_container(name, a, vias.get(name, {}))[0]
+                codes[name] = scan_container(name, a, vias.get(name, {}), urls.get(name))[0]
             except ScanError as e:
                 log("FEHLER bei %s: %s" % (name, e))
                 codes[name] = 2
@@ -3716,20 +4081,20 @@ def main():
 
     reports = {}
 
-    def pruefen(name, via):
-        code, backends, base = scan_container(name, a, via)
+    def pruefen(name, via, urls):
+        code, backends, base, neue_urls = scan_container(name, a, via, urls)
         if reports.get(name) and reports[name] != base:   # erneute Prüfung ersetzt den ersten Bericht dieses Laufs
             # (bei gleichem Namen – Prüfung in derselben Sekunde – ist er schon überschrieben)
             for ext in (".md", ".cdx.json", ".sha256"):
                 if os.path.exists(reports[name] + ext):
                     os.remove(reports[name] + ext)
         reports[name] = base
-        return code, backends, base
+        return code, backends, base, neue_urls
     if not public and not ziele and not (rest and a.alle_container):
         print("Keine laufenden Container gefunden." if a.alle_container else "Keine Container mit veröffentlichten Ports gefunden.")
         return host_code
     codes = {}
-    vias, _ = durchlauf(public, rest if a.alle_container else [], ziele, gruppen, pruefen, codes)
+    durchlauf(public, rest if a.alle_container else [], ziele, gruppen, pruefen, codes, ziel_urls)
     code = 2 if 2 in codes.values() or host_code == 2 else 1 if 1 in codes.values() else 0
     print("Gesamt: %d Container geprüft – %s" % (len(codes), GESAMT_TEXT[code]))
     return code
