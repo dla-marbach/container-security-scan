@@ -164,14 +164,33 @@ class Versionsabfrage(unittest.TestCase):
 class Zeitlimit(unittest.TestCase):
     """Versionsabfragen im Container über PROBE_SH statt timeout (BusyBox-timeout hinterlässt Zombies an PID 1)."""
 
-    def sh(self, *cmd, sekunden=50):
+    def sh(self, *cmd, sekunden=50, zombies=False):
         p = subprocess.Popen(["sh", "-c", scanner.PROBE_SH, "sh", str(sekunden)] + list(cmd), stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, universal_newlines=True, start_new_session=True)
         out = p.communicate(timeout=30)[0]
-        # nichts bleibt zurück: kein Prozess mehr in der eigenen Prozessgruppe (Programm, Wächter, dessen sleep)
-        with self.assertRaises(ProcessLookupError):
-            os.killpg(p.pid, 0)
+        if zombies:
+            # beim Zeitlimit beendete Enkel fallen an PID 1 und bleiben dort Zombies, wenn er nicht aufräumt (Job-
+            # Container der Action: tail -f /dev/null) – es darf aber nichts mehr laufen
+            self.assertEqual(self.laufend(p.pid), [])
+        else:
+            # nichts bleibt zurück: kein Prozess mehr in der eigenen Prozessgruppe (Programm, Wächter, dessen sleep)
+            with self.assertRaises(ProcessLookupError):
+                os.killpg(p.pid, 0)
         return p.returncode, out
+
+    @staticmethod
+    def laufend(pgid):
+        """Prozesse der Gruppe, die keine Zombies sind (aus /proc/*/stat: Zustand und Gruppe nach dem Namen)."""
+        ergebnis = []
+        for d in os.listdir("/proc"):
+            try:
+                with open("/proc/%s/stat" % d) as f:
+                    felder = f.read().rpartition(")")[2].split()
+            except (OSError, ValueError):
+                continue
+            if d.isdigit() and len(felder) > 2 and felder[2] == str(pgid) and felder[0] != "Z":
+                ergebnis.append((d, felder[0]))
+        return ergebnis
 
     def test_ausgabe_und_rueckgabewert(self):
         start = time.time()
@@ -191,7 +210,7 @@ class Zeitlimit(unittest.TestCase):
     def test_zeitlimit_beendet_nachkommen(self):
         # Programm mit Kind (Wrapper): bei Ablauf beide beendet, sonst hielte das Kind die Ausgabe offen
         start = time.time()
-        rc, _ = self.sh("sh", "-c", "sleep 20 & sleep 20 & wait", sekunden=1)
+        rc, _ = self.sh("sh", "-c", "sleep 20 & sleep 20 & wait", sekunden=1, zombies=True)
         self.assertEqual(rc, 128 + 9)
         self.assertLess(time.time() - start, 5)
 
