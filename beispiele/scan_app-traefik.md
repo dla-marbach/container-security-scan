@@ -2,8 +2,8 @@
 
 - Image: traefik:v3.6 (sha256:31267173a15b)  
 - OS: Alpine Linux v3.24  
-- Zeitpunkt: 2026-11-24 20:08  
-- Scanner: container-security-scan 1.1.0  
+- Zeitpunkt: 2026-11-24 22:00  
+- Scanner: container-security-scan 1.1.1  
 - Datenbank: OSV, Stand 2026-11-24 13:43 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 0 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
@@ -213,8 +213,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        4ee8183e94681bc6b24aac881877b2be424356d10a4143462c82cda69138c080
-Gestartet: 2026-11-24T20:08:19.520310131Z
+ID:        c47254c65987d3ed19509547af58c3ebc1b86cec2d3097bc82053bf26a76180b
+Gestartet: 2026-11-24T21:59:50.276554256Z
 Kommando:  ["/entrypoint.sh"] ["--providers.docker=true", "--providers.docker.exposedbydefault=false", "--entrypoints.web.address=:80"]
 Mounts:    /var/run/docker.sock->/var/run/docker.sock
 Host:      Kernel 7.0.14-linuxkit
@@ -224,7 +224,7 @@ Host:      Kernel 7.0.14-linuxkit
 
 ```
 PID                 USER                COMMAND
-52689               root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
+5015                root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher
