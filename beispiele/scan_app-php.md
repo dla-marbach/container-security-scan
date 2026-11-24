@@ -2,8 +2,8 @@
 
 - Image: php:8.3.30-fpm-bookworm (sha256:e7ca6c7f5a59)  
 - OS: Debian GNU/Linux 12 (bookworm)  
-- Zeitpunkt: 2026-11-24 16:00  
-- Scanner: container-security-scan 1.0.0  
+- Zeitpunkt: 2026-11-24 20:08  
+- Scanner: container-security-scan 1.1.0  
 - Datenbank: OSV, Stand 2026-11-24 13:43 UTC (daten)  
 - Erfassung: OS-Pakete dpkg; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer); 1 Kernel-Pakete nicht geprüft (Container nutzen den Kernel des Hosts)
 
@@ -49,7 +49,9 @@ Gefährliche Einstellungen des Containers (privileged, Docker-Socket, pid=host �
 Nicht gezählt (wären sonst relevant):
 - CVE-2026-17545 (HIGH) in php 8.3.30 – betrifft laut Titel nur Windows
 
-Hinweis: 25 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit ansehen.
+**1 Befunde in P1 ohne Schweregrad** (nicht gezählt, bitte selbst einschätzen):
+
+- **DLA-4783-1** (UNKNOWN) in liblzma5 5.4.1-1 – behoben in 5.4.1-1+deb12u2 – genutzt von php-fpm:9000
 
 ## Laufende Dienste
 
@@ -697,8 +699,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        14d4a4f5205bddb881bac40e54b0cc51ff3ae7511646c96ff5497b3f1afb1b50
-Gestartet: 2026-11-24T16:00:35.241163798Z
+ID:        edc25c01983c9f4ea7e23cfc320c85ccb85656c8007c5656966d592d30844fce
+Gestartet: 2026-11-24T20:08:19.578393048Z
 Kommando:  ["docker-php-entrypoint"] ["php-fpm"]
 Mounts:    /w/beispiele/umgebung/php->/srv/app
 Host:      Kernel 7.0.14-linuxkit
@@ -708,9 +710,9 @@ Host:      Kernel 7.0.14-linuxkit
 
 ```
 PID                 USER                COMMAND
-669                 root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
-707                 33                  php-fpm: pool www
-708                 33                  php-fpm: pool www
+52770               root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
+52840               33                  php-fpm: pool www
+52841               33                  php-fpm: pool www
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher
