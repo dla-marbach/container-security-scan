@@ -21,24 +21,43 @@ Ausschnitt aus dem Lauf über die [Testumgebung](beispiele/umgebung/compose.yml)
 vollständig: [Konsolenausgabe](beispiele/ausgabe.txt)):
 
 ```
-app-php: RELEVANTE SCHWACHSTELLEN – 1440 Befunde, davon 65 relevant (65 neu, 4 aktiv ausgenutzt), … öffentlich: php-fpm:9000 – Bericht: …/scan_app-php.md
-app-php:   Webadressen php-fpm:9000: erreichbar: http://shop.example.org:8080/ (\.php$)
-app-php:   CVE-2026-109618 (CRITICAL KEV) in php 8.3.30 – behoben in 8.3.36 – genutzt von php-fpm:9000 – aktiv ausgenutzt (KEV seit 2026-10-26)
-app-php:   CVE-2022-29248 (HIGH) in guzzlehttp/guzzle 7.4.0 – behoben in 7.4.3 – genutzt von php-fpm:9000 (Docroot unbekannt)
+container-security-scan 1.0.0
+Scan: 2026-11-24 16:00 UTC
+Daten: 2026-11-24 13:43 UTC
+Host: <rechner> mit 4 laufenden und 0 gestoppten Containern:
+- app-node     erstellt 2026-11-24 16:00 UTC, läuft seit 0 min
 …
-app-node: WARNUNG: Öffentlicher Dienst node:3000 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image
+
+=== app-php ===
+WARNUNG: Supportende: jquery 1.12.4 (jquery 1, Datum unbekannt; /srv/app/public/js/jquery-1.12.4.min.js)
+RELEVANTE SCHWACHSTELLEN – 1437 Befunde, davon 65 relevant (65 neu, 4 aktiv ausgenutzt), P1 ohne Schweregrad: 25
+Image php:8.3.30-fpm-bookworm – Debian GNU/Linux 12 (bookworm)
+Dienst php-fpm 8.3.30 (in /var/www/html), Port 9000: öffentlich über nginx:80 in app-proxy
+  Webadressen: http://shop.example.org:8080/ (\.php$)
+CVE-2026-111497 (CRITICAL KEV) in libbrotli1 1.0.9-2+b6 – behoben in 1.0.9-2+deb12u1 – genutzt von php-fpm:9000 – aktiv ausgenutzt (KEV seit 2026-10-27)
+CVE-2026-33845 (CRITICAL) in libgnutls30 3.7.9-2+deb12u6 – behoben in 3.7.9-2+deb12u7 – genutzt von php-fpm:9000
 …
+CVE-2026-109618 (CRITICAL KEV) in php 8.3.30 – behoben in 8.3.36 – genutzt von php-fpm:9000 – aktiv ausgenutzt (KEV seit 2026-10-26)
+…
+CVE-2022-29248 (HIGH) in guzzlehttp/guzzle 7.4.0 – behoben in 7.4.3 – genutzt von php-fpm:9000 (Docroot unbekannt)
+…
+
+=== app-node ===
+WARNUNG: Öffentlicher Dienst node:3000 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image
+…
+
+Gesamt: 4 Container geprüft – RELEVANTE FUNDE (Schwachstellen bzw. gefährliche Einstellungen)
 ERGEBNIS: FUNDE (Rückgabewert 1) – <rechner>
 ```
 
-- Von 1440 Befunden sind 65 **relevant**: php-fpm ist über nginx erreichbar (Priorität P1), die Lücken sind
+- Von 1437 Befunden sind 65 **relevant**: php-fpm ist über nginx erreichbar (Priorität P1), die Lücken sind
   schwer bzw. aktiv ausgenutzt (`KEV`), und es gibt einen Fix.
+- Je Container nennt die Ausgabe Image, [Dienste](#ausgabe) mit dem Proxy davor und die
+  [Webadressen](#webadressen); darunter jeder relevante Fund mit Schweregrad und Fix-Version.
 - [Warnungen](#warnungen) wie „läuft als root“ ändern den Rückgabewert nicht, [gefährliche
   Einstellungen](#gefährliche-einstellungen-des-containers) wie ein eingebundener `docker.sock` schon.
-- Die [Webadressen](#webadressen) zeigen, unter welcher Adresse der betroffene Dienst erreichbar ist.
-- Der Bericht je Container ([Beispiel](beispiele/scan_app-php.md)) enthält alle Befunde, Dienste und Ports.
-
-Weiteres Beispiel: SBOM ([CycloneDX](beispiele/scan_app-node.cdx.json)).
+- Auf Wunsch je Container ein Bericht mit allen Befunden, Prozessen und Webserver-Konfiguration
+  ([Beispiel](beispiele/scan_app-php.md)) und eine SBOM ([CycloneDX](beispiele/scan_app-node.cdx.json)).
 
 ## Installation und Betrieb
 
@@ -58,7 +77,7 @@ flowchart TD
         F["Laufende Container<br/>inkl. Volumes, Laufzeiten"]
         G["Erreichbarkeit<br/>Docker, nginx/Apache, Proxys auf dem Host"]
         H["Abgleich mit den Daten, Priorität P1–P4<br/>P1 = genutzt von erreichbarem Dienst"]
-        I["Rückgabewert 0 / 1 / 2<br/>Bericht, SBOM, Mail bei 1 oder 2"]
+        I["Rückgabewert 0 / 1 / 2, Konsole und Log<br/>Mail bei 1 oder 2; Bericht, SBOM auf Wunsch"]
         W --> F --> G --> H --> I
     end
     B --> W
@@ -69,7 +88,7 @@ flowchart TD
 /var/lib/container-security-scan/daten/        Daten (Branch daten, Benutzer csscan)
 /usr/local/sbin/container-security-scan-lauf   Wrapper: Daten aktualisieren, dann scannen
 /etc/container-security-scan/ausnahmen.txt     Ausnahmeliste
-/var/log/container-security-scan/              Logs; Berichte unter berichte/
+/var/log/container-security-scan/              Logs; unter berichte/ Stand für „NEU“ und Berichte
 ```
 
 ### Einrichten
@@ -109,12 +128,13 @@ git clone -q https://github.com/dla-marbach/container-security-scan.git /tmp/css
 sudo /usr/local/sbin/container-security-scan-lauf                 # alle laufenden Container
 sudo /usr/local/sbin/container-security-scan-lauf app-php         # nur dieser Container
 sudo /usr/local/sbin/container-security-scan-lauf 'surveyor_*'    # alle passenden (Muster mit * und ?)
+sudo /usr/local/sbin/container-security-scan-lauf --bericht app-php   # dazu Bericht (auch --sbom)
 ```
 
 Auch bei einer Auswahl ermittelt der Scan die Erreichbarkeit über alle laufenden Container (nur Prozesse, Ports
 und Proxy-Konfiguration, wenige Sekunden je Container); die Ergebnisse sind dieselben wie im Gesamtlauf. Muster
 in Anführungszeichen setzen, sonst ersetzt die Shell sie ggf. durch Dateinamen. Passt kein laufender Container,
-ist das Ergebnis `2`.
+ist das Ergebnis `2`. Optionen (`--mail`, `--bericht`, `--sbom`) stehen vor den Containern.
 
 ### Täglich per cron oder Rundeck
 
@@ -229,8 +249,9 @@ Grundsatz: **im Zweifel erreichbar.** Erkannt werden:
   gemeinsamer Netzwerk-Namespace (`network_mode: container:…`)
 - Backends eines erreichbaren nginx oder Apache – im Container oder direkt auf dem Host, auch über mehrere Stufen
   (`proxy_pass`, `fastcgi_pass`, `upstream`, `ProxyPass`, `SetHandler proxy:`, `RewriteRule … [P]`, Variablen aus
-  `set`/`map`), Ziel per Container-Name, IP, `127.0.0.1` oder Unix-Socket (der Prozess im selben Container, der
-  darauf lauscht); gibt es einen Namen mehrfach (Compose-Dienst `app` in zwei Projekten), zählt zuerst ein
+  `set`/`map`), Ziel per Container-Name, IP, `127.0.0.1` (auch `0.0.0.0`) oder Unix-Socket (der Prozess im selben
+  Container, der darauf lauscht), bei einem Proxy im Netzwerk des Hosts auch per eigener Adresse des Hosts
+  (veröffentlichter Port bzw. der Prozess, der dort lauscht); gibt es einen Namen mehrfach (Compose-Dienst `app` in zwei Projekten), zählt zuerst ein
   Container in einem gemeinsamen Netz mit dem Proxy, dann einer aus demselben Compose-Projekt; nginx vor 1.9.2
   (ohne `-T`): Hauptdatei und `include`-Dateien liest der Scan selbst
 - Ziele eines erreichbaren stunnel (`connect` je Dienst, auch mit `include`)
@@ -257,11 +278,14 @@ samt `ServerAlias`, `SSLEngine`, `Listen` des Hauptservers) bildet der Scan je W
 Leitet ein Webserver einen Pfad weiter (`location /app/ { proxy_pass http://127.0.0.1:8080/; }`, `ProxyPass`,
 `SetHandler proxy:fcgi://…`), erscheint die Adresse mit Pfad beim Ziel, auch über mehrere Stufen und Container:
 `https://www.example.org/app/ (\.php$)` bei php-fpm hinter Apache hinter nginx. Das gilt ebenso für einen Proxy
-direkt auf dem Host vor einem Container (per Container-IP, Name oder veröffentlichtem Port auf Loopback).
+direkt auf dem Host vor einem Container (per Container-IP, Name oder veröffentlichtem Port auf Loopback bzw. einer
+eigenen Adresse des Hosts).
 
-Im Bericht stehen die Adressen je Dienst mit dem Weg dorthin und ob sie erreichbar sind (wie der Port, über den
-die Anfrage hereinkommt), auf der Konsole eine Zeile `Webadressen …` je Dienst, in der SBOM `endpoints`. Ein Fund
-gehört über „genutzt von“ zu seinem Dienst. Die Adressen stammen aus der Konfiguration, nicht aus dem DNS.
+Auf der Konsole stehen sie unter jedem Dienst in einer Zeile `Webadressen: …`, zuerst die erreichbaren, dann
+„nicht von außen“ (wie der Port, über den die Anfrage hereinkommt); `über …` nennt den Weg, wenn er nicht schon
+in der Dienstzeile steht (z. B. ein weiterer Proxy auf dem Host). Im Bericht stehen sie je Adresse mit Weg, in
+der SBOM als `endpoints`. Ein Fund gehört über „genutzt von“ zu seinem
+Dienst. Die Adressen stammen aus der Konfiguration, nicht aus dem DNS.
 
 ### Gefährliche Einstellungen des Containers
 
@@ -283,7 +307,7 @@ Containernamen.
 
 ### Warnungen
 
-Ohne Einfluss auf den Rückgabewert, im Bericht und auf der Konsole:
+Ohne Einfluss auf den Rückgabewert, auf der Konsole und im Bericht:
 
 - **Öffentlicher Dienst als root**, z. B. Node oder Python (nginx, Apache und php-fpm mit unprivilegierten
   Workern nicht, auch wenn deren Sockets nicht lesbar sind; sshd nicht; entfällt mit userns-remap oder rootless
@@ -306,22 +330,44 @@ CVE-2024-8926   php           2027-06-30  betrifft nur PHP-CGI unter Windows (ge
 CONF-SOCKET     monitoring    2027-03-31  liest nur den Status der Container, Socket-Proxy geplant
 ```
 
-- Paket wie in der Spalte „Paket“ des Berichts; bei `CONF-…` der Containername.
+- Paket wie in der Ausgabe bzw. der Spalte „Paket“ des Berichts; bei `CONF-…` der Containername.
 - Nach dem Ablaufdatum zählt der Fund wieder (mit Warnung). Ausgenommene Funde stehen im Bericht unter „Nicht
   gezählt“.
 - Eine fehlerhafte Zeile ergibt Rückgabewert 2, statt still etwas auszublenden.
 
-### Berichte
+### Ausgabe
 
-Je Container im Ausgabeverzeichnis, nur für den Aufrufer lesbar (sie enthalten Kommandozeilen der
-Prozesse, oft mit Passwörtern):
+Auf der Konsole (Rundeck, Log, Mail) zuerst Version, Zeitpunkt des Scans, Stand der Daten (älteste
+Aktualisierung) und der Host (Hostname) mit der Zahl der laufenden, pausierten und gestoppten Container, die
+laufenden mit Erstellung, Laufzeit, Healthcheck und Neustarts, dazu Proxys direkt auf dem Host (`Host: …`).
+Geprüft werden nur laufende Container; pausierte (`docker pause`) und gestoppte nicht (ein pausierter zählt aber
+für die Erreichbarkeit mit, etwa wenn ein laufender Container seinen Netzwerk-Namespace nutzt). Danach je Container ein
+Abschnitt `=== <container> ===`. Bringt ein später geprüfter Proxy einen weiteren Weg oder weitere Webadressen zu
+einem schon geprüften Container, prüft der Scan ihn erneut; die Überschrift nennt dann den Anlass, und dieser
+Abschnitt ersetzt den früheren:
 
-| Datei | Inhalt |
-|---|---|
-| `scan_<container>_<zeit>.md` | Bericht: relevante Funde und Warnungen, Dienste mit Ports, Webadressen, alle Befunde nach Priorität, Prozesse, Webserver-Konfiguration |
-| `….cdx.json` | SBOM (CycloneDX 1.5), auch mit Trivy, Grype oder Dependency-Track nutzbar |
-| `….sha256` | Prüfsummen |
-| `bekannt_<container>.json` | relevante Funde des letzten Laufs, für die Markierung „neu“ |
+- Warnungen
+- Ergebnis mit der Zahl der Befunde und der relevanten
+- `Image …` mit Betriebssystem
+- `Dienst …` je Prozess mit offenem Port: Programm und Version (Skript ohne Optionswerte, Arbeitsverzeichnis),
+  Ports und wie sie erreichbar sind (`Port 9000: öffentlich über nginx:80 in app-proxy`); darunter die
+  [Webadressen](#webadressen), bei einem Proxy die Ziele (`leitet weiter an: …`), bei einer Anwendung die
+  aufgerufenen Container (`ruft auf: …`)
+- [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) (`CONF-…`)
+- relevante Funde, eine Zeile je Fund: Kennung, Schweregrad, Paket und Version, Fix-Version, genutzt von, aktiv
+  ausgenutzt (KEV); neue zuerst mit `NEU:`, wenn ein Fund im letzten Lauf noch nicht relevant war
+
+Dateien im Ausgabeverzeichnis, nur für den Aufrufer lesbar:
+
+| Datei | Wann | Inhalt |
+|---|---|---|
+| `bekannt_<container>.json` | jeder Lauf außer Rückgabewert 2 | relevante Funde des letzten Laufs, für die Markierung „NEU“ |
+| `scan_<container>_<zeit>.md` | `--bericht` | Bericht: relevante Funde und Warnungen, Dienste mit Ports, Webadressen, alle Befunde nach Priorität, nicht gezählte Funde, Prozesse mit Kommandozeilen (oft mit Passwörtern), Webserver-Konfiguration |
+| `….cdx.json` | `--sbom` | SBOM (CycloneDX 1.5), auch mit Trivy, Grype oder Dependency-Track nutzbar |
+| `….sha256` | `--bericht` oder `--sbom` | Prüfsummen |
+
+Bis 0.6.x schrieb jeder Lauf Bericht und SBOM; die alten Dateien `scan_*` unter
+`/var/log/container-security-scan/berichte/` können gelöscht werden, `bekannt_*.json` bleiben.
 
 ## Aufruf ohne Wrapper
 
@@ -329,8 +375,8 @@ Für Sonderfälle; nutzt die vorhandenen Daten, ohne sie zu aktualisieren:
 
 ```bash
 C=/opt/container-security-scan/container-security-scan.py; DB=/var/lib/container-security-scan/daten
-sudo python3 -I $C --db $DB --alle-container --nur-behebbare <ausgabeverzeichnis>   # wie der Wrapper
-sudo python3 -I $C --db $DB --alle --container 'app-*' <ausgabeverzeichnis>        # Auswahl, alle Befunde
+sudo python3 -I $C --db $DB --alle-container --nur-behebbare <ausgabeverzeichnis>             # wie der Wrapper
+sudo python3 -I $C --db $DB --bericht --alle --container 'app-*' <ausgabeverzeichnis>        # Auswahl, Bericht mit allen Befunden
 ```
 
 | Option | Bedeutung |
@@ -339,7 +385,9 @@ sudo python3 -I $C --db $DB --alle --container 'app-*' <ausgabeverzeichnis>     
 | `--oeffentliche` | nur die erreichbaren Container und deren Backends |
 | `--container MUSTER` | nur passende Container (Name, ID oder Muster wie `surveyor_*`, mehrfach möglich; auch ohne Option als erstes Argument), Erreichbarkeit wie im Gesamtlauf |
 | `--nur-behebbare` | nur Funde mit Fix zählen – empfohlen, sonst melden ungepatchte Lücken dauerhaft `1` |
-| `--alle` | alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV) |
+| `--bericht` | je Container einen [Bericht](#ausgabe) schreiben (Markdown) |
+| `--sbom` | je Container eine SBOM schreiben (CycloneDX 1.5) |
+| `--alle` | mit `--bericht`: alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV) |
 | `--ausnahmen DATEI` | [Ausnahmeliste](#ausnahmen) |
 | `--db DIR` | Datenverzeichnis; mehrfach möglich, je Ökosystem gilt das erste, das es enthält. Standard: `daten/` und `osv-db/` neben dem Skript |
 | `--db-aktualisieren` | Daten holen (nie als root, nie den Code): im Git-Checkout den Branch `daten` nach `daten/`; ohne Git-Checkout oder mit `--db DIR` alle Daten direkt von den Quellen; `--oekosysteme A,B` lädt weitere Ökosysteme (z. B. SUSE, openSUSE) nach `osv-db/`, `--voll` alles neu |
@@ -377,6 +425,11 @@ Feldern und Einträgen, die der Abgleich liest (Ergebnisse identisch mit den vol
 - Versionsabfragen (`node -e`, `php -r` …, mit Zeitlimit), `nginx -T` bzw. `apache2 -S` und das Lesen der
   Konfiguration von nginx ohne `-T` und stunnel laufen **nie mit mehr Rechten als der jeweilige Prozess** bzw. der
   Hauptprozess des Webservers.
+- Einzige Ausnahme: stunnel liest seine Konfiguration als root und wechselt dann per `setuid` den Benutzer (unter
+  SUSE ist `/etc/stunnel` nur für root lesbar). Kann der Prozess sie deshalb nicht lesen, liest der Scan sie als
+  root, aber nur, wenn die Datei, ihre include-Dateien und alle Verzeichnisse darüber root gehören, weder für die
+  Gruppe noch für andere beschreibbar sind und kein symbolischer Link darin vorkommt; dabei laufen nur `sh`,
+  `find` und `cat`, nie stunnel selbst. Sonst gilt die Konfiguration als nicht lesbar (Rückgabewert 2).
 - Ohne Shell im Container wird passiv gelesen (`docker export`, `docker cp`, `/proc` des Hosts); nichts wird auf
   dem Host entpackt.
 - Es werden nur Daten heruntergeladen; Paketlisten verlassen den Server nie.
@@ -415,7 +468,7 @@ Nur auf einem eigenen Testrechner, nicht auf Servern:
 ```bash
 git clone https://github.com/dla-marbach/container-security-scan.git && cd container-security-scan
 ./container-security-scan.py --db-aktualisieren                              # Daten nach daten/ (nicht als root)
-sudo ./container-security-scan.py --alle-container --nur-behebbare berichte/
+sudo ./container-security-scan.py --alle-container --nur-behebbare --bericht berichte/
 
 python3 -m unittest discover -s tests                                        # Unit-Tests, ohne Docker
 CSS_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_docker.py   # mit Docker und daten/

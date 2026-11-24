@@ -4,21 +4,32 @@
 # Daten als csscan aktualisieren, dann als root mit dem installierten Code scannen.
 # Aufruf von Hand, per cron (--mail) oder per Rundeck (sudo, ohne Argumente).
 # Von Hand optional nur bestimmte Container (Name, ID oder Muster wie 'surveyor_*', in Anführungszeichen) statt
-# aller: ... [--mail] [container …]; Erreichbarkeit und Ergebnisse wie im Gesamtlauf.
+# aller: ... [--mail] [--bericht] [--sbom] [container …]; Erreichbarkeit und Ergebnisse wie im Gesamtlauf.
 # Ausgabe auf die Konsole und ins Log; letzte Zeile "ERGEBNIS: …"; Rückgabewert 0/1/2 wie das Skript.
+# Bericht (--bericht) und SBOM (--sbom) je Container nur auf Wunsch, unter berichte/ neben den Logs.
 set -u
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 CODE=/opt/container-security-scan/container-security-scan.py
 D=/var/lib/container-security-scan
 OUT=/var/log/container-security-scan
 AUSNAHMEN=/etc/container-security-scan/ausnahmen.txt   # wird verwendet, wenn vorhanden
-MAIL=nein; [ "${1:-}" = --mail ] && { MAIL=ja; shift; }
+MAIL=nein; BERICHT=nein; SBOM=nein
+while [ $# -gt 0 ]; do                  # Optionen vor den Containern, in beliebiger Reihenfolge
+  case $1 in
+    --mail) MAIL=ja ;;
+    --bericht) BERICHT=ja ;;
+    --sbom) SBOM=ja ;;
+    *) break ;;
+  esac
+  shift
+done
 ZIEL=(--alle-container)                 # Standard: alle laufenden Container
 if [ $# -gt 0 ]; then
   ZIEL=()
   for m in "$@"; do                     # Name/ID wie bei Docker, Platzhalter * und ?, nie "-" am Anfang (Option)
     [[ $m =~ ^[A-Za-z0-9*?][A-Za-z0-9_.*?-]*$ ]] \
-        || { echo "FEHLER: Aufruf: $0 [--mail] [container …] (Name, ID oder Muster wie 'surveyor_*')"; exit 2; }
+        || { echo "FEHLER: Aufruf: $0 [--mail] [--bericht] [--sbom] [container …] (Name, ID oder Muster wie" \
+                  "'surveyor_*')"; exit 2; }
     ZIEL+=(--container "$m")
   done
 fi
@@ -30,6 +41,8 @@ mkdir -p "$OUT/berichte"
 LOG=$OUT/$(date +%F_%H%M%S).txt
 ARGS=(--db "$D/daten")
 [ -f "$AUSNAHMEN" ] && ARGS+=(--ausnahmen "$AUSNAHMEN")
+[ "$BERICHT" = ja ] && ARGS+=(--bericht)
+[ "$SBOM" = ja ] && ARGS+=(--sbom)
 {
   runuser -u csscan -- git -C "$D/daten" pull --ff-only --quiet \
       || { echo "FEHLER: Daten nicht aktualisiert (git pull als csscan)"; exit 2; }

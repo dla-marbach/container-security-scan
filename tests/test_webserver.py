@@ -418,6 +418,55 @@ class Stunnel(unittest.TestCase):
         self.assertEqual(w["unlesbar"], {"/usr/bin/stunnel4"})
         self.assertIn("nicht vollständig lesbar (Abfrage fehlgeschlagen: %s/conf.d/*)" % self.tmp, w["problems"][0])
 
+    def nur_root(self, *pfade):
+        """KONFIG_DATEIEN_NUR_ROOT_SH wirklich ausführen (als aktueller Benutzer)."""
+        p = subprocess.run(["sh", "-s", "--"] + list(pfade), input=scanner.KONFIG_DATEIEN_NUR_ROOT_SH,
+                           stdout=subprocess.PIPE, universal_newlines=True)
+        return p.stdout
+
+    def test_als_root_nur_dateien_die_nur_root_aendern_kann(self):
+        # nicht root gehörend bzw. Verzeichnis für andere beschreibbar (/tmp), symbolischer Link, relativer Pfad:
+        # wie nicht lesbar
+        os.symlink(self.tmp + "/stunnel.conf", self.tmp + "/link.conf")
+        for pfad in (self.tmp + "/stunnel.conf", self.tmp + "/link.conf", "stunnel.conf"):
+            self.assertEqual(self.nur_root(pfad), "\x1f%s\n" % pfad, pfad)
+
+    @unittest.skipUnless(all(os.path.exists(d) and not os.path.islink(d) and os.stat(d).st_uid == 0
+                             and not os.stat(d).st_mode & 0o022 for d in ("/", "/etc", "/etc/passwd")),
+                         "kein /etc/passwd mit Pfad nur für root beschreibbar (z.B. macOS: /etc ist ein Link)")
+    def test_als_root_datei_mit_pfad_nur_fuer_root(self):
+        self.assertTrue(self.nur_root("/etc/passwd").startswith("# configuration file /etc/passwd:\n"))
+
+    def test_als_root_wenn_fuer_den_prozess_nicht_lesbar(self):
+        # stunnel (SUSE) startet als root, wechselt per setuid zu stunnel; /etc/stunnel ist nur für root: zuerst als
+        # Benutzer des Prozesses, dann als root mit Prüfung des Pfads
+        conf = "# configuration file /etc/stunnel/stunnel.conf:\nsetuid = stunnel\n[ldap]\naccept = 389\n" \
+               "connect = ldap.example.org:636\n"
+        aufrufe = []
+
+        def exec_(cmd, input=None, user=None, **kw):
+            aufrufe.append((user, "nur_root" in input))
+            return (0, conf) if user == "0:0" and "nur_root" in input else (0, "\x1f%s\n" % cmd[-1])
+        procs = {"1": proc(1, "/usr/sbin/stunnel", ["/usr/sbin/stunnel"], user="490:65534", ports={"389": "alle"})}
+        w = web(backends=scanner.defaultdict(list), vhosts=scanner.defaultdict(list), problems=[], unlesbar=set(),
+                raw=[])
+        with mock.patch.object(scanner, "STUNNEL_KONF", ["/etc/stunnel/stunnel.conf"]):
+            scanner.stunnel_lesen(mock.Mock(spec=["exec", "info"], exec=exec_), procs, w, "/usr/sbin/stunnel")
+        self.assertEqual(aufrufe, [("490:65534", False), ("0:0", True)])
+        self.assertEqual((w["problems"], w["unlesbar"]), ([], set()))
+        self.assertEqual(w["backends"]["/usr/sbin/stunnel"], ["ldap.example.org:636"])
+        self.assertIn("als root gelesen", w["raw"][0])
+        # im Container nur, wenn der Scan dort root ist (--user 0)
+        for c_user, root in (("0", True), ("1000", False)):
+            aufrufe[:] = []
+            w = web(backends=scanner.defaultdict(list), vhosts=scanner.defaultdict(list), problems=[],
+                    unlesbar=set(), raw=[])
+            with mock.patch.object(scanner, "STUNNEL_KONF", ["/etc/stunnel/stunnel.conf"]):
+                scanner.stunnel_lesen(mock.Mock(user=c_user, exec=exec_), procs, w, "/usr/sbin/stunnel")
+            self.assertEqual(("0:0", True) in aufrufe, root, c_user)
+            self.assertEqual(bool(w["problems"]), not root, c_user)
+        self.assertIn("als root nur, wenn Datei und Verzeichnisse root gehören", w["problems"][0])
+
     def test_auf_dem_host(self):
         # stunnel auf dem Host vor der Datenbank eines Containers: genau dieses Ziel, nicht alle Container
         infos = [inspect("app", ["back"]), inspect("db", ["back"])]
@@ -536,6 +585,33 @@ class HostProxys(unittest.TestCase):
         self.assertIn("gvp (7777)", ausgabe.getvalue())
         self.assertIn("regdido (7776)", ausgabe.getvalue())
         self.assertNotIn("leer", ausgabe.getvalue())
+
+    def test_host_proxys_eigene_adresse(self):
+        # nginx auf dem Host leitet an die eigene IP bzw. 0.0.0.0 weiter: veröffentlichter Port -> Container (auch
+        # nur an 127.0.0.1 veröffentlicht, 0.0.0.0 geht an Loopback), eigener Port -> nginx selbst; keine Warnung
+        # "anderer Server?" außer für eine fremde Adresse
+        infos = [inspect("app", ["back"], ports={"3000/tcp": [{"HostIp": "0.0.0.0", "HostPort": "21451"}]}),
+                 inspect("lokal", ["back"], ports={"4000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "53023"}]})]
+        procs = ("P\t10\t/usr/sbin/nginx\t/\tnginx: master process /usr/sbin/nginx\t0:0\t1\nS\t10\t5\n"
+                 "T\t5\t00000000:01BB\ttcp\n")
+        conf = ("http { server { listen 443; location /a/ { proxy_pass https://192.0.2.31:21451; } "
+                "location /selbst/ { proxy_pass https://192.0.2.31:443; } location /b/ { proxy_pass http://0.0.0.0:53023; } "
+                "location /fremd/ { proxy_pass http://198.51.100.7; } } }")
+        with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 0)), \
+                mock.patch.object(scanner, "run", return_value=(0, procs)), \
+                mock.patch.object(scanner, "eigene_adressen", return_value={"192.0.2.31"}), \
+                mock.patch.object(scanner, "socket_besitzer", return_value={("192.0.2.31", "443"): [None]}) as sb, \
+                mock.patch.object(scanner.Host, "exec", return_value=(0, conf)):
+            ziele, services, warnings, problems, urls = scanner.host_proxys(infos)
+        self.assertEqual(sb.call_args[0][0], [("192.0.2.31", "443")])      # veröffentlichte nicht gesucht
+        # die Webadressen gehen an die Container
+        self.assertEqual([e["url"] for e in urls[("app", "3000")]], ["http://*:443/a/"])
+        self.assertEqual([e["url"] for e in urls[("lokal", "4000")]], ["http://*:443/b/"])
+        self.assertEqual(sorted(ziele), [("app", "3000", "nginx:443 auf dem Host"),
+                                         ("lokal", "4000", "nginx:443 auf dem Host")])
+        self.assertIn("Backend https://192.0.2.31:443 (Host)", services[0]["description"])
+        self.assertEqual(warnings, ["Backend http://198.51.100.7 von nginx:443 auf dem Host keinem Container "
+                                    "zuordenbar (anderer Server?)"])
 
     def test_socket_besitzer(self):
         # lauschende Sockets des Host-Netzwerks per Inode einem Prozess und dessen cgroup zuordnen, passend zu
@@ -728,6 +804,37 @@ class Backends(unittest.TestCase):
         self.assertEqual(scanner.split_target("grpcs://api"), ("api", "443"))
         self.assertEqual(scanner.split_target("http://[fd00::2]:8080/x"), ("fd00::2", "8080"))
         self.assertEqual(scanner.split_target("http://[fd00::2]"), ("fd00::2", "80"))
+        # IPv6 einheitlich; 0.0.0.0 und :: verbinden unter Linux an die Loopback-Adresse
+        self.assertEqual(scanner.split_target("https://[2001:DB8:0::31]:21451"), ("2001:db8::31", "21451"))
+        self.assertEqual(scanner.split_target("http://0.0.0.0:53023"), ("127.0.0.1", "53023"))
+        self.assertEqual(scanner.split_target("http://[::]:8080"), ("::1", "8080"))
+        # Zugangsdaten in der URL gehören nicht zum Host
+        self.assertEqual(scanner.split_target("ftp://admin:geheim@backend:21/"), ("backend", "21"))
+
+    def test_lokale_ziele(self):
+        # eigene Adressen des Hosts nur im Netzwerk des Hosts (dort gesetzt) wie Loopback
+        w = web(eigene_adressen={"192.0.2.31"}, self="Host")
+        for host in ("127.0.0.1", "127.0.0.11", "localhost", "::1", "192.0.2.31"):
+            self.assertTrue(scanner.lokales_ziel(host, w), host)
+        for host in ("192.0.2.32", "app", "10.0.0.5"):
+            self.assertFalse(scanner.lokales_ziel(host, w), host)
+        self.assertFalse(scanner.lokales_ziel("192.0.2.31", web()))
+
+    def test_eigene_adressen(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        os.mkdir(os.path.join(tmp, "net"))
+        with open(os.path.join(tmp, "net", "fib_trie"), "w") as f:
+            f.write("Main:\n  +-- 0.0.0.0/0 3 0 5\n     |-- 0.0.0.0\n        /0 universe UNICAST\n"
+                    "     +-- 127.0.0.0/8 2 0 2\n        +-- 127.0.0.0/31 1 0 0\n           |-- 127.0.0.1\n"
+                    "              /32 host LOCAL\n     |-- 192.0.2.31\n        /32 host LOCAL\n"
+                    "     |-- 192.0.2.255\n        /32 link BROADCAST\n"
+                    "Local:\n  +-- 0.0.0.0/0 3 0 5\n     |-- 172.17.0.1\n        /32 host LOCAL\n")
+        with open(os.path.join(tmp, "net", "if_inet6"), "w") as f:
+            f.write("00000000000000000000000000000001 01 80 10 80       lo\n"
+                    "20010db8000000000000000000000031 02 40 00 80     eth0\n")
+        self.assertEqual(scanner.eigene_adressen(tmp), {"192.0.2.31", "172.17.0.1", "2001:db8::31"})
+        self.assertEqual(scanner.eigene_adressen(os.path.join(tmp, "fehlt")), set())
 
     def test_ipv6_ziele(self):
         w = web(containers={"fd00::2": "app6"}, self="proxy")

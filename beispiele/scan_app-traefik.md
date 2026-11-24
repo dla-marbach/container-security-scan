@@ -2,9 +2,9 @@
 
 - Image: traefik:v3.6 (sha256:31267173a15b)  
 - OS: Alpine Linux v3.24  
-- Zeitpunkt: 2026-11-23 20:54  
-- Scanner: container-security-scan 0.6.0  
-- Datenbank: OSV, Stand 2026-11-23 12:40 UTC (daten)  
+- Zeitpunkt: 2026-11-24 16:00  
+- Scanner: container-security-scan 1.0.0  
+- Datenbank: OSV, Stand 2026-11-24 13:43 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 0 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
 ## Ergebnis
@@ -53,7 +53,7 @@ Nicht gezählt (wären sonst relevant):
 - CVE-2026-88007 (CRITICAL) in github.com/traefik/traefik/v3 v3.6.25 – betrifft laut Titel nur Windows
 - CVE-2026-56857 (CRITICAL*) in stdlib 1.26.5 – betrifft laut Titel nur Windows
 
-Hinweis: 9 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit ansehen.
+Hinweis: 10 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit ansehen.
 
 ## Laufende Dienste
 
@@ -65,12 +65,12 @@ Hinweis: 9 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit a
 
 | Priorität | CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN |
 |---|---|---|---|---|---|
-| P1 Dienst mit veröffentlichtem Port | 6 | 28 | 20 | 4 | 9 |
+| P1 Dienst mit veröffentlichtem Port | 6 | 28 | 20 | 4 | 10 |
 | P2 Dienst intern | 0 | 0 | 0 | 0 | 0 |
 | P3 Prozess ohne Port | 0 | 0 | 0 | 0 | 0 |
 | P4 nicht genutzt / dev | 5 | 25 | 4 | 0 | 0 |
 
-## Befunde (97 von 101; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
+## Befunde (98 von 102; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
 
 | P | Schwere | ID | Paket | Installiert | Behoben in | Genutzt von | Titel |
 |---|---|---|---|---|---|---|---|
@@ -134,6 +134,7 @@ Hinweis: 9 Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit a
 | 1 | LOW | CVE-2026-81870 | go.opentelemetry.io/otel/sdk | v1.44.0 | 1.45.0 | traefik:80 | OpenTelemetry-Go: Exporter config logging may leak endpoint URLs in info logs |
 | 1 | UNKNOWN | CVE-2026-53622 | github.com/traefik/traefik/v3 | v3.6.25 | 3.7.3 | traefik:80 | Traefik: HTTP/3 mTLS bypass via exact SNI TLSOptions lookup for wildcard and mixed-case ho |
 | 1 | UNKNOWN | GO-2026-4950 | github.com/valyala/fasthttp | v1.69.0 | 1.70.0 | traefik:80 | Authorization bypass via double-encoded paths in github.com/valyala/fasthttp |
+| 1 | UNKNOWN | CVE-2026-128086 | go.opentelemetry.io/otel | v1.44.0 | 1.47.0 | traefik:80 | Memory allocation amplification in W3C baggage parsing in go.opentelemetry.io/otel |
 | 1 | UNKNOWN | CVE-2026-56854 | golang.org/x/crypto | v0.54.0 | 0.55.0 | traefik:80 | Source-address critical option not enforced for non-public-key auth callbacks in golang.or |
 | 1 | UNKNOWN | CVE-2026-56855 | golang.org/x/crypto | v0.54.0 | 0.56.0 | traefik:80 | Prevent DoS on deadlocked established channel in golang.org/x/crypto/ssh |
 | 1 | UNKNOWN | CVE-2026-78662 | golang.org/x/crypto | v0.54.0 | 0.56.0 | traefik:80 | Prevent DoS on deadlocked undecided channel in golang.org/x/crypto/ssh |
@@ -201,8 +202,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        9c9f55571da029f77db360c037ae83857c4ce676f79f2d0913d5764a8fff13ca
-Gestartet: 2026-11-23T20:53:55.591106554Z
+ID:        6fbf7d6ee328d9cb7c046e88e491434d95aff658078c13c8676efbefbd6aa952
+Gestartet: 2026-11-24T16:00:35.120046798Z
 Kommando:  ["/entrypoint.sh"] ["--providers.docker=true", "--providers.docker.exposedbydefault=false", "--entrypoints.web.address=:80"]
 Mounts:    /var/run/docker.sock->/var/run/docker.sock
 Host:      Kernel 7.0.14-linuxkit
@@ -212,20 +213,20 @@ Host:      Kernel 7.0.14-linuxkit
 
 ```
 PID                 USER                COMMAND
-627                 root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
-3484                nobody              timeout 50 node -e console.log(JSON.stringify({exe: require("fs").realpathSync(process.execPath), versions: process.versions}))
-3513                nobody              timeout 50 php -r $r = array("exe" => realpath(PHP_BINARY) ?: PHP_BINARY, "version" => PHP_VERSION, "sapi" => PHP_SAPI, "ext" => array(), "libs" => array()); foreach (get_loaded_extensions() as $e) { $v = phpversion($e); if ($v && strpos($v, PHP_VERSION) === false && $e !== "dom") $r["ext"][$e] = $v; } if (defined("OPENSSL_VERSION_TEXT")) { $p = explode(" ", OPENSSL_VERSION_TEXT); $r["libs"][strtolower($p[0])] = $p[1]; } if (function_exists("curl_version")) { $c = curl_version(); $r["libs"]["curl"] = $c["version"]; } if (defined("LIBXML_DOTTED_VERSION")) $r["libs"]["libxml2"] = LIBXML_DOTTED_VERSION; if (defined("PCRE_VERSION")) { $p = explode(" ", PCRE_VERSION); $r["libs"]["pcre2"] = $p[0]; } if (defined("INTL_ICU_VERSION")) $r["libs"]["icu"] = INTL_ICU_VERSION; if (class_exists("SQLite3")) { $s = SQLite3::version(); $r["libs"]["sqlite"] = $s["versionString"]; } if (defined("SODIUM_LIBRARY_VERSION")) $r["libs"]["libsodium"] = SODIUM_LIBRARY_VERSION; if (defined("ZLIB_VERSION")) $r["libs"]["zlib"] = ZLIB_VERSION; echo json_encode($r);
-3543                nobody              timeout 50 python3 -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-3574                nobody              timeout 50 python3 -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-3603                nobody              timeout 50 python -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-3633                nobody              timeout 50 python -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-3663                nobody              timeout 50 nginx -v
-3692                nobody              timeout 50 httpd -v
-3722                nobody              timeout 50 apache2 -v
-3752                nobody              timeout 50 java -XX:-UsePerfData -version
-3783                nobody              timeout 50 mariadbd --version
-3812                nobody              timeout 50 mysqld --version
-3842                nobody              timeout 50 postgres --version
+509                 root                traefik traefik --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80
+3388                nobody              timeout 50 node -e console.log(JSON.stringify({exe: require("fs").realpathSync(process.execPath), versions: process.versions}))
+3418                nobody              timeout 50 php -r $r = array("exe" => realpath(PHP_BINARY) ?: PHP_BINARY, "version" => PHP_VERSION, "sapi" => PHP_SAPI, "ext" => array(), "libs" => array()); foreach (get_loaded_extensions() as $e) { $v = phpversion($e); if ($v && strpos($v, PHP_VERSION) === false && $e !== "dom") $r["ext"][$e] = $v; } if (defined("OPENSSL_VERSION_TEXT")) { $p = explode(" ", OPENSSL_VERSION_TEXT); $r["libs"][strtolower($p[0])] = $p[1]; } if (function_exists("curl_version")) { $c = curl_version(); $r["libs"]["curl"] = $c["version"]; } if (defined("LIBXML_DOTTED_VERSION")) $r["libs"]["libxml2"] = LIBXML_DOTTED_VERSION; if (defined("PCRE_VERSION")) { $p = explode(" ", PCRE_VERSION); $r["libs"]["pcre2"] = $p[0]; } if (defined("INTL_ICU_VERSION")) $r["libs"]["icu"] = INTL_ICU_VERSION; if (class_exists("SQLite3")) { $s = SQLite3::version(); $r["libs"]["sqlite"] = $s["versionString"]; } if (defined("SODIUM_LIBRARY_VERSION")) $r["libs"]["libsodium"] = SODIUM_LIBRARY_VERSION; if (defined("ZLIB_VERSION")) $r["libs"]["zlib"] = ZLIB_VERSION; echo json_encode($r);
+3448                nobody              timeout 50 python3 -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+3478                nobody              timeout 50 python3 -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+3507                nobody              timeout 50 python -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+3537                nobody              timeout 50 python -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+3566                nobody              timeout 50 nginx -v
+3596                nobody              timeout 50 httpd -v
+3625                nobody              timeout 50 apache2 -v
+3654                nobody              timeout 50 java -XX:-UsePerfData -version
+3684                nobody              timeout 50 mariadbd --version
+3714                nobody              timeout 50 mysqld --version
+3744                nobody              timeout 50 postgres --version
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

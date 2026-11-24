@@ -30,9 +30,13 @@ Aufruf:
      wie --alle-container, aber nur die erreichbaren Container und deren Backends
   Daten: daten/ (Branch daten) und osv-db/ neben diesem Skript (oder --db DIR, auch mehrfach)
 
-Ergebnis: scan_<name>_<zeit>.md        Bericht: Ergebnis, Dienste, Webadressen, Befunde nach Priorität, Anhang
-          scan_<name>_<zeit>.cdx.json  SBOM (CycloneDX 1.5) als Beleg; auch mit Trivy/Grype/Dependency-Track nutzbar
-          scan_<name>_<zeit>.sha256    Prüfsummen
+Ergebnis: auf der Konsole Zeitpunkt, Stand der Daten, Host mit laufenden Containern, dann je Container ein
+          Abschnitt "=== Name ===" mit Zusammenfassung, Image, Dienste mit Erreichbarkeit und Webadressen,
+          gefährliche Einstellungen und relevante Funde; im Ausgabeverzeichnis bekannt_<name>.json
+          (relevante Funde des letzten Laufs, für "NEU"), dazu auf Wunsch:
+          scan_<name>_<zeit>.md        mit --bericht: Ergebnis, Dienste, Webadressen, Befunde nach Priorität, Anhang
+          scan_<name>_<zeit>.cdx.json  mit --sbom: SBOM (CycloneDX 1.5); auch mit Trivy/Grype/Dependency-Track nutzbar
+          scan_<name>_<zeit>.sha256    Prüfsummen der geschriebenen Dateien
 Rückgabewert: 0 = keine relevanten Schwachstellen, 1 = relevante Schwachstellen gefunden (siehe RELEVANT;
                   dazu immer aktiv ausgenutzte laut CISA-KEV-Katalog) oder gefährliche Einstellungen des
                   Containers (CONF-…: privileged, Docker-Socket, pid=host …),
@@ -85,7 +89,7 @@ from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "0.6.0"
+VERSION = "1.0.0"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
@@ -1694,13 +1698,28 @@ LOOPBACK_GRUND = " (über Loopback)"
 
 
 def docker_lage():
-    """docker inspect aller laufenden Container und ihrer Netzwerke: ([Container], {Netzname: Netz})."""
+    """docker inspect aller laufenden Container und ihrer Netzwerke: ([Container], {Netzname: Netz}). Pausierte
+    (docker pause) gehören als Kontext dazu – ein laufender Container kann ihren Netzwerk-Namespace mitnutzen,
+    samt veröffentlichter Ports –, werden aber nicht geprüft (pausiert(), docker exec ist dort nicht möglich)."""
     rc, ids = run(["docker", "ps", "-q"])
     if rc != 0:
         raise ScanError("docker nicht erreichbar (läuft dockerd? Rechte/Gruppe docker?)")
     infos = inspect_liste(["docker", "inspect"], ids.split())
     names = sorted({n for d in infos for n in netze_von(d)})
     return infos, {n.get("Name"): n for n in inspect_liste(["docker", "network", "inspect"], names)}
+
+
+def pausiert(infos):
+    """Namen der pausierten Container (docker pause): nur Kontext, nicht geprüft."""
+    return {name_von(d) for d in infos if (d.get("State") or {}).get("Paused")}
+
+
+def gestoppte_container():
+    """Zahl der gestoppten Container (erstellt, beendet, tot) für den Kopf der Ausgabe; None, wenn docker sie nicht
+    liefert. Sie werden nicht geprüft."""
+    rc, ids = run(["docker", "ps", "-aq", "--filter", "status=created", "--filter", "status=exited",
+                   "--filter", "status=dead"])
+    return len(ids.split()) if rc == 0 else None
 
 
 def inspect_liste(cmd, refs):
@@ -1843,6 +1862,7 @@ def collect_web(c, procs):
     web["netz_gruppe"] = netz_gruppe(c.info, infos)
     web["loopback"] = loopback_gruppe(c.info, infos)
     if web["host_network"]:
+        web["eigene_adressen"] = eigene_adressen()
         web["loopback_ziele"] = loopback_ziele(loopback_ports(web), infos, name_von(c.info))
     for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
         web["label_ziele"][proxy] = label_ziele(proxy, infos)
@@ -1944,7 +1964,26 @@ done
 """
 
 
-def konfig_dateien(c, muster, user, includes, basis, runden=10):
+# Dasselbe als root, aber nur für Dateien, die niemand außer root anlegen, ändern oder umlenken kann: die Datei und
+# alle Verzeichnisse darüber gehören root, sind weder für die Gruppe noch für andere beschreibbar, und kein Teil des
+# Pfads ist ein symbolischer Link (sonst wie nicht lesbar). Für Dienste, die ihre Konfiguration als root lesen und
+# danach den Benutzer wechseln (stunnel mit setuid, /etc/stunnel nur für root).
+KONFIG_DATEIEN_NUR_ROOT_SH = r"""nur_root() {
+    p=$1
+    case $p in /*) ;; *) return 1 ;; esac
+    while :; do
+        [ -L "$p" ] && return 1
+        [ -n "$(find "$p" -maxdepth 0 -user 0 ! -perm -020 ! -perm -002 2>/dev/null)" ] || return 1
+        [ "$p" = / ] && return 0
+        p=${p%/*}
+        [ -n "$p" ] || p=/
+    done
+}
+""" + KONFIG_DATEIEN_SH.replace('[ -r "$f" ]; then', '[ -r "$f" ] && nur_root "$f"; then')
+ROOT = "0:0"
+
+
+def konfig_dateien(c, muster, user, includes, basis, runden=10, skript=KONFIG_DATEIEN_SH):
     """Konfigurationsdateien zu den Mustern und ihre include-Dateien (includes: Text einer Datei ->
     Muster, relativ zu basis) als Benutzer des Hauptprozesses lesen. Liefert (Text im Format von 'nginx -T',
     [was fehlt]): nicht vorhandene oder nicht lesbare Dateien, fehlgeschlagene Abfragen, include-Ebenen über
@@ -1955,7 +1994,7 @@ def konfig_dateien(c, muster, user, includes, basis, runden=10):
         if not muster:
             break
         gefragt.update(muster)
-        rc, out = c.exec(["sh", "-s", "--"] + muster, input=KONFIG_DATEIEN_SH, timeout=60, user=user)
+        rc, out = c.exec(["sh", "-s", "--"] + muster, input=skript, timeout=60, user=user)
         if rc != 0:
             fehlt.append("Abfrage fehlgeschlagen: " + ", ".join(muster))
             break
@@ -2001,7 +2040,10 @@ def stunnel_includes(text):
 
 def stunnel_lesen(c, procs, web, exe):
     """stunnel-Konfiguration (Datei aus der Kommandozeile, sonst die übliche) mit dem Benutzer des
-    Hauptprozesses lesen: je Dienst accept -> connect (auch redirect), im Server- wie im Client-Modus."""
+    Hauptprozesses lesen: je Dienst accept -> connect (auch redirect), im Server- wie im Client-Modus. stunnel liest
+    sie als root und wechselt dann den Benutzer (setuid); ist sie für diesen nicht lesbar (SUSE: /etc/stunnel nur
+    für root), als root – aber nur, wenn Datei und Pfad nur root gehören (KONFIG_DATEIEN_NUR_ROOT_SH) und der Scan
+    dort ohnehin root ist (im Container nur mit --user 0)."""
     aufrufe = OrderedDict()
     for p in server_masters(procs, exe):
         args = p["argv"][1:]
@@ -2016,16 +2058,25 @@ def stunnel_lesen(c, procs, web, exe):
             conf, fehlt = konfig_dateien(c, [kandidat], user, stunnel_includes, "/")
             if conf.strip():
                 break
+        als_root = False
+        if (not conf.strip() or fehlt) and user != ROOT and getattr(c, "user", "0") in ("0", ROOT, "root"):
+            for kandidat in kandidaten:
+                conf_root, fehlt_root = konfig_dateien(c, [kandidat], ROOT, stunnel_includes, "/",
+                                                       skript=KONFIG_DATEIEN_NUR_ROOT_SH)
+                if conf_root.strip() and (not fehlt_root or not conf.strip()):
+                    conf, fehlt, als_root = conf_root, fehlt_root, True
+                    break
         if not conf.strip():
             web["unlesbar"].add(exe)
-            web["problems"].append("%s: Konfiguration %snicht lesbar (Weiterleitungen nicht auswertbar)"
+            web["problems"].append("%s: Konfiguration %snicht lesbar (Weiterleitungen nicht auswertbar; als root nur, "
+                                   "wenn Datei und Verzeichnisse root gehören und nur für root beschreibbar sind)"
                                    % (exe, datei + " " if datei else ""))
             continue
         if fehlt:
             web["unlesbar"].add(exe)
             web["problems"].append("%s: Konfiguration nicht vollständig lesbar (%s): Weiterleitungen unvollständig"
                                    % (exe, "; ".join(fehlt)))
-        parse_stunnel(conf, web, exe)
+        parse_stunnel(conf, web, exe, " – als root gelesen, Datei und Pfad nur für root beschreibbar" if als_root else "")
 
 
 def stunnel_ziel(wert):
@@ -2036,7 +2087,7 @@ def stunnel_ziel(wert):
     return "127.0.0.1:" + wert if wert.isdigit() else wert
 
 
-def parse_stunnel(conf, web, exe):
+def parse_stunnel(conf, web, exe, hinweis=""):
     dienst, zeilen, auszug = None, OrderedDict(), []
     for line in conf.splitlines():
         line = line.strip()
@@ -2065,7 +2116,7 @@ def parse_stunnel(conf, web, exe):
     for dienst, z in zeilen.items():
         web["vhosts"][exe].append("[%s] accept %s connect %s" % (dienst, ",".join(z["accept"]) or "-",
                                                                 ",".join(z["connect"]) or "-"))
-    web["raw"].append("--- %s (Auszug)\n" % exe + "\n".join(auszug))
+    web["raw"].append("--- %s (Auszug%s)\n" % (exe, hinweis) + "\n".join(auszug))
 
 
 def resolve_backend(target, web, self_name, depth=0):
@@ -2076,7 +2127,7 @@ def resolve_backend(target, web, self_name, depth=0):
         ziele = [x for x in web["loopback_ziele"][ziel] if x[0] != self_name]
         return target + (" -> " + ", ".join("Container %s, Port %s" % x for x in ziele) if ziele else
                          " (%s)" % ("Host" if self_name == "Host" else "Host bzw. gleicher Container"))
-    if target.startswith("unix:") or re.match(r"(localhost|127\.|\[::1\])", host):
+    if target.startswith("unix:") or lokales_ziel(ziel[0], web):
         mit = [] if target.startswith("unix:") else web.get("loopback", [])
         return target + " (%s%s)" % ("Host" if self_name == "Host" else "gleicher Container",
                                      "; Loopback gemeinsam mit " + ", ".join(mit) if mit else "")
@@ -2116,11 +2167,50 @@ def split_target(target):
     m = re.match(r"^(?:([a-z0-9]+)://)?([^/]+)", target)
     if not m or target.startswith("unix:"):
         return "", ""
-    hostport = m.group(2)
+    hostport = m.group(2).rpartition("@")[2]        # ohne Zugangsdaten (http://benutzer:passwort@app:3000)
     host, _, port = hostport.rpartition(":") if re.search(r":\d+$", hostport) else (hostport, "", "")
     if host.startswith("[") and host.endswith("]"):      # http://[fd00::2]:8080
         host = host[1:-1]
+    if ":" in host:
+        try:
+            host = ipaddress.IPv6Address(host).compressed
+        except ValueError:
+            pass
+    # Verbindung zu 0.0.0.0 bzw. :: geht unter Linux an die Loopback-Adresse
+    host = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(host, host)
     return host, port or STANDARDPORTS.get(m.group(1) or "", "80")
+
+
+def lokales_ziel(host, web):
+    """Ziel im eigenen Netzwerk-Namespace (Host aus split_target): Loopback, im Netzwerk des Hosts (Proxy auf dem
+    Host, Container im Host-Netzwerk) auch eine eigene Adresse des Hosts (z.B. proxy_pass https://<eigene IP>:…).
+    Wem es gehört, klärt loopback_ziele (Veröffentlichung, sonst lauschender Prozess)."""
+    return host == "localhost" or host.startswith("127.") or host == "::1" or host in web.get("eigene_adressen", ())
+
+
+def eigene_adressen(proc="/proc"):
+    """Adressen des eigenen Netzwerk-Namespace ohne Loopback: IPv4 aus /proc/net/fib_trie (LOCAL), IPv6 aus
+    /proc/net/if_inet6."""
+    adressen, letzte = set(), None
+    try:
+        with open(os.path.join(proc, "net", "fib_trie")) as f:
+            for line in f:
+                m = re.search(r"[|+]-- ([0-9.]+)$", line.rstrip())
+                if m:
+                    letzte = m.group(1)
+                elif "/32 host LOCAL" in line and letzte:
+                    adressen.add(letzte)
+    except OSError:
+        pass
+    try:
+        with open(os.path.join(proc, "net", "if_inet6")) as f:
+            for line in f:
+                h = (line.split() or [""])[0]
+                if re.match(r"^[0-9a-f]{32}$", h):
+                    adressen.add(ipaddress.IPv6Address(int(h, 16)).compressed)
+    except OSError:
+        pass
+    return {a for a in adressen if not nur_lokal(a) and a != "::1"}
 
 
 def ziel_variabel(target):
@@ -2151,6 +2241,25 @@ def socket_prozesse(target, procs, web):
     return [p for p in procs.values() if pfade & p.get("unix", set())] if pfade else []
 
 
+def ziele_kurz(target, web):
+    """Backend-Ziel knapp für die Konsole, upstream in seine Ziele aufgelöst, jedes einzeln: zugeordnet
+    "Container:Port" (im selben Container wie konfiguriert, z.B. 127.0.0.1:9000), sonst Unix-Socket bzw. Host und
+    Port mit Hinweis (Variable, extern) – nie Zugangsdaten aus der URL (das Log geht nach Rundeck und per Mail)."""
+    kurz = []
+    for t in endziele(target, web):
+        if unix_socket(t) or t.startswith("unix:"):
+            kurz.append("unix:" + (unix_socket(t) or t[5:]))
+            continue
+        host, port = split_target(t)
+        ziele = backend_containers(t, web)
+        if ziele:
+            kurz += ["%s:%s" % (host if ct == web["self"] else ct, p) if p != "*" else ct for ct, p in ziele]
+        else:
+            ohne = re.sub(r"^[a-z0-9]+://", "", t).split("/")[0].rpartition("@")[2]
+            kurz.append(ohne + (" (nicht auswertbar)" if "$" in ohne else " (extern)"))
+    return kurz
+
+
 def backend_containers(target, web, depth=0, nur_loopback=False):
     """[(Container, Port)] eines Backend-Ziels, upstream-Namen werden aufgelöst. Ein Ziel per 127.0.0.1/localhost
     trifft auch die Container, die dasselbe Loopback nutzen (nur_loopback: nur diese)."""
@@ -2159,7 +2268,7 @@ def backend_containers(target, web, depth=0, nur_loopback=False):
         return [x for t in web["upstreams"][host] for x in backend_containers(t, web, depth + 1, nur_loopback)]
     if host in web["containers"]:
         return [] if nur_loopback else [(web["containers"][host], port)]
-    if re.match(r"(localhost|127\.|::1$)", host):
+    if lokales_ziel(host, web):
         if (host, port) in web.get("loopback_ziele", {}):   # zugeordnet: veröffentlichter Port bzw. Prozess
             ziele = web["loopback_ziele"][(host, port)]
             return [x for x in ziele if x[0] in web.get("loopback", [])] if nur_loopback else ziele
@@ -2169,7 +2278,8 @@ def backend_containers(target, web, depth=0, nur_loopback=False):
 
 
 def loopback_ports(web):
-    """Backend-Ziele per 127.0.0.1/localhost/::1 (auch in upstream-Blöcken) als {(Host, TCP-Port)}."""
+    """Lokale Backend-Ziele (127.0.0.1/localhost/::1, eigene Adressen des Hosts; auch in upstream-Blöcken) als
+    {(Host, TCP-Port)}."""
     ziele = set()
 
     def walk(t, depth=0):
@@ -2177,7 +2287,7 @@ def loopback_ports(web):
         if host in web["upstreams"] and depth < 3:
             for u in web["upstreams"][host]:
                 walk(u, depth + 1)
-        elif re.match(r"(localhost|127\.|::1$)", host) and port.isdigit():
+        elif lokales_ziel(host, web) and port.isdigit():
             ziele.add((host, port))
     for targets in web["backends"].values():
         for t in targets:
@@ -2186,8 +2296,9 @@ def loopback_ports(web):
 
 
 def adresse_passt(bindung, adresse):
-    """Erreicht ein Ziel an adresse (127.x.y.z oder ::1) einen Socket bzw. eine Veröffentlichung an bindung? Auf
-    allen Adressen ja; "::" im Zweifel auch für IPv4 (Linux nimmt dort ohne IPV6_V6ONLY auch IPv4 an)."""
+    """Erreicht ein Ziel an adresse (127.x.y.z, ::1 oder eigene Adresse) einen Socket bzw. eine Veröffentlichung an
+    bindung? Auf allen Adressen ja; "::" im Zweifel auch für IPv4 (Linux nimmt dort ohne IPV6_V6ONLY auch IPv4
+    an)."""
     return bindung == adresse or bindung == "::" or (bindung == "0.0.0.0" and "." in adresse)
 
 
@@ -2415,31 +2526,50 @@ def mark_usage(comps, procs, owners, web):
     for label, ps in gruppen.items():
         p = ps[-1]
         desc, exposed = [], erreichbar[label]
+        # für die Konsole knapper: Erreichbarkeit je Port (gleiche zusammen), Anwendung (nur Dateien aus der
+        # Kommandozeile, keine Werte wie benutzer:passwort) und Ziele; Konfiguration steht dort als Webadressen,
+        # unklare Weiterleitungen als Warnung
+        erreichbarkeit = OrderedDict()      # Beschreibung -> Ports
+        zusatz = []
         if p["base"] in TUNNEL:
             desc.append("Tunnel-Agent: leitet Verkehr von außen weiter, ohne selbst auf einem Port zu lauschen")
+            erreichbarkeit["Tunnel-Agent (leitet Verkehr von außen weiter)"] = []
         for port, addr in p["ports"].items():
-            desc.append("Port %s (%s) %s" % (port if "/" in port else port + "/tcp", addr,
-                                            port_erreichbar(p, port, addr, web)[0]))
+            text = port_erreichbar(p, port, addr, web)[0]
+            desc.append("Port %s (%s) %s" % (port if "/" in port else port + "/tcp", addr, text))
+            erreichbarkeit.setdefault(text, []).append(port)
         if p.get("frontends"):
             desc.append("hinter " + ", ".join(p["frontends"]) + " (gleicher Container)")
+            erreichbarkeit["hinter %s im selben Container" % ", ".join(p["frontends"])] = []
         app = [a for i, a in enumerate(p["argv"]) if i and (a.startswith("/") or re.search(r"\.([cm]?js|py|php)$", a)
                or p["argv"][i - 1] in ("-m", "--app", "-w") or re.match(r"[\w.]+:\w+$", a))]
         if app:
             desc.append("Anwendung: " + " ".join(app))
+        # für die Konsole (Rundeck-Log, Mail) nur das erste Skript- bzw. Dateiargument, nie ein Optionswert
+        # (node server.js --password /geheim: nur server.js)
+        dateien = next((x for i, x in enumerate(p["argv"]) if i and not x.startswith("-") and "=" not in x
+                        and (i == 1 or not p["argv"][i - 1].startswith("-"))
+                        and (x.startswith("/") or re.search(r"\.([cm]?js|py|php)$", x))), "")
         if p["cwd"] not in ("", "/"):
             desc.append("Arbeitsverzeichnis: " + p["cwd"])
+        if dateien or p["cwd"] not in ("", "/"):
+            zusatz.append(" ".join(x for x in (dateien, "in " + p["cwd"] if p["cwd"] not in ("", "/") else "") if x))
         if web["vhosts"].get(p["exe"]):
             desc.append("Konfiguration: " + " | ".join(web["vhosts"][p["exe"]]))
-        for b in OrderedDict.fromkeys(web["backends"].get(p["exe"], [])):
+        alle_backends = list(OrderedDict.fromkeys(web["backends"].get(p["exe"], [])))
+        for b in alle_backends:
             desc.append("Backend " + resolve_backend(b, web, web["self"]))
+        ziele_konsole = list(OrderedDict.fromkeys(z for b in alle_backends for z in ziele_kurz(b, web)))
         if p["exe"] in web["modphp"]:
             desc.append("PHP als Apache-Modul (mod_php)")
+            zusatz.append("mit mod_php")
         backends = OrderedDict.fromkeys(web["backends"].get(p["exe"], []))
         ziele = [(ct, port) for b in backends for ct, port in backend_containers(b, web)] + \
             list(web.get("label_ziele", {}).get(p["base"], []))
         ueber_loopback = {x for b in backends for x in backend_containers(b, web, nur_loopback=True)}
         for ct, port in web.get("label_ziele", {}).get(p["base"], []):
             desc.append("Ziel aus Docker-Labels: Container %s, Port %s" % (ct, "alle" if port == "*" else port))
+            ziele_konsole.append("%s (Docker-Label)" % (ct + ("" if port == "*" else ":" + port)))
         # Weiterleitungen nicht vollständig bekannt: im Zweifel erreichbar -> alle Container in den Docker-Netzen
         unklar = []
         if wirkt[label]:
@@ -2467,6 +2597,11 @@ def mark_usage(comps, procs, owners, web):
                 desc.append("Aufruf: Container %s, Port %s (%s)" % (ct, port, quelle))
         services.append({"label": label, "name": p["base"], "version": versions.get(norm(p["exe"]), ""), "exe": p["exe"],
                          "description": "; ".join(desc),
+                         "konsole": {"zusatz": ", ".join(zusatz),
+                                     "erreichbar": "; ".join(("Port %s: %s" % (", ".join(ports), text)) if ports else text
+                                                            for text, ports in erreichbarkeit.items()) or "ohne Port",
+                                     "ziele": ziele_konsole,
+                                     "aufrufe": ["%s:%s (%s)" % (ct, port, quelle) for ct, port, quelle in aufrufe]},
                          "endpoints": [("udp://" if port.endswith("/udp") else "tcp://") + e.split(" ")[0]
                                        for port in p["ports"] for e in web["published"].get(port, [])],
                          "exposed": exposed, "unklar": unklar,
@@ -2683,10 +2818,6 @@ def webadressen(services, web):
             break
     for svc in services:
         svc["webadressen"].sort(key=lambda e: not e["erreichbar"])
-
-
-def webadressen_text(urls, limit=3):
-    return ", ".join(urls[:limit]) + (" (+%d)" % (len(urls) - limit) if len(urls) > limit else "")
 
 
 def urls_zufuegen(urls, ziel_urls, gruppen):
@@ -3348,6 +3479,16 @@ def schweregrad_index(dbdirs):
     return index
 
 
+def daten_stand(dbdirs):
+    """Ältester Zeitpunkt der letzten erfolgreichen Aktualisierung über alle Ökosysteme der Datenverzeichnisse
+    (für den Kopf der Ausgabe; die Altersprüfung je Container nutzt die Ökosysteme, die er braucht), sonst None."""
+    stand = [v["geprueft"][:19] for d in dbdirs for v in db_state(d).values() if v.get("geprueft")]
+    try:
+        return datetime.datetime.strptime(min(stand), "%Y-%m-%dT%H:%M:%S") if stand else None
+    except ValueError:
+        return None
+
+
 def db_state(dbdir):
     """Je Ökosystem: "stand" = Zeitstempel des neuesten Eintrags (für das inkrementelle Update),
     "geprueft" = Zeitpunkt der letzten erfolgreichen Aktualisierung (für die Altersprüfung). Datei stand.json."""
@@ -3704,8 +3845,47 @@ def fund_text(r, fett=""):
         (" – %saktiv ausgenutzt%s (KEV seit %s)" % (fett, fett, r["kev"]) if r.get("kev") else "")
 
 
+def dienste_konsole(services):
+    """Zeilen je Dienst für die Konsole: Programm (Anwendung, Verzeichnis), Ports mit Erreichbarkeit (über welchen
+    Proxy); darunter Webadressen (mit dem Weg, wenn er nicht schon oben steht), Ziele eines Proxys und Aufrufe."""
+    zeilen = []
+    for s in services:
+        k = s.get("konsole")
+        if k is None:           # nicht zuordenbarer Port: nur die Beschreibung
+            zeilen.append("Dienst %s: %s" % (s["label"], s["description"]))
+            oben = s["description"]
+        else:
+            zeilen.append("Dienst %s%s, %s" % (" ".join(x for x in (s["name"], s["version"]) if x),
+                                               " (%s)" % k["zusatz"] if k["zusatz"] else "", k["erreichbar"]))
+            oben = k["erreichbar"]
+        teile = []
+        for offen, titel in ((True, ""), (False, "nicht von außen: ")):
+            wege = OrderedDict()        # Weg bis vor den Dienst -> Webadressen
+            for e in s.get("webadressen", []):
+                if e["erreichbar"] != offen or (not offen and any(
+                        o["url"] == e["url"] and o["erreichbar"] for o in s["webadressen"])):
+                    continue
+                weg = e["weg"][:-len(" → " + s["label"])] if e["weg"].endswith(" → " + s["label"]) else \
+                    "" if e["weg"] == s["label"] else e["weg"]
+                urls = wege.setdefault("" if weg in oben else weg, [])
+                if e["url"] not in urls:
+                    urls.append(e["url"])
+            if wege:
+                teile.append(titel + "; ".join(", ".join(urls) + (" über " + weg if weg else "")
+                                               for weg, urls in wege.items()))
+        if teile:
+            zeilen.append("  Webadressen: " + " – ".join(teile))
+        if k and k["ziele"]:
+            zeilen.append("  leitet weiter an: " + ", ".join(k["ziele"]))
+        if k and k["aufrufe"]:
+            zeilen.append("  ruft auf: " + ", ".join(k["aufrufe"]))
+    return zeilen or ["Dienste: keine (kein Prozess mit offenem Port)"]
+
+
 def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db_info, alle, nur_behebbare, known,
                  ausnahmen=(), konf=()):
+    """Befunde bewerten (Priorität, Ausnahmen, Relevanz, neu) und, falls path gesetzt ist (--bericht), den Bericht
+    schreiben. Liefert (alle Befunde, relevante Befunde)."""
     published = {s["label"] for s in services if s["exposed"]}
     rows = []
     for f in findings:
@@ -3721,6 +3901,8 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
     for r in relevant:     # neu gegenüber dem letzten Lauf (ohne vorherigen Lauf: alle neu)
         r["neu"] = known is None or (r["pkg"], r["ver"], r["id"]) not in known
     relevant.sort(key=lambda r: not r["neu"])
+    if not path:
+        return rows, relevant
 
     out = []
     w = out.append
@@ -3928,7 +4110,6 @@ def erreichbarkeit_pruefen(name, a, via_proxy=None, via_urls=None):
     scan_container (Rückgabewert, öffentliche Backends, Bericht, Webadressen der Ziele), Rückgabewert und Bericht
     None."""
     c = Container(name, a.user)
-    log("Ermittle Erreichbarkeit über Container '%s' ..." % c.name)
     procs, how_procs, fremd = collect_procs(c)
     web = collect_web(c, procs)
     web["self"] = c.name
@@ -3939,14 +4120,18 @@ def erreichbarkeit_pruefen(name, a, via_proxy=None, via_urls=None):
     return None, backends_von(services, c.name), None, web["ziel_urls"]
 
 
-def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None):
+def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None, anlass=None):
     """Einen Container scannen. via_proxy: {Port: [Grund]} (Ziel eines erreichbaren Proxys), via_urls: {Port:
     [Webadresse]} (dessen Webadressen, siehe webadressen), bekannt: {Container: bekannte Funde} je Lauf – eine
-    erneute Prüfung im selben Lauf vergleicht mit dem Stand vor dem Lauf, nicht mit der eigenen ersten. Liefert (Rückgabewert, öffentliche Backends [(Container,
+    erneute Prüfung im selben Lauf vergleicht mit dem Stand vor dem Lauf, nicht mit der eigenen ersten; anlass: Grund
+    der erneuten Prüfung für die Überschrift. Liefert (Rückgabewert, öffentliche Backends [(Container,
     Port, Dienst)], Basis der Berichtsdateien, Webadressen der Ziele in anderen Containern {(Container, Port):
     [Webadresse]})."""
+    # Überschrift des Abschnitts, sofort (Fortschritt, Meldungen auf stderr); eine erneute Prüfung im selben Lauf
+    # (anlass, siehe durchlauf) ersetzt die vorige
+    print("\n=== %s%s ===" % (name, " (erneute Prüfung wegen %s; ersetzt den Abschnitt oben)" % anlass if anlass else ""))
+    sys.stdout.flush()
     c = Container(name, a.user)
-    log("Erfasse Container '%s' ..." % c.name)
     how = {}
     files, extra, how["files"], problems = collect_files(c)
     osinfo = os_release(files)
@@ -3975,7 +4160,6 @@ def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None):
     ausnahmen_anwenden(konf, getattr(a, "ausnahmen_liste", None) or [], warnings)
     konf_relevant = [k for k in konf if not k.get("ausgenommen")]
 
-    log("Abgleich mit OSV-Daten %s ..." % ", ".join(a.dbdirs))
     findings, db_date, missing, os_newest = osv_scan(comps, osinfo, a.dbdirs)
     # nach osv_scan: erst dort werden Laufzeiten aus Fremdquellen (nginx.org, NodeSource …) erkannt
     warnings.extend(eol_warnungen(comps, [os.path.join(d, "eol-daten.json") for d in a.dbdirs]))
@@ -4013,44 +4197,42 @@ def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None):
 
     os.makedirs(a.ausgabe, exist_ok=True)
     base = os.path.join(a.ausgabe, "scan_%s_%s" % (c.name, datetime.datetime.now().strftime("%Y%m%d_%H%M%S")))
-    rows, relevant = write_report(base + ".md", c, osinfo, comps, services, procs, web, how, findings, db_info,
-                                  a.alle, a.nur_behebbare, known, getattr(a, "ausnahmen_liste", None) or [], konf)
+    rows, relevant = write_report(base + ".md" if a.bericht else None, c, osinfo, comps, services, procs, web, how,
+                                  findings, db_info, a.alle, a.nur_behebbare, known,
+                                  getattr(a, "ausnahmen_liste", None) or [], konf)
     if not problems:
         with open(known_file, "w", encoding="utf-8") as f:
             json.dump(sorted([[r["pkg"], r["ver"], r["id"]] for r in relevant] +
                              [[k["pkg"], k["quelle"], k["id"]] for k in konf_relevant]), f)
-    write_cdx(base + ".cdx.json", c, osinfo, comps, services)
-    with open(base + ".sha256", "w") as f:
-        for ext in (".md", ".cdx.json"):
-            f.write("%s  %s\n" % (datei_sha256(base + ext), os.path.basename(base + ext)))
+    if a.sbom:
+        write_cdx(base + ".cdx.json", c, osinfo, comps, services)
+    dateien = [ext for ext, ja in ((".md", a.bericht), (".cdx.json", a.sbom)) if ja]
+    if dateien:
+        with open(base + ".sha256", "w") as f:
+            for ext in dateien:
+                f.write("%s  %s\n" % (datei_sha256(base + ext), os.path.basename(base + ext)))
 
     code = 2 if problems else 1 if relevant or konf_relevant else 0
-    public = [s["label"] for s in services if s["exposed"]]
     unknown = sum(1 for r in rows if r["prio"] == 1 and r["sev"] == "UNKNOWN")
     kev = sum(1 for r in relevant if r.get("kev"))
     for warn in how["warnungen"]:
-        print("%s: WARNUNG: %s" % (c.name, warn))
+        print("WARNUNG: %s" % warn)
     funde = " und ".join(x for x in ("RELEVANTE SCHWACHSTELLEN" if relevant else "",
                                      "GEFÄHRLICHE EINSTELLUNGEN" if konf_relevant else "") if x)
-    print("%s: %s – %d Befunde, davon %d relevant (%d neu%s)%s%s; öffentlich: %s – Bericht: %s.md" % (
-        c.name, {0: "OK", 1: funde, 2: "UNVOLLSTÄNDIG: " + "; ".join(problems)}[code],
+    print("%s – %d Befunde, davon %d relevant (%d neu%s)%s%s%s" % (
+        {0: "OK", 1: funde, 2: "UNVOLLSTÄNDIG: " + "; ".join(problems)}[code],
         len(rows), len(relevant), sum(r["neu"] for r in relevant), ", %d aktiv ausgenutzt" % kev if kev else "",
         ", P1 ohne Schweregrad: %d" % unknown if unknown else "",
         ", %d gefährliche Einstellungen" % len(konf_relevant) if konf_relevant else "",
-        ", ".join(public) or "nichts", base))
-    for svc in services:          # Webadressen der Dienste, erreichbare zuerst
-        if svc.get("webadressen"):
-            offen = list(OrderedDict.fromkeys(e["url"] for e in svc["webadressen"] if e["erreichbar"]))
-            intern = list(OrderedDict.fromkeys(e["url"] for e in svc["webadressen"]
-                                               if not e["erreichbar"] and e["url"] not in offen))
-            print("%s:   Webadressen %s: %s" % (c.name, svc["label"], "; ".join(
-                x for x in ("erreichbar: " + webadressen_text(offen, 8) if offen else "",
-                            "nicht von außen: " + webadressen_text(intern, 4) if intern else "") if x)))
-    # relevante Funde auch auf der Konsole (Rundeck-Log, Mail), neue zuerst – Details im Bericht
+        " – Bericht: %s.md" % base if a.bericht else ""))
+    # für Rundeck-Log und Mail ohne Bericht: Image, Dienste mit Erreichbarkeit und Webadressen, relevante Funde
+    print("Image %s – %s" % (c.info["Config"]["Image"], osinfo["pretty"]))
+    for zeile in dienste_konsole(services):
+        print(zeile)
     for k in sorted(konf_relevant, key=lambda k: not k["neu"]):
-        print("%s:   %s%s" % (c.name, "NEU: " if k["neu"] and known is not None else "", konf_text(k)))
-    for r in relevant:
-        print("%s:   %s%s" % (c.name, "NEU: " if r["neu"] and known is not None else "", fund_text(r)))
+        print("%s%s" % ("NEU: " if k["neu"] and known is not None else "", konf_text(k)))
+    for r in relevant:          # neue zuerst (write_report)
+        print("%s%s" % ("NEU: " if r["neu"] and known is not None else "", fund_text(r)))
     sys.stdout.flush()
     return code, backends_von(services, c.name), base, web["ziel_urls"]
 
@@ -4143,7 +4325,7 @@ def host_proxys(infos):
     rc, out = run(["sh", "-s", "--"] + pids, input=PROC_SH)
     procs, _ = procs_auswerten(out)
     web = web_leer()
-    web.update(self="Host", host_network=True, containers=container_index(infos),
+    web.update(self="Host", host_network=True, containers=container_index(infos), eigene_adressen=eigene_adressen(),
                nachbarn=sorted(name_von(d) for d in infos if netze_von(spender_von(d, infos) or d)),
                loopback=sorted(name_von(d) for d in infos if im_host_netz(d, infos)))
     webserver_lesen(Host(), procs, web)
@@ -4162,6 +4344,38 @@ def host_proxys(infos):
             warnings.append("Weiterleitungen von %s nicht vollständig auswertbar (%s) – alle Container mit einem "
                             "Docker-Netz gelten als möglicherweise öffentlich" % (svc["label"], "; ".join(svc["unklar"])))
     return ziele, services, warnings, web["problems"], web["ziel_urls"]
+
+
+def dauer_text(sekunden):
+    """Dauer kurz wie bei docker ps: Minuten, bis 48 Stunden Stunden, sonst Tage."""
+    if sekunden < 3600:
+        return "%d min" % max(0, sekunden // 60)
+    return "%d h" % (sekunden // 3600) if sekunden < 48 * 3600 else "%d Tagen" % (sekunden // 86400)
+
+
+def host_kopf(infos, gestoppt=None):
+    """Kopfzeilen zum Host: Name, Zahl der laufenden, pausierten und gestoppten Container (gestoppt: Zahl oder
+    None), die laufenden mit Erstellung, Laufzeit, Zustand (healthcheck) und Neustarts."""
+    pause = pausiert(infos)
+    infos = [d for d in infos if name_von(d) not in pause]
+    zeilen = ["Host: %s mit %d laufenden%s%s Containern%s" % (
+        os.uname().nodename, len(infos), ", %d pausierten" % len(pause) if pause else "",
+        " und %d gestoppten" % gestoppt if gestoppt is not None else "", ":" if infos else "")]
+    breite = max([len(name_von(d)) for d in infos] or [0])
+    for d in sorted(infos, key=name_von):
+        state = d.get("State") or {}
+        try:
+            seit = "läuft seit " + dauer_text(int((utcnow() - datetime.datetime.strptime(
+                (state.get("StartedAt") or "")[:19], "%Y-%m-%dT%H:%M:%S")).total_seconds()))
+        except ValueError:
+            seit = "läuft"
+        health = (state.get("Health") or {}).get("Status")
+        neustarts = d.get("RestartCount") or 0
+        erstellt = (d.get("Created") or "")[:16].replace("T", " ")
+        zeilen.append("- %s  erstellt %s, %s%s%s" % (
+            name_von(d).ljust(breite), erstellt + " UTC" if erstellt else "?", seit,
+            " (%s)" % health if health else "", ", %d Neustarts" % neustarts if neustarts else ""))
+    return zeilen
 
 
 def host_ausgeben(services, warnings, problems):
@@ -4197,13 +4411,15 @@ def container_auswahl(infos, muster):
     return sorted(treffer)
 
 
-def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None, ziel_urls=None):
+def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None, ziel_urls=None, auslassen=()):
     """Reihenfolge und Weitergabe der Erreichbarkeit und der Webadressen: zuerst die erreichbaren Container und
     (wiederholt) die Backends ihrer Proxys in anderen Containern – vorgezogen, damit sie schon mit ihrer
     Erreichbarkeit geprüft werden –, danach die übrigen (spaeter). Ein schon geprüftes Ziel, für das neue
     Webadressen hinzukommen, wird erneut geprüft (wie bei neuen Gründen höchstens dreimal). pruefen(Name, via,
-    urls) -> (Rückgabewert, Backends, Bericht, Webadressen der Ziele): scan_container bzw. erreichbarkeit_pruefen.
-    ziele, ziel_urls: Ziele der Proxys auf dem Host und deren Webadressen. Liefert (via je Container, Webadressen
+    urls, anlass) -> (Rückgabewert, Backends, Bericht, Webadressen der Ziele): scan_container bzw.
+    erreichbarkeit_pruefen; anlass: warum ein schon geprüfter Container erneut geprüft wird (sonst None).
+    ziele, ziel_urls: Ziele der Proxys auf dem Host und deren Webadressen; auslassen: nicht prüfen, auch nicht als
+    Ziel eines Proxys (pausierte Container). Liefert (via je Container, Webadressen
     je Container {Container: {Port: [Webadresse]}}, Container mit Fehler); codes: Rückgabewerte je Container."""
     codes = {} if codes is None else codes
     urls = {}
@@ -4215,6 +4431,11 @@ def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None, ziel_urls=No
             queue.move_to_end(ziel, last=False)
     spaeter = list(spaeter)
     vias, fehler, runs = {}, [], Counter()
+    anlaesse = {}               # schon geprüfter Container -> Anlässe der erneuten Prüfung
+
+    def erneut(ziel, text):
+        if ziel in vias and text not in anlaesse.setdefault(ziel, []):
+            anlaesse[ziel].append(text)
     while queue or spaeter:
         if not queue:
             n = spaeter.pop(0)
@@ -4222,10 +4443,14 @@ def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None, ziel_urls=No
                 queue[n] = {}
             continue
         name, via = queue.popitem(last=False)
+        if name in auslassen:
+            continue
+        anlass = " und ".join(anlaesse.pop(name, [])) or None
         vias[name] = via
         runs[name] += 1
         try:
-            codes[name], backends, _, neue_urls = pruefen(name, via, dict(urls[name]) if name in urls else None)
+            codes[name], backends, _, neue_urls = pruefen(name, via, dict(urls[name]) if name in urls else None,
+                                                          anlass)
         except ScanError as e:
             if run(["docker", "ps", "-q"])[0] == 0 and run(["docker", "inspect", "--type", "container", name])[0] != 0:
                 print("%s: übersprungen – Container nicht mehr vorhanden (z.B. mit --rm beendet)" % name)
@@ -4239,6 +4464,7 @@ def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None, ziel_urls=No
             if ziel in vias and ziel not in queue and runs[ziel] < 3:
                 queue[ziel] = vias[ziel]
                 queue.move_to_end(ziel, last=False)
+                erneut(ziel, "neuer Webadressen von %s" % name)
         for ct, port, reason in backends:
             # bei gemeinsamem Netzwerk-Namespace lauscht ggf. ein anderer Container der Gruppe auf dem Port
             for ziel in [ct] + gruppen.get(ct, []):
@@ -4250,6 +4476,7 @@ def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None, ziel_urls=No
                     continue          # Schutz vor Endlosschleifen bei gegenseitigen Proxys
                 queue[ziel] = merged
                 queue.move_to_end(ziel, last=False)
+                erneut(ziel, "eines neuen Wegs über %s" % reason)
     return vias, urls, fehler
 
 
@@ -4258,7 +4485,13 @@ def main():
     data_dir, local_db = os.path.join(here, "daten"), os.path.join(here, "osv-db")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("container", nargs="?", help="Name oder ID des laufenden Containers (wie --container)")
-    ap.add_argument("ausgabe", nargs="?", default=".", help="Ausgabeverzeichnis (Standard: aktuelles Verzeichnis)")
+    ap.add_argument("ausgabe", nargs="?", default=".",
+                    help="Ausgabeverzeichnis für den Stand des letzten Laufs (bekannt_<container>.json) und die "
+                         "Dateien aus --bericht und --sbom (Standard: aktuelles Verzeichnis)")
+    ap.add_argument("--bericht", action="store_true",
+                    help="je Container einen Bericht (Markdown) mit allen Befunden, Diensten, Prozessen und "
+                         "Webserver-Konfiguration schreiben (enthält Kommandozeilen der Prozesse)")
+    ap.add_argument("--sbom", action="store_true", help="je Container eine SBOM (CycloneDX 1.5) schreiben")
     ap.add_argument("--oeffentliche", action="store_true",
                     help="alle Container mit veröffentlichten Ports scannen, dazu deren Backends hinter einem Proxy")
     ap.add_argument("--alle-container", action="store_true",
@@ -4285,7 +4518,8 @@ def main():
                                            "(z.B. SUSE); ohne daten/ Standard: " + ",".join(OSV_ECOSYSTEMS))
     ap.add_argument("--nur-behebbare", action="store_true",
                     help="für den Rückgabewert nur Funde zählen, für die es einen Fix gibt")
-    ap.add_argument("--alle", action="store_true", help="alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH)")
+    ap.add_argument("--alle", action="store_true",
+                    help="mit --bericht: alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV)")
     ap.add_argument("--user", default="0", help="Benutzer für docker exec (Standard 0 = root, nötig für /proc)")
     ap.add_argument("--version", action="version", version="container-security-scan " + VERSION)
     a = ap.parse_args()
@@ -4359,10 +4593,17 @@ def main():
     if not a.dbdirs or not all(os.path.isdir(d) for d in a.dbdirs):
         raise ScanError("keine OSV-Daten gefunden (%s) – zuerst: %s --db-aktualisieren" % (", ".join(a.db or [data_dir]), sys.argv[0]))
     a.ausnahmen_liste = ausnahmen_laden(a.ausnahmen) if a.ausnahmen else []
-    print("container-security-scan %s" % VERSION)
+    stand = daten_stand(a.dbdirs)
+    print("container-security-scan %s\nScan: %s UTC\nDaten: %s" % (
+        VERSION, utcnow().strftime("%Y-%m-%d %H:%M"), stand.strftime("%Y-%m-%d %H:%M UTC") if stand else "Stand unbekannt"))
+    sys.stdout.flush()          # vor Meldungen auf stderr (Wrapper: 2>&1)
     try:
         infos, netze = docker_lage()
+        print("\n".join(host_kopf(infos, gestoppte_container())))
+        sys.stdout.flush()
         public, rest, gruppen = container_liste(infos, netze)
+        pause = pausiert(infos)         # Kontext für die Erreichbarkeit, nicht prüfen
+        public, rest = [n for n in public if n not in pause], [n for n in rest if n not in pause]
         ziele, services, warnings, problems, ziel_urls = host_proxys(infos)
     except ScanError as e:
         log("FEHLER: %s" % e)
@@ -4372,12 +4613,14 @@ def main():
     if muster:
         # Auswahl: Erreichbarkeit wie im Gesamtlauf über alle laufenden Container ermitteln (ohne Inventar und
         # Abgleich), dann nur die ausgewählten vollständig prüfen – mit denselben Ergebnissen wie im Gesamtlauf
-        auswahl = container_auswahl(infos, muster)
+        auswahl = [n for n in container_auswahl(infos, muster) if n not in pause]
         if not auswahl:
             log("FEHLER: kein laufender Container passt zu %s" % ", ".join(muster))
             return 2
+        log("Ermittle die Erreichbarkeit über alle %d laufenden Container ..." % (len(public) + len(rest)))
         vias, urls, fehler = durchlauf(public, rest, ziele, gruppen,
-                                       lambda n, via, u: erreichbarkeit_pruefen(n, a, via, u), ziel_urls=ziel_urls)
+                                       lambda n, via, u, anlass: erreichbarkeit_pruefen(n, a, via, u),
+                                       ziel_urls=ziel_urls, auslassen=pause)
         codes = {}
         for name in auswahl:
             try:
@@ -4389,14 +4632,14 @@ def main():
         if fehler:      # Ziele dieser Container unbekannt: Erreichbarkeit der Auswahl ggf. unvollständig
             print("UNVOLLSTÄNDIG: Erreichbarkeit über %s nicht ermittelbar (siehe Meldungen)" % ", ".join(fehler))
         code = 2 if 2 in codes.values() or host_code == 2 or fehler else 1 if 1 in codes.values() else 0
-        print("Gesamt: %d von %d Containern geprüft (%s) – %s" % (len(codes), len(public) + len(rest),
+        print("\nGesamt: %d von %d Containern geprüft (%s) – %s" % (len(codes), len(public) + len(rest),
                                                                  ", ".join(muster), GESAMT_TEXT[code]))
         return code
 
     reports, bekannt = {}, {}
 
-    def pruefen(name, via, urls):
-        code, backends, base, neue_urls = scan_container(name, a, via, urls, bekannt)
+    def pruefen(name, via, urls, anlass):
+        code, backends, base, neue_urls = scan_container(name, a, via, urls, bekannt, anlass)
         if reports.get(name) and reports[name] != base:   # erneute Prüfung ersetzt den ersten Bericht dieses Laufs
             # (bei gleichem Namen – Prüfung in derselben Sekunde – ist er schon überschrieben)
             for ext in (".md", ".cdx.json", ".sha256"):
@@ -4408,9 +4651,9 @@ def main():
         print("Keine laufenden Container gefunden." if a.alle_container else "Keine Container mit veröffentlichten Ports gefunden.")
         return host_code
     codes = {}
-    durchlauf(public, rest if a.alle_container else [], ziele, gruppen, pruefen, codes, ziel_urls)
+    durchlauf(public, rest if a.alle_container else [], ziele, gruppen, pruefen, codes, ziel_urls, pause)
     code = 2 if 2 in codes.values() or host_code == 2 else 1 if 1 in codes.values() else 0
-    print("Gesamt: %d Container geprüft – %s" % (len(codes), GESAMT_TEXT[code]))
+    print("\nGesamt: %d Container geprüft – %s" % (len(codes), GESAMT_TEXT[code]))
     return code
 
 

@@ -25,7 +25,10 @@ Den Branch `daten` nie von Hand ändern.
   `subprocess.run`, keine `dataclasses`, kein Walross-Operator; Formatierung mit `%` wie im übrigen Code.
   Externe Befehle über die Hilfsfunktion `run()`.
 - **Rein lesend:** Im Container nur Abfragen (find/tar, `/proc`, Versionsabfragen mit Zeitlimit), nie mit
-  mehr Rechten als der jeweilige Prozess. Keine Paketlisten oder andere Daten des Servers ins Netz.
+  mehr Rechten als der jeweilige Prozess. Einzige Ausnahme: eine Konfiguration, die der Prozess nach dem Wechsel
+  des Benutzers nicht mehr lesen kann (stunnel mit `setuid`), liest der Scan als root, aber nur, wenn Datei und
+  Pfad root gehören, nicht für andere beschreibbar sind und keinen Link enthalten (`KONFIG_DATEIEN_NUR_ROOT_SH`;
+  nur `sh`/`find`/`cat`, nie das Programm selbst). Keine Paketlisten oder andere Daten des Servers ins Netz.
 - **Im Zweifel unvollständig:** Was nicht vollständig geprüft werden konnte, ergibt Rückgabewert 2, nie 0.
   Rückgabewerte 0/1/2 und die Zeile `ERGEBNIS: …` des Wrappers sind Schnittstelle für cron und Rundeck.
 - Der Wrapper startet den Code nur mit `python3 -I`. `--db-aktualisieren` lehnt root ab und bleibt so.

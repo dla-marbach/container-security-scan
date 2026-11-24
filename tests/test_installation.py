@@ -76,6 +76,14 @@ class InstallationTest(unittest.TestCase):
             self.assertEqual(r.returncode, 2, arg)
             self.assertIn("FEHLER: Aufruf:", r.stdout, arg)
         self.assertIn('ZIEL+=(--container "$m")', lesen(WRAPPER))
+        # --mail, --bericht, --sbom nur vor den Containern (in beliebiger Reihenfolge), danach als Name abgelehnt
+        for args in (["--bericht", "--sbom", "--mail", "a;b"], ["--sbom", "app", "--bericht"]):
+            r = subprocess.run(["bash", WRAPPER] + args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               universal_newlines=True, timeout=30)
+            self.assertEqual(r.returncode, 2, args)
+            self.assertIn("FEHLER: Aufruf:", r.stdout, args)
+        for option in ("--bericht", "--sbom"):
+            self.assertIn('ARGS+=(%s)' % option, lesen(WRAPPER))
 
     def liste(self, text):
         path = os.path.join(self.tmp, "ausnahmen.txt")

@@ -2,9 +2,9 @@
 
 - Image: php:8.3.30-fpm-bookworm (sha256:e7ca6c7f5a59)  
 - OS: Debian GNU/Linux 12 (bookworm)  
-- Zeitpunkt: 2026-11-23 20:54  
-- Scanner: container-security-scan 0.6.0  
-- Datenbank: OSV, Stand 2026-11-23 12:39 UTC (daten)  
+- Zeitpunkt: 2026-11-24 16:00  
+- Scanner: container-security-scan 1.0.0  
+- Datenbank: OSV, Stand 2026-11-24 13:43 UTC (daten)  
 - Erfassung: OS-Pakete dpkg; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer); 1 Kernel-Pakete nicht geprüft (Container nutzen den Kernel des Hosts)
 
 ## Ergebnis
@@ -69,12 +69,12 @@ Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen
 
 | Priorität | CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN |
 |---|---|---|---|---|---|
-| P1 Dienst mit veröffentlichtem Port | 25 | 128 | 136 | 77 | 25 |
+| P1 Dienst mit veröffentlichtem Port | 25 | 128 | 136 | 76 | 25 |
 | P2 Dienst intern | 0 | 0 | 0 | 0 | 0 |
 | P3 Prozess ohne Port | 0 | 0 | 0 | 0 | 0 |
-| P4 nicht genutzt / dev | 32 | 164 | 182 | 665 | 6 |
+| P4 nicht genutzt / dev | 32 | 165 | 186 | 658 | 6 |
 
-## Befunde (588 von 1440; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
+## Befunde (588 von 1437; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
 
 | P | Schwere | ID | Paket | Installiert | Behoben in | Genutzt von | Titel |
 |---|---|---|---|---|---|---|---|
@@ -217,6 +217,7 @@ Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen
 | 1 | HIGH | CVE-2026-119379 | libsqlite3-0 | 3.40.1-2+deb12u2 | kein Fix | php-fpm:9000 | SQLite before 3.54.0 built with the session extension contains a heap buffer overflow vuln |
 | 1 | HIGH | CVE-2026-119586 | libsqlite3-0 | 3.40.1-2+deb12u2 | kein Fix | php-fpm:9000 | SQLite command-line shell through 3.54.1 contains a command injection vulnerability in the |
 | 1 | HIGH | CVE-2026-107493 | libssl3 | 3.0.19-1~deb12u2 | kein Fix | php-fpm:9000 | Issue summary: When an application passes a stack to PEM_X509_INFO_read_bio_ex() to add en |
+| 1 | HIGH | CVE-2026-107494 | libssl3 | 3.0.19-1~deb12u2 | kein Fix | php-fpm:9000 | Issue summary: The QUIC stack queues a RETIRE_CONNECTION_ID frame also for retransmitted N |
 | 1 | HIGH | CVE-2026-107496 | libssl3 | 3.0.19-1~deb12u2 | kein Fix | php-fpm:9000 | Issue summary: Encrypting a CMS message to an EC certificate whose group order is 1 may ca |
 | 1 | HIGH | CVE-2026-121482 | libssl3 | 3.0.19-1~deb12u2 | kein Fix | php-fpm:9000 | Verifying a maliciously crafted CMS or PKCS#7 SignedData message with CRL checking enabled |
 | 1 | HIGH | CVE-2026-84786 | libssl3 | 3.0.19-1~deb12u2 | kein Fix | php-fpm:9000 | Issue summary: A DANE-enabled TLS client may crash by dereferencing a NULL pointer when pr |
@@ -230,7 +231,6 @@ Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen
 | 1 | HIGH | CVE-2026-86142 | libxml2 | 2.9.14+dfsg-1.3~deb12u5 | kein Fix | php-fpm:9000 | In libxml2 before 2.15.4, there is a heap-based buffer overflow in xmlXPtrEvalXPtrPart bec |
 | 1 | HIGH | CVE-2026-86143 | libxml2 | 2.9.14+dfsg-1.3~deb12u5 | kein Fix | php-fpm:9000 | In xmlIO in libxml2 before 2.15.4, an inconsistency in xmlOutputWriteCallback and xmlBufUs |
 | 1 | HIGH | CVE-2026-86144 | libxml2 | 2.9.14+dfsg-1.3~deb12u5 | kein Fix | php-fpm:9000 | In xinclude in libxml2 before 2.15.4, xmlXIncludeProcess and xmlXIncludeProcessTree do not |
-| 1 | HIGH | CVE-2026-76844 | zlib1g | 1:1.2.13.dfsg-1 | kein Fix | php-fpm:9000 | webpack-dev-middleware 5.3.4, 6.1.2 through 6.1.3, 7.1.0 before 7.4.6, and 8.0.0 before 8. |
 | 1 | MEDIUM | CVE-2026-55568 | guzzlehttp/guzzle | 7.4.0 | 7.12.1 | php-fpm:9000 (Docroot unbekannt) | guzzlehttp/guzzle: Silent HTTPS-Proxy Downgrade to Cleartext |
 | 1 | MEDIUM | CVE-2026-55767 | guzzlehttp/guzzle | 7.4.0 | 7.12.1 | php-fpm:9000 (Docroot unbekannt) | guzzlehttp/guzzle: Dot-Only Cookie Domains Match All Hosts |
 | 1 | MEDIUM | CVE-2026-59883 | guzzlehttp/guzzle | 7.4.0 | 7.12.3 | php-fpm:9000 (Docroot unbekannt) | Guzzle: Cookie Disclosure and Injection via IP-Address Domains |
@@ -411,7 +411,6 @@ Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen
 | 1 | LOW | CVE-2026-88647 | libgnutls30 | 3.7.9-2+deb12u6 | kein Fix | php-fpm:9000 | GnuTLS v3.8.13 can perhaps unexpectedly trust a certificate on the basis of Common Name wh |
 | 1 | LOW | CVE-2026-88648 | libgnutls30 | 3.7.9-2+deb12u6 | kein Fix | php-fpm:9000 | In GnuTLS v3.8.13, an excluded msUPN/SRV otherName is never checked. NOTE: the Supplier do |
 | 1 | LOW | CVE-2026-95184 | libgnutls30 | 3.7.9-2+deb12u6 | kein Fix | php-fpm:9000 | GnuTLS v3.8.13 does not properly enforce name constraints, as demonstrated by a permitted  |
-| 1 | LOW | CVE-2026-95209 | libgnutls30 | 3.7.9-2+deb12u6 | kein Fix | php-fpm:9000 | An issue in gnutls v3.8.13 causes legitimate CA certificates to be rejected, leading to a  |
 | 1 | LOW | CVE-2026-95210 | libgnutls30 | 3.7.9-2+deb12u6 | kein Fix | php-fpm:9000 | GnuTLS v3.8.13 does not reject a critical keyUsage extension when it cannot be processed,  |
 | 1 | LOW | CVE-2018-5709 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | An issue was discovered in MIT Kerberos 5 (aka krb5) through 1.16. There is a variable "db |
 | 1 | LOW | CVE-2024-26458 | libgssapi-krb5-2 | 1.20.1-2+deb12u4 | kein Fix | php-fpm:9000 | Kerberos 5 (aka krb5) 1.21.2 contains a memory leak in /krb5/src/lib/rpc/pmap_rmt.c. |
@@ -650,6 +649,7 @@ Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen
 | 4 | HIGH | CVE-2025-69720 | ncurses-base | 6.4-4 | kein Fix | – | The infocmp command-line tool in ncurses before 6.5-20251213 has a stack-based buffer over |
 | 4 | HIGH | CVE-2025-69720 | ncurses-bin | 6.4-4 | kein Fix | – | The infocmp command-line tool in ncurses before 6.5-20251213 has a stack-based buffer over |
 | 4 | HIGH | CVE-2026-107493 | openssl | 3.0.19-1~deb12u2 | kein Fix | – | Issue summary: When an application passes a stack to PEM_X509_INFO_read_bio_ex() to add en |
+| 4 | HIGH | CVE-2026-107494 | openssl | 3.0.19-1~deb12u2 | kein Fix | – | Issue summary: The QUIC stack queues a RETIRE_CONNECTION_ID frame also for retransmitted N |
 | 4 | HIGH | CVE-2026-107496 | openssl | 3.0.19-1~deb12u2 | kein Fix | – | Issue summary: Encrypting a CMS message to an EC certificate whose group order is 1 may ca |
 | 4 | HIGH | CVE-2026-121482 | openssl | 3.0.19-1~deb12u2 | kein Fix | – | Verifying a maliciously crafted CMS or PKCS#7 SignedData message with CRL checking enabled |
 | 4 | HIGH | CVE-2026-84786 | openssl | 3.0.19-1~deb12u2 | kein Fix | – | Issue summary: A DANE-enabled TLS client may crash by dereferencing a NULL pointer when pr |
@@ -697,8 +697,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        9a1a785fa13ed3d52bcd5650fbf2a2c230ed3027fee5a50ad01852a89b825691
-Gestartet: 2026-11-23T20:53:55.713551345Z
+ID:        14d4a4f5205bddb881bac40e54b0cc51ff3ae7511646c96ff5497b3f1afb1b50
+Gestartet: 2026-11-24T16:00:35.241163798Z
 Kommando:  ["docker-php-entrypoint"] ["php-fpm"]
 Mounts:    /w/beispiele/umgebung/php->/srv/app
 Host:      Kernel 7.0.14-linuxkit
@@ -708,9 +708,9 @@ Host:      Kernel 7.0.14-linuxkit
 
 ```
 PID                 USER                COMMAND
-792                 root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
-844                 33                  php-fpm: pool www
-845                 33                  php-fpm: pool www
+669                 root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
+707                 33                  php-fpm: pool www
+708                 33                  php-fpm: pool www
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

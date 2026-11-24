@@ -149,7 +149,7 @@ class Integration(unittest.TestCase):
         cls.bereit()
         cls.diff_vorher = {c: cls.diff(c) for c in cls.alle}
         cls.out = os.path.join(cls.tmp, "berichte")
-        p = subprocess.run([sys.executable, SKRIPT, "--alle-container", cls.out, "--nur-behebbare"],
+        p = subprocess.run([sys.executable, SKRIPT, "--alle-container", cls.out, "--nur-behebbare", "--bericht", "--sbom"],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=2400)
         cls.rc, cls.ausgabe = p.returncode, p.stdout.decode("utf-8", "replace")
 
@@ -199,6 +199,19 @@ class Integration(unittest.TestCase):
         with open(os.path.join(self.out, namen[0]), encoding="utf-8") as f:
             return f.read()
 
+    @staticmethod
+    def abschnitt(ausgabe, container):
+        """Konsolenausgabe eines Containers: Zeilen unter "=== Name ===" bis zur nächsten Leerzeile (bei erneuter
+        Prüfung im selben Lauf der letzte Abschnitt)."""
+        teile = re.split(r"\n=== %s(?: \(erneute Prüfung wegen .+\))? ===\n" % re.escape(container), ausgabe)
+        return teile[-1].split("\n\n")[0].splitlines() if len(teile) > 1 else []
+
+    def ergebnis(self, ausgabe, container):
+        """Ergebniszeile eines Containers auf der Konsole (ohne den Hinweis auf den Bericht)."""
+        zeile = [l for l in self.abschnitt(ausgabe, container) if " Befunde, davon " in l]
+        self.assertEqual(len(zeile), 1, (container, ausgabe))
+        return zeile[0].split(" – Bericht:")[0]
+
     def test_rueckgabewert_vollstaendig(self):
         self.assertIn(self.rc, (0, 1), self.ausgabe)
 
@@ -214,7 +227,8 @@ class Integration(unittest.TestCase):
         self.assertIn("Ziel aus Docker-Labels: Container %s, Port 3002" % self.label, self.bericht(self.traefik))
         self.assertIn("Port 3002/tcp (alle) öffentlich über traefik", self.bericht(self.label))
         self.assertIn("Port 3003/tcp (alle) möglicherweise öffentlich über traefik", self.bericht(self.nachbar))
-        self.assertIn("%s: WARNUNG: Weiterleitungen von traefik" % self.traefik, self.ausgabe)
+        self.assertTrue(any(l.startswith("WARNUNG: Weiterleitungen von traefik")
+                            for l in self.abschnitt(self.ausgabe, self.traefik)), self.ausgabe)
 
     def test_gemeinsamer_netzwerk_namespace(self):
         self.assertIn("Port 3004/tcp (alle) veröffentlicht als 127.0.0.1:", self.bericht(self.mit))
@@ -253,16 +267,16 @@ class Integration(unittest.TestCase):
         self.assertIn("Port 3009/tcp (alle) öffentlich über node:3007 (offene Verbindung) in %s" % self.gw,
                       self.bericht(self.ziel))
         self.assertIn("Datenbank/Cache/Message Broker: dadurch nicht erreichbar", self.bericht(self.redis))
-        self.assertIn("öffentlich: nichts", [l for l in self.ausgabe.splitlines() if l.startswith(self.redis + ": ")
-                                             and "Bericht:" in l][0])
+        dienste = [l for l in self.abschnitt(self.ausgabe, self.redis) if l.startswith("Dienst ")]
+        self.assertTrue(dienste, self.ausgabe)
+        for l in dienste:       # kein Dienst von redis erreichbar
+            self.assertIn("nicht veröffentlicht; aufgerufen von", l)
 
     def test_interner_container_wird_mitgeprueft(self):
         self.assertIn("Port 3005/tcp (alle) nicht veröffentlicht", self.bericht(self.intern))
 
     def test_gehaertet_ohne_leserechte_passiv_gelesen(self):
-        zeile = [l for l in self.ausgabe.splitlines() if l.startswith(self.hart + ": ") and "Bericht:" in l]
-        self.assertEqual(len(zeile), 1, self.ausgabe)
-        self.assertNotIn("UNVOLLSTÄNDIG", zeile[0])
+        self.assertNotIn("UNVOLLSTÄNDIG", self.ergebnis(self.ausgabe, self.hart))
         self.assertIn("docker export und docker cp (1 Volumes), da find/tar im Container ohne Leserechte",
                       self.bericht(self.hart))
         namen = [n for n in os.listdir(self.out) if n.startswith("scan_%s_" % self.hart) and n.endswith(".json")]
@@ -272,8 +286,8 @@ class Integration(unittest.TestCase):
         self.assertIn("pkg:npm/minimist@1.2.5", sbom)       # im Bind-Mount, für root im Container nicht lesbar
 
     def test_eol_warnungen(self):
-        self.assertIn("%s: WARNUNG: Supportende: node 20." % self.node, self.ausgabe)
-        self.assertIn("%s: WARNUNG: Supportende: nginx 1.27." % self.proxy, self.ausgabe)
+        for c, text in ((self.node, "WARNUNG: Supportende: node 20."), (self.proxy, "WARNUNG: Supportende: nginx 1.27.")):
+            self.assertTrue(any(l.startswith(text) for l in self.abschnitt(self.ausgabe, c)), (c, self.ausgabe))
 
     def test_berichte_vollstaendig(self):
         for c in self.alle:
@@ -296,7 +310,15 @@ class Integration(unittest.TestCase):
                       self.bericht(self.node))
         self.assertIn("| http://shop.test:%s/v/ | ja | node:3001 | nginx:8080 in %s → node:3001 |" % (port, self.proxy),
                       self.bericht(self.varnode))
-        self.assertIn("%s:   Webadressen node:3000: erreichbar: http://shop.test:%s/" % (self.node, port), self.ausgabe)
+        # auf der Konsole: Dienst mit dem Proxy davor, darunter die Webadressen mit dem Weg
+        zeilen = self.abschnitt(self.ausgabe, self.node)
+        dienst = [i for i, l in enumerate(zeilen) if l.startswith("Dienst node ") and ", Port 3000: " in l]
+        self.assertEqual(len(dienst), 1, self.ausgabe)
+        self.assertIn("Port 3000: öffentlich über nginx:8080 in %s" % self.proxy, zeilen[dienst[0]])
+        # der Weg steht schon in der Dienstzeile
+        self.assertTrue(zeilen[dienst[0] + 1].startswith("  Webadressen: http://shop.test:%s/" % port),
+                        zeilen[dienst[0] + 1])
+        self.assertNotIn(" über nginx:8080", zeilen[dienst[0] + 1])
         if self.host_nginx:      # nginx direkt auf dem Host, ohne server_name
             self.assertIn("| http://*:18099/ | ja | node:3006 | nginx:18099 auf dem Host → node:3006 |",
                           self.bericht(self.hinterhost))
@@ -308,7 +330,7 @@ class Integration(unittest.TestCase):
                                 [self.node, self.varnode, self.label]),
                                ([self.api], [self.api])):
             out = os.path.join(self.tmp, "auswahl-" + erwartet[0])
-            p = subprocess.run([sys.executable, SKRIPT] + args + [out, "--nur-behebbare"], stdout=subprocess.PIPE,
+            p = subprocess.run([sys.executable, SKRIPT] + args + [out, "--nur-behebbare", "--bericht"], stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, timeout=2400)
             ausgabe = p.stdout.decode("utf-8", "replace")
             self.assertIn(p.returncode, (0, 1), ausgabe)
@@ -319,9 +341,10 @@ class Integration(unittest.TestCase):
                 self.assertEqual(len(name), 1, (c, berichte))
                 with open(os.path.join(out, name[0]), encoding="utf-8") as f:
                     self.assertEqual(self.dienste(f.read()), self.dienste(self.bericht(c)), c)
-                zeile = [l for l in ausgabe.splitlines() if l.startswith(c + ": ") and "Bericht:" in l]
-                gesamt = [l for l in self.ausgabe.splitlines() if l.startswith(c + ": ") and "Bericht:" in l]
-                self.assertEqual(zeile[0].split(" – Bericht:")[0], gesamt[0].split(" – Bericht:")[0])
+                self.assertEqual(self.ergebnis(ausgabe, c), self.ergebnis(self.ausgabe, c))
+                # Dienste und Webadressen auf der Konsole wie im Gesamtlauf
+                self.assertEqual([l for l in self.abschnitt(ausgabe, c) if l.startswith(("Dienst", "  Web"))],
+                                 [l for l in self.abschnitt(self.ausgabe, c) if l.startswith(("Dienst", "  Web"))])
             self.assertIn("Gesamt: %d von " % len(erwartet), ausgabe)
 
     def test_gestoppter_container_ergibt_2(self):

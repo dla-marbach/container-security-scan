@@ -21,6 +21,10 @@ class Kommandozeile(unittest.TestCase):
         os.mkdir(self.bin)
         self.db = os.path.join(self.tmp, "leere-db")   # Daten liegen nicht im Code-Branch
         os.mkdir(self.db)
+        # main() mit nachgebildetem docker_lage: auch die gestoppten Container nicht beim echten docker abfragen
+        p = mock.patch.object(scanner, "gestoppte_container", return_value=3)
+        p.start()
+        self.addCleanup(p.stop)
 
     def docker(self, script):
         """docker-Ersatz im PATH: POSIX-sh-Skript, das die Argumente auswertet."""
@@ -173,7 +177,7 @@ class Kommandozeile(unittest.TestCase):
         os.mkdir(db)
         gesehen = []
 
-        def scan(name, a, via=None, urls=None, bekannt=None):
+        def scan(name, a, via=None, urls=None, bekannt=None, anlass=None):
             alt = os.umask(0)
             os.umask(alt)
             gesehen.append(alt)
@@ -192,13 +196,71 @@ class Kommandozeile(unittest.TestCase):
             os.umask(alt)
         self.assertEqual(gesehen, [0o077])
 
+    def test_bericht_und_sbom_nur_auf_wunsch(self):
+        db = os.path.join(self.tmp, "db")
+        os.mkdir(db)
+        gesehen = []
+
+        def scan(name, a, via=None, urls=None, bekannt=None, anlass=None):
+            gesehen.append((a.bericht, a.sbom))
+            return 0, [], None, {}
+        for optionen in ([], ["--bericht"], ["--sbom"], ["--bericht", "--sbom"]):
+            with mock.patch.object(scanner, "scan_container", side_effect=scan), \
+                    mock.patch.object(scanner, "erreichbarkeit_pruefen", return_value=(None, [], None, {})), \
+                    mock.patch.object(scanner, "docker_lage", return_value=([{"Id": "abc", "Name": "/web"}], {})), \
+                    mock.patch.object(scanner, "container_liste", return_value=([], ["web"], {})), \
+                    mock.patch.object(scanner, "host_proxys", return_value=([], [], [], [], {})), \
+                    mock.patch("sys.stdout", new_callable=io.StringIO) as out, \
+                    mock.patch.object(sys, "argv", ["x", "--db", db] + optionen + ["web", self.tmp]):
+                self.assertEqual(scanner.main(), 0)
+        self.assertEqual(gesehen, [(False, False), (True, False), (False, True), (True, True)])
+        # Kopf: Version, Zeitpunkt, Stand der Daten, Host mit den laufenden Containern
+        kopf = out.getvalue().splitlines()
+        self.assertEqual(kopf[0], "container-security-scan " + scanner.VERSION)
+        self.assertRegex(kopf[1], r"^Scan: \d{4}-\d\d-\d\d \d\d:\d\d UTC$")
+        self.assertEqual(kopf[2:5], ["Daten: Stand unbekannt", "Host: %s mit 1 laufenden und 3 gestoppten Containern:"
+                                     % os.uname().nodename, "- web  erstellt ?, läuft"])
+
+    def test_pausierte_nur_kontext(self):
+        # vpn ist pausiert (docker exec nicht möglich): nicht geprüft, auch nicht als Ziel eines Proxys; der laufende
+        # Container mit seinem Netzwerk-Namespace bleibt über dessen veröffentlichten Port erreichbar
+        db = os.path.join(self.tmp, "db")
+        os.mkdir(db)
+        vpn = {"Id": "v" * 64, "Name": "/vpn", "State": {"Paused": True}, "HostConfig": {"NetworkMode": "bridge"},
+               "NetworkSettings": {"Ports": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8080"}]},
+                                   "Networks": {"back": {}}}}
+        mit = {"Id": "m" * 64, "Name": "/mit", "State": {"Running": True},
+               "HostConfig": {"NetworkMode": "container:" + "v" * 64}, "NetworkSettings": {"Ports": {}, "Networks": {}}}
+        gesehen = []
+
+        def scan(name, a, via=None, urls=None, bekannt=None, anlass=None):
+            gesehen.append(name)
+            return 0, [("vpn", "*", "traefik:80 in proxy")], None, {}
+        for argv in (["--alle-container"], ["--container", "*"]):
+            gesehen[:] = []
+            with mock.patch.object(scanner, "scan_container", side_effect=scan), \
+                    mock.patch.object(scanner, "erreichbarkeit_pruefen",
+                                      side_effect=lambda n, *a, **kw: gesehen.append("erreichbarkeit " + n)
+                                      or (None, [], None, {})), \
+                    mock.patch.object(scanner, "docker_lage", return_value=([vpn, mit], {})), \
+                    mock.patch.object(scanner, "host_proxys", return_value=([], [], [], [], {})), \
+                    mock.patch.object(scanner, "log"), mock.patch("sys.stdout", new_callable=io.StringIO) as out, \
+                    mock.patch.object(sys, "argv", ["x", "--db", db] + argv + [self.tmp]):
+                self.assertEqual(scanner.main(), 0)
+            self.assertNotIn("vpn", gesehen, argv)
+            self.assertIn("mit", gesehen, argv)
+            self.assertIn(" mit 1 laufenden, 1 pausierten und 3 gestoppten Containern:", out.getvalue())
+        # Kontext: der Spender liefert die Veröffentlichung -> mit ist direkt erreichbar
+        public, rest, _ = scanner.container_liste([vpn, mit], {})
+        self.assertIn("mit", public)
+
     def mehrere(self, option, public, rest, gruppen, backends, weg=(), host=([], [], [], [], {})):
         """main() mit --oeffentliche/--alle-container; liefert (Rückgabewert, [(Container, via)], Ausgabe)."""
         db = os.path.join(self.tmp, "db")
         os.makedirs(db, exist_ok=True)
         gesehen = []
 
-        def scan(name, a, via=None, urls=None, bekannt=None):
+        def scan(name, a, via=None, urls=None, bekannt=None, anlass=None):
             if name in weg:
                 raise scanner.ScanError("Container '%s' nicht gefunden" % name)
             gesehen.append((name, via))
@@ -222,7 +284,7 @@ class Kommandozeile(unittest.TestCase):
         for namen in (["app-1", "app-2"], ["app-1", "app-1"]):
             namen_iter = iter(namen)
 
-            def scan(name, a, via=None, urls=None, bekannt=None):
+            def scan(name, a, via=None, urls=None, bekannt=None, anlass=None):
                 base = os.path.join(self.tmp, next(namen_iter) if name == "app" else name)
                 for ext in (".md", ".cdx.json", ".sha256"):
                     with open(base + ext, "w") as f:
@@ -287,7 +349,7 @@ class Kommandozeile(unittest.TestCase):
 
         self.voll_urls = {}
 
-        def scan(name, a, via=None, urls=None, bekannt=None):
+        def scan(name, a, via=None, urls=None, bekannt=None, anlass=None):
             voll.append((name, via))
             self.voll_urls[name] = urls
             return 1 if name.startswith("surveyor") else 0, backends.get(name, []), None, {}
@@ -329,7 +391,7 @@ class Kommandozeile(unittest.TestCase):
         e_proxy = dict(e_host, url="https://www.example.org/app/", weg="nginx:443 auf dem Host → nginx:80 in proxy")
         gesehen = []
 
-        def pruefen(name, via, urls):
+        def pruefen(name, via, urls, anlass):
             gesehen.append((name, urls))
             if name == "proxy":
                 return 0, [("app", "3000", "nginx:80 in proxy")], None, {("app", "3000"): [e_proxy]}
@@ -341,11 +403,21 @@ class Kommandozeile(unittest.TestCase):
         # app schon geprüft, danach kommen nur neue Webadressen hinzu (kein neuer Grund): erneut geprüft
         gesehen[:] = []
 
-        def pruefen2(name, via, urls):
-            gesehen.append((name, urls))
+        def pruefen2(name, via, urls, anlass):
+            gesehen.append((name, urls, anlass))
             return 0, [], None, {("app", "3000"): [e_proxy]} if name == "proxy" else {}
         scanner.durchlauf(["app", "proxy"], [], [], {}, pruefen2)
-        self.assertEqual(gesehen, [("app", None), ("proxy", None), ("app", {"3000": [e_proxy]})])
+        self.assertEqual(gesehen, [("app", None, None), ("proxy", None, None),
+                                   ("app", {"3000": [e_proxy]}, "neuer Webadressen von proxy")])
+        # neuer Weg zu einem schon geprüften Container (zweiter Proxy): Anlass für die Überschrift
+        gesehen[:] = []
+
+        def pruefen3(name, via, urls, anlass):
+            gesehen.append((name, anlass))
+            return 0, [("app", "3000", "traefik:80 in traefik")] if name == "traefik" else [], None, {}
+        scanner.durchlauf(["app", "traefik"], [], [], {}, pruefen3)
+        self.assertEqual(gesehen, [("app", None), ("traefik", None),
+                                   ("app", "eines neuen Wegs über traefik:80 in traefik")])
 
     def test_auswahl_mit_webadressen_wie_im_gesamtlauf(self):
         infos = [{"Id": "a1", "Name": "/app"}, {"Id": "p1", "Name": "/proxy"}]

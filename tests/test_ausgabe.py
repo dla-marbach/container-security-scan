@@ -108,6 +108,76 @@ class Bericht(unittest.TestCase):
         self.assertIn("**Warnung:** Supportende: vue 2.7.16", ergebnis)
 
 
+class Konsole(unittest.TestCase):
+    """Kopf und Zeilen je Dienst für die Konsole (Rundeck-Log, Mail) – ohne Bericht die einzige Ausgabe."""
+
+    def test_dienste(self):
+        # Programm mit Anwendung, Erreichbarkeit je Port; Webadressen mit Weg nur, wenn er nicht schon oben steht;
+        # nicht erreichbare Adressen getrennt (eine auch erreichbare nicht doppelt)
+        fpm = {"label": "php-fpm:9000", "name": "php-fpm", "version": "8.3.30", "description": "lang",
+               "konsole": {"zusatz": "in /var/www/html", "erreichbar": "Port 9000: öffentlich über nginx:80 in proxy",
+                           "ziele": [], "aufrufe": ["api:8443 (Ziel-URL API_URL)"]},
+               "webadressen": [
+                   {"url": "https://a/", "erreichbar": True, "weg": "nginx:80 in proxy → php-fpm:9000"},
+                   {"url": "https://b/", "erreichbar": True, "weg": "nginx:80 in proxy → php-fpm:9000"},
+                   {"url": "https://a/", "erreichbar": True, "weg": "nginx:80 in proxy → php-fpm:9000"},
+                   {"url": "https://d/", "erreichbar": True, "weg": "nginx:443 auf dem Host → nginx:80 in proxy → "
+                                                                    "php-fpm:9000"},
+                   {"url": "http://c/", "erreichbar": True, "weg": "php-fpm:9000"},
+                   {"url": "http://intern/", "erreichbar": False, "weg": "apache:80 → php-fpm:9000"},
+                   {"url": "https://a/", "erreichbar": False, "weg": "apache:80 → php-fpm:9000"}]}
+        proxy = {"label": "nginx:80", "name": "nginx", "version": "1.27.1", "description": "lang",
+                 "konsole": {"zusatz": "", "erreichbar": "Port 80, 443: veröffentlicht als 0.0.0.0:80",
+                             "ziele": ["app:3000"], "aufrufe": []}}
+        unbekannt = {"label": "unbekannter Dienst:80", "name": "?", "version": "", "description": "Kein lesbarer Prozess"}
+        self.assertEqual(scanner.dienste_konsole([fpm, proxy, unbekannt]), [
+            "Dienst php-fpm 8.3.30 (in /var/www/html), Port 9000: öffentlich über nginx:80 in proxy",
+            "  Webadressen: https://a/, https://b/, http://c/; https://d/ über nginx:443 auf dem Host → nginx:80 in "
+            "proxy – nicht von außen: http://intern/ über apache:80",
+            "  ruft auf: api:8443 (Ziel-URL API_URL)",
+            "Dienst nginx 1.27.1, Port 80, 443: veröffentlicht als 0.0.0.0:80",
+            "  leitet weiter an: app:3000",
+            "Dienst unbekannter Dienst:80: Kein lesbarer Prozess"])
+        self.assertEqual(scanner.dienste_konsole([]), ["Dienste: keine (kein Prozess mit offenem Port)"])
+        # alle Adressen, auch bei vielen vHosts
+        viele = dict(proxy, webadressen=[{"url": "https://s%d.example.org/" % i, "erreichbar": True, "weg": "nginx:80"}
+                                         for i in range(12)])
+        self.assertEqual(scanner.dienste_konsole([viele])[1],
+                         "  Webadressen: " + ", ".join("https://s%d.example.org/" % i for i in range(12)))
+
+    def test_kopf(self):
+        self.assertEqual([scanner.dauer_text(s) for s in (59, 600, 7200, 47 * 3600, 72 * 3600)],
+                         ["0 min", "10 min", "2 h", "47 h", "3 Tagen"])
+        web = {"Name": "/web", "Created": "2026-11-20T08:00:00.123Z", "RestartCount": 2,
+               "State": {"StartedAt": "2026-11-24T07:00:00.5Z", "Health": {"Status": "healthy"}}}
+        a = {"Name": "/a", "Created": "2026-11-01T00:00:00Z", "State": {"StartedAt": "2026-11-01T00:00:00Z"}}
+        host = scanner.os.uname().nodename
+        with mock.patch.object(scanner, "utcnow", return_value=scanner.datetime.datetime(2026, 11, 24, 12)):
+            # pausierte (docker pause) aus den Daten von docker ps gezählt, nicht aufgeführt
+            pause = {"Name": "/pause", "State": {"StartedAt": "2026-11-01T00:00:00Z", "Paused": True}}
+            self.assertEqual(scanner.host_kopf([web, a, pause], 2), [
+                "Host: %s mit 2 laufenden, 1 pausierten und 2 gestoppten Containern:" % host,
+                "- a    erstellt 2026-11-01 00:00 UTC, läuft seit 23 Tagen",
+                "- web  erstellt 2026-11-20 08:00 UTC, läuft seit 5 h (healthy), 2 Neustarts"])
+            # gestoppte nicht ermittelbar: nur die laufenden
+            self.assertEqual(scanner.host_kopf([]), ["Host: %s mit 0 laufenden Containern" % host])
+        # gestoppte: erstellt, beendet, tot
+        with mock.patch.object(scanner, "run", return_value=(0, "b1\nb2\nb3\n")) as run:
+            self.assertEqual(scanner.gestoppte_container(), 3)
+        self.assertEqual(run.call_args[0][0], ["docker", "ps", "-aq", "--filter", "status=created", "--filter",
+                                               "status=exited", "--filter", "status=dead"])
+        with mock.patch.object(scanner, "run", return_value=(1, "")):
+            self.assertIsNone(scanner.gestoppte_container())
+        # Stand der Daten: die älteste Aktualisierung über alle Ökosysteme
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        self.assertIsNone(scanner.daten_stand([tmp]))
+        with open(os.path.join(tmp, "stand.json"), "w") as f:
+            json.dump({"_format": "x", "Debian": {"geprueft": "2026-11-23T12:39:52Z"},
+                       "npm": {"geprueft": "2026-11-23T12:40:10Z"}}, f)
+        self.assertEqual(scanner.daten_stand([tmp]), scanner.datetime.datetime(2026, 11, 23, 12, 39, 52))
+
+
 class Sbom(unittest.TestCase):
     def test_purls_und_struktur(self):
         comps = [C("os-paket", "libssl3", "1:3.0.15-1", arch="amd64", src="openssl", srcver="1:3.0.15-1"),
@@ -158,7 +228,7 @@ class Gesamtlauf(unittest.TestCase):
         with open(os.path.join(self.db, "stand.json"), "w") as f:
             json.dump({k: {"stand": "x", "geprueft": "2026-11-04T00:00:00Z"} for k in ("Debian", "npm")}, f)
         self.a = argparse.Namespace(user="0", dbdirs=[self.db], ausgabe=os.path.join(self.tmp, "out"),
-                                    alle=False, nur_behebbare=False)
+                                    alle=False, nur_behebbare=False, bericht=True, sbom=True)
         self.files = {"/etc/os-release": b'ID=debian\nVERSION_ID="12"\nPRETTY_NAME="Debian 12"\n',
                       "/etc/debian_version": b"12.7\n",
                       "/var/lib/dpkg/status": b"Package: libssl3\nStatus: install ok installed\nSource: openssl\n"
@@ -167,7 +237,8 @@ class Gesamtlauf(unittest.TestCase):
         self.problems = []
         self.info = {}
 
-    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, via_urls=None, bekannt=None, **web_kw):
+    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, via_urls=None, bekannt=None, anlass=None,
+             **web_kw):
         """scan_container; liefert (Rückgabewert, Backends, Bericht), Konsole in self.konsole, Webadressen der Ziele
         in self.ziel_urls."""
         nginx = proc(1, "/usr/sbin/nginx", ports=ports or {"80": "alle"}, maps={"/usr/lib/x86_64-linux-gnu/libssl.so.3"})
@@ -187,7 +258,7 @@ class Gesamtlauf(unittest.TestCase):
         for p in patches:
             p.start()
         try:
-            ergebnis = scanner.scan_container("app", self.a, via, via_urls, bekannt)
+            ergebnis = scanner.scan_container("app", self.a, via, via_urls, bekannt, anlass)
             self.konsole = scanner.sys.stdout.getvalue()
             self.ziel_urls = ergebnis[3]
             return ergebnis[:3]
@@ -206,6 +277,27 @@ class Gesamtlauf(unittest.TestCase):
             self.assertEqual(f.read().split()[0], scanner.datei_sha256(base + ".md"))
         self.assertEqual(scanner.json_datei(os.path.join(self.a.ausgabe, "bekannt_app.json")),
                          [["libssl3", "3.0.15-1~deb12u1", "CVE-2026-9"]])
+
+    def test_ohne_bericht_und_sbom(self):
+        # Standard (Wrapper, Rundeck): nur der Stand für "NEU", alles Nötige auf der Konsole
+        self.a.bericht = self.a.sbom = False
+        code, _, base = self.lauf()
+        self.assertEqual(code, 1)
+        self.assertEqual(os.listdir(self.a.ausgabe), ["bekannt_app.json"])
+        self.assertEqual(self.konsole.splitlines()[:2], ["", "=== app ==="])     # Überschrift, davor Leerzeile
+        self.assertEqual(self.konsole.splitlines()[-4:], [
+            "RELEVANTE SCHWACHSTELLEN – 1 Befunde, davon 1 relevant (1 neu)",
+            "Image example/app:1 – Debian 12",
+            "Dienst nginx, Port 80: veröffentlicht als 0.0.0.0:80",
+            "CVE-2026-9 (HIGH) in libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u2 – genutzt von nginx:80"])
+        # nur die SBOM: Prüfsumme nur für sie
+        self.a.sbom = True
+        _, _, base = self.lauf()
+        self.assertFalse(os.path.exists(base + ".md"))
+        with open(base + ".sha256") as f:
+            self.assertEqual(f.read().split(), [scanner.datei_sha256(base + ".cdx.json"),
+                                                os.path.basename(base + ".cdx.json")])
+        self.assertNotIn("Bericht:", self.konsole)
 
     def test_nicht_unterstuetztes_os_ergibt_2_mit_klarer_meldung(self):
         # Oracle Linux: keine OSV-Daten; keine Empfehlung für --oekosysteme, OS-Pakete nicht geprüft
@@ -237,8 +329,10 @@ class Gesamtlauf(unittest.TestCase):
         self.assertIn("| http://shop.example.org/ | ja | nginx:80 | nginx:80 | /etc/nginx/conf.d/default.conf | "
                       "/srv/app/public |", bericht)
         self.assertIn("| Genutzt von | Titel |", bericht)
-        self.assertIn("app:   Webadressen nginx:80: erreichbar: https://www.example.org/shop/, http://shop.example.org/",
-                      self.konsole)
+        # auf der Konsole unter dem Dienst, je Weg dorthin (über welchen Proxy)
+        self.assertIn("Dienst nginx, Port 80: veröffentlicht als 0.0.0.0:80\n"
+                      "  Webadressen: https://www.example.org/shop/ über nginx:443 auf dem Host; "
+                      "http://shop.example.org/\n", self.konsole)
         self.assertEqual(self.konsole.count("https://www.example.org/shop/"), 1)
         self.assertIn("**CVE-2026-9** (HIGH) in libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u2 – genutzt von "
                       "nginx:80\n", bericht)
@@ -262,12 +356,15 @@ class Gesamtlauf(unittest.TestCase):
         with open(os.path.join(self.a.ausgabe, "bekannt_app.json"), "w") as f:
             f.write("[]")           # voriger Lauf ohne relevante Funde
         bekannt = {}
-        for _ in range(2):
-            code, _, base = self.lauf(bekannt=bekannt)
-            self.assertIn("app:   NEU: CVE-2026-9", self.konsole)
+        for anlass in (None, "eines neuen Wegs über traefik:80 in proxy"):
+            code, _, base = self.lauf(bekannt=bekannt, anlass=anlass)
+            self.assertIn("NEU: CVE-2026-9 (HIGH) in libssl3", self.konsole)
             with open(base + ".md", encoding="utf-8") as f:
                 self.assertIn("Davon **1 neu** seit dem letzten Lauf.", f.read())
         self.assertEqual(bekannt, {"app": set()})
+        # Überschrift der erneuten Prüfung mit dem Anlass
+        self.assertEqual(self.konsole.splitlines()[1], "=== app (erneute Prüfung wegen eines neuen Wegs über "
+                                                       "traefik:80 in proxy; ersetzt den Abschnitt oben) ===")
         # nächster Lauf: bekannt aus der Datei
         self.lauf(bekannt={})
         self.assertNotIn("NEU:", self.konsole)
@@ -367,21 +464,21 @@ class Gesamtlauf(unittest.TestCase):
 
     def test_warnung_bei_unklaren_weiterleitungen(self):
         self.lauf(nachbarn=["shop"], backends={"/usr/sbin/nginx": ["http://$host"]})
-        self.assertIn("app: WARNUNG: Weiterleitungen von nginx:80 nicht vollständig auswertbar (Ziel http://$host) – "
+        self.assertIn("WARNUNG: Weiterleitungen von nginx:80 nicht vollständig auswertbar (Ziel http://$host) – "
                       "Container in denselben Docker-Netzen gelten als möglicherweise öffentlich: shop", self.konsole)
 
     def test_relevante_funde_auf_der_konsole(self):
         # für Rundeck/Mail: nicht nur die Zusammenfassung, sondern jeder relevante Fund
         self.lauf()
-        self.assertIn("app:   CVE-2026-9 (HIGH) in libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u2 – "
+        self.assertIn("\nCVE-2026-9 (HIGH) in libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u2 – "
                       "genutzt von nginx:80\n", self.konsole)
         self.assertNotIn("NEU:", self.konsole)     # erster Lauf ohne Vergleich: keine Markierung
         with open(os.path.join(self.a.ausgabe, "bekannt_app.json"), "w") as f:
             json.dump([], f)                        # letzter Lauf ohne relevante Funde
         self.lauf()
-        self.assertIn("app:   NEU: CVE-2026-9 (HIGH) in libssl3", self.konsole)
+        self.assertIn("NEU: CVE-2026-9 (HIGH) in libssl3", self.konsole)
         self.lauf()     # danach bekannt: nicht mehr neu
-        self.assertIn("app:   CVE-2026-9 (HIGH) in libssl3", self.konsole)
+        self.assertIn("\nCVE-2026-9 (HIGH) in libssl3", self.konsole)
         self.assertNotIn("NEU:", self.konsole)
 
     def test_behoben_ergibt_0(self):
@@ -452,9 +549,9 @@ class Gesamtlauf(unittest.TestCase):
         self.assertIn("**0 relevante Schwachstellen**", text)
         self.assertIn("**2 gefährliche Einstellungen des Containers**", text)
         self.assertIn("- **CONF-PRIVILEGED**: --privileged", text)
-        self.assertIn("app: GEFÄHRLICHE EINSTELLUNGEN – 0 Befunde, davon 0 relevant (0 neu), 2 gefährliche Einstellungen;",
+        self.assertIn("GEFÄHRLICHE EINSTELLUNGEN – 0 Befunde, davon 0 relevant (0 neu), 2 gefährliche Einstellungen – ",
                       self.konsole)
-        self.assertIn("app:   CONF-SOCKET: /var/run/docker.sock eingebunden", self.konsole)
+        self.assertIn("CONF-SOCKET: /var/run/docker.sock eingebunden", self.konsole)
         self.assertEqual(scanner.json_datei(os.path.join(self.a.ausgabe, "bekannt_app.json")),
                          [["app", "", "CONF-PRIVILEGED"], ["app", "/var/run/docker.sock", "CONF-SOCKET"]])
         self.lauf()     # bekannt: nicht neu
@@ -463,7 +560,7 @@ class Gesamtlauf(unittest.TestCase):
         self.info["Mounts"].append({"Type": "bind", "Source": "/run/containerd/containerd.sock", "Destination": "/c",
                                     "RW": False})
         self.lauf()
-        self.assertIn("app:   NEU: CONF-SOCKET: /run/containerd/containerd.sock", self.konsole)
+        self.assertIn("NEU: CONF-SOCKET: /run/containerd/containerd.sock", self.konsole)
         self.assertNotIn("NEU: CONF-SOCKET: /var/run/docker.sock", self.konsole)
 
     def test_ausnahme_fuer_einstellung(self):
@@ -483,7 +580,7 @@ class Gesamtlauf(unittest.TestCase):
         self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2")
         code, _, base = self.lauf()     # nginx:80 als einziger Prozess mit UID 0
         self.assertEqual(code, 0)
-        self.assertIn("app: WARNUNG: Öffentlicher Dienst nginx:80 läuft als root", self.konsole)
+        self.assertIn("WARNUNG: Öffentlicher Dienst nginx:80 läuft als root", self.konsole)
 
     def test_kernel_pakete_im_bericht(self):
         self.files["/var/lib/dpkg/status"] += b"\nPackage: linux-libc-dev\nStatus: install ok installed\nSource: linux\n" \
