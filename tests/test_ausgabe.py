@@ -153,26 +153,21 @@ class Konsole(unittest.TestCase):
         a = {"Name": "/a", "Created": "2026-11-01T00:00:00Z", "State": {"StartedAt": "2026-11-01T00:00:00Z"}}
         host = scanner.os.uname().nodename
         with mock.patch.object(scanner, "utcnow", return_value=scanner.datetime.datetime(2026, 11, 24, 12)):
-            self.assertEqual(scanner.host_kopf([web, a], (0, 2)), [
-                "Host: %s mit 2 laufenden und 2 gestoppten Containern:" % host,
+            # pausierte (docker pause) aus den Daten von docker ps gezählt, nicht aufgeführt
+            pause = {"Name": "/pause", "State": {"StartedAt": "2026-11-01T00:00:00Z", "Paused": True}}
+            self.assertEqual(scanner.host_kopf([web, a, pause], 2), [
+                "Host: %s mit 2 laufenden, 1 pausierten und 2 gestoppten Containern:" % host,
                 "- a    erstellt 2026-11-01 00:00 UTC, läuft seit 23 Tagen",
                 "- web  erstellt 2026-11-20 08:00 UTC, läuft seit 5 h (healthy), 2 Neustarts"])
-            self.assertTrue(scanner.host_kopf([a], (1, 0))[0].endswith(" mit 1 laufenden, 1 pausierten und 0 "
-                                                                       "gestoppten Containern:"))
-            # nicht laufende nicht ermittelbar: nur die laufenden
+            # gestoppte nicht ermittelbar: nur die laufenden
             self.assertEqual(scanner.host_kopf([]), ["Host: %s mit 0 laufenden Containern" % host])
-        # pausierte (docker pause) und gestoppte (erstellt, beendet, tot) getrennt gezählt; geprüft werden beide nicht
-        aufrufe = []
-
-        def run(cmd, *a, **kw):
-            aufrufe.append(cmd)
-            return 0, "a1\n" if "status=paused" in cmd else "b1\nb2\nb3\n"
-        with mock.patch.object(scanner, "run", side_effect=run):
-            self.assertEqual(scanner.nicht_laufende_container(), (1, 3))
-        self.assertEqual(aufrufe[1], ["docker", "ps", "-aq", "--filter", "status=created", "--filter", "status=exited",
-                                      "--filter", "status=dead"])
+        # gestoppte: erstellt, beendet, tot
+        with mock.patch.object(scanner, "run", return_value=(0, "b1\nb2\nb3\n")) as run:
+            self.assertEqual(scanner.gestoppte_container(), 3)
+        self.assertEqual(run.call_args[0][0], ["docker", "ps", "-aq", "--filter", "status=created", "--filter",
+                                               "status=exited", "--filter", "status=dead"])
         with mock.patch.object(scanner, "run", return_value=(1, "")):
-            self.assertIsNone(scanner.nicht_laufende_container())
+            self.assertIsNone(scanner.gestoppte_container())
         # Stand der Daten: die älteste Aktualisierung über alle Ökosysteme
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)

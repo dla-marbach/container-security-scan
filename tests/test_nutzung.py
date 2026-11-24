@@ -297,14 +297,21 @@ class Dienste(unittest.TestCase):
                            "sockets": ["unix:/run/a.sock"]}}
         s = self.dienst(p, backends={"/usr/sbin/nginx": [
             "http://app:3000/api/", "fastcgi://pool", "127.0.0.1:9000", "unix:/run/php.sock", "http://$backend",
-            "http://gemischt", "http://sockets", "ftp://admin:geheim@backend:21/", "https://u:p@fremd.example.org/"]},
+            "http://gemischt", "http://sockets", "ftp://admin:geheim@backend:21/", "https://u:p@fremd.example.org/",
+            "http://unix:/run/app.sock:/api/"]},
             **w)
         # upstream: jedes Ziel einzeln (auch externe und Unix-Sockets); nie Zugangsdaten aus der URL
         self.assertEqual(s["konsole"]["ziele"], ["proj-app-1:3000", "php:9000", "127.0.0.1:9000",
                                                  "unix:/run/php.sock", "$backend (nicht auswertbar)",
                                                  "extern.example.org:443 (extern)", "unix:/run/b.sock",
-                                                 "unix:/run/a.sock", "backend:21", "fremd.example.org (extern)"])
+                                                 "unix:/run/a.sock", "backend:21", "fremd.example.org (extern)",
+                                                 "unix:/run/app.sock"])
         self.assertNotIn("geheim", str(s["konsole"]))
+        # auf der Konsole nur das Skript, kein Optionswert (auch nicht, wenn er wie eine Datei aussieht)
+        for argv in (["node", "server.js", "--password", "/geheim"], ["node", "server.js", "--key=/geheim.py"],
+                     ["node", "--secret", "x.js", "server.js"]):
+            k = self.dienst(proc(1, "/usr/local/bin/node", argv, ports={"3000": "alle"}))["konsole"]
+            self.assertEqual(k["zusatz"], "server.js", argv)
         # Ports mit gleicher Erreichbarkeit zusammen, Anwendung im Arbeitsverzeichnis
         node = proc(1, "/usr/local/bin/node", ["node", "server.js"], cwd="/app", ports={"3000": "alle", "3001": "alle"})
         k = self.dienst(node)["konsole"]

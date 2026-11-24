@@ -22,7 +22,7 @@ class Kommandozeile(unittest.TestCase):
         self.db = os.path.join(self.tmp, "leere-db")   # Daten liegen nicht im Code-Branch
         os.mkdir(self.db)
         # main() mit nachgebildetem docker_lage: auch die gestoppten Container nicht beim echten docker abfragen
-        p = mock.patch.object(scanner, "nicht_laufende_container", return_value=(1, 3))
+        p = mock.patch.object(scanner, "gestoppte_container", return_value=3)
         p.start()
         self.addCleanup(p.stop)
 
@@ -218,8 +218,41 @@ class Kommandozeile(unittest.TestCase):
         kopf = out.getvalue().splitlines()
         self.assertEqual(kopf[0], "container-security-scan " + scanner.VERSION)
         self.assertRegex(kopf[1], r"^Scan: \d{4}-\d\d-\d\d \d\d:\d\d UTC$")
-        self.assertEqual(kopf[2:5], ["Daten: Stand unbekannt", "Host: %s mit 1 laufenden, 1 pausierten und 3 gestoppten Containern:"
+        self.assertEqual(kopf[2:5], ["Daten: Stand unbekannt", "Host: %s mit 1 laufenden und 3 gestoppten Containern:"
                                      % os.uname().nodename, "- web  erstellt ?, läuft"])
+
+    def test_pausierte_nur_kontext(self):
+        # vpn ist pausiert (docker exec nicht möglich): nicht geprüft, auch nicht als Ziel eines Proxys; der laufende
+        # Container mit seinem Netzwerk-Namespace bleibt über dessen veröffentlichten Port erreichbar
+        db = os.path.join(self.tmp, "db")
+        os.mkdir(db)
+        vpn = {"Id": "v" * 64, "Name": "/vpn", "State": {"Paused": True}, "HostConfig": {"NetworkMode": "bridge"},
+               "NetworkSettings": {"Ports": {"8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8080"}]},
+                                   "Networks": {"back": {}}}}
+        mit = {"Id": "m" * 64, "Name": "/mit", "State": {"Running": True},
+               "HostConfig": {"NetworkMode": "container:" + "v" * 64}, "NetworkSettings": {"Ports": {}, "Networks": {}}}
+        gesehen = []
+
+        def scan(name, a, via=None, urls=None, bekannt=None, anlass=None):
+            gesehen.append(name)
+            return 0, [("vpn", "*", "traefik:80 in proxy")], None, {}
+        for argv in (["--alle-container"], ["--container", "*"]):
+            gesehen[:] = []
+            with mock.patch.object(scanner, "scan_container", side_effect=scan), \
+                    mock.patch.object(scanner, "erreichbarkeit_pruefen",
+                                      side_effect=lambda n, *a, **kw: gesehen.append("erreichbarkeit " + n)
+                                      or (None, [], None, {})), \
+                    mock.patch.object(scanner, "docker_lage", return_value=([vpn, mit], {})), \
+                    mock.patch.object(scanner, "host_proxys", return_value=([], [], [], [], {})), \
+                    mock.patch.object(scanner, "log"), mock.patch("sys.stdout", new_callable=io.StringIO) as out, \
+                    mock.patch.object(sys, "argv", ["x", "--db", db] + argv + [self.tmp]):
+                self.assertEqual(scanner.main(), 0)
+            self.assertNotIn("vpn", gesehen, argv)
+            self.assertIn("mit", gesehen, argv)
+            self.assertIn(" mit 1 laufenden, 1 pausierten und 3 gestoppten Containern:", out.getvalue())
+        # Kontext: der Spender liefert die Veröffentlichung -> mit ist direkt erreichbar
+        public, rest, _ = scanner.container_liste([vpn, mit], {})
+        self.assertIn("mit", public)
 
     def mehrere(self, option, public, rest, gruppen, backends, weg=(), host=([], [], [], [], {})):
         """main() mit --oeffentliche/--alle-container; liefert (Rückgabewert, [(Container, via)], Ausgabe)."""

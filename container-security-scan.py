@@ -1699,8 +1699,9 @@ LOOPBACK_GRUND = " (über Loopback)"
 
 def docker_lage():
     """docker inspect aller laufenden Container und ihrer Netzwerke: ([Container], {Netzname: Netz}). Pausierte
-    (docker pause) zählen nicht: ihre Prozesse sind eingefroren, docker exec ist dort nicht möglich."""
-    rc, ids = run(["docker", "ps", "-q", "--filter", "status=running"])
+    (docker pause) gehören als Kontext dazu – ein laufender Container kann ihren Netzwerk-Namespace mitnutzen,
+    samt veröffentlichter Ports –, werden aber nicht geprüft (pausiert(), docker exec ist dort nicht möglich)."""
+    rc, ids = run(["docker", "ps", "-q"])
     if rc != 0:
         raise ScanError("docker nicht erreichbar (läuft dockerd? Rechte/Gruppe docker?)")
     infos = inspect_liste(["docker", "inspect"], ids.split())
@@ -1708,16 +1709,17 @@ def docker_lage():
     return infos, {n.get("Name"): n for n in inspect_liste(["docker", "network", "inspect"], names)}
 
 
-def nicht_laufende_container():
-    """Zahl der pausierten und der gestoppten (erstellt, beendet, tot) Container für den Kopf der Ausgabe; None,
-    wenn docker sie nicht liefert. Sie werden nicht geprüft."""
-    anzahl = []
-    for status in (["paused"], ["created", "exited", "dead"]):
-        rc, ids = run(["docker", "ps", "-aq"] + [x for st in status for x in ("--filter", "status=" + st)])
-        if rc != 0:
-            return None
-        anzahl.append(len(ids.split()))
-    return tuple(anzahl)
+def pausiert(infos):
+    """Namen der pausierten Container (docker pause): nur Kontext, nicht geprüft."""
+    return {name_von(d) for d in infos if (d.get("State") or {}).get("Paused")}
+
+
+def gestoppte_container():
+    """Zahl der gestoppten Container (erstellt, beendet, tot) für den Kopf der Ausgabe; None, wenn docker sie nicht
+    liefert. Sie werden nicht geprüft."""
+    rc, ids = run(["docker", "ps", "-aq", "--filter", "status=created", "--filter", "status=exited",
+                   "--filter", "status=dead"])
+    return len(ids.split()) if rc == 0 else None
 
 
 def inspect_liste(cmd, refs):
@@ -2245,8 +2247,8 @@ def ziele_kurz(target, web):
     Port mit Hinweis (Variable, extern) – nie Zugangsdaten aus der URL (das Log geht nach Rundeck und per Mail)."""
     kurz = []
     for t in endziele(target, web):
-        if t.startswith("unix:"):
-            kurz.append(t)
+        if unix_socket(t) or t.startswith("unix:"):
+            kurz.append("unix:" + (unix_socket(t) or t[5:]))
             continue
         host, port = split_target(t)
         ziele = backend_containers(t, web)
@@ -2543,7 +2545,11 @@ def mark_usage(comps, procs, owners, web):
                or p["argv"][i - 1] in ("-m", "--app", "-w") or re.match(r"[\w.]+:\w+$", a))]
         if app:
             desc.append("Anwendung: " + " ".join(app))
-        dateien = " ".join(x for x in app if x.startswith("/") or re.search(r"\.([cm]?js|py|php)$", x))
+        # für die Konsole (Rundeck-Log, Mail) nur das erste Skript- bzw. Dateiargument, nie ein Optionswert
+        # (node server.js --password /geheim: nur server.js)
+        dateien = next((x for i, x in enumerate(p["argv"]) if i and not x.startswith("-") and "=" not in x
+                        and (i == 1 or not p["argv"][i - 1].startswith("-"))
+                        and (x.startswith("/") or re.search(r"\.([cm]?js|py|php)$", x))), "")
         if p["cwd"] not in ("", "/"):
             desc.append("Arbeitsverzeichnis: " + p["cwd"])
         if dateien or p["cwd"] not in ("", "/"):
@@ -4347,12 +4353,13 @@ def dauer_text(sekunden):
     return "%d h" % (sekunden // 3600) if sekunden < 48 * 3600 else "%d Tagen" % (sekunden // 86400)
 
 
-def host_kopf(infos, nicht_laufend=None):
-    """Kopfzeilen zum Host: Name, Zahl der laufenden, pausierten und gestoppten Container (nicht_laufend: (pausiert,
-    gestoppt) oder None), die laufenden mit Erstellung, Laufzeit, Zustand (healthcheck) und Neustarts."""
-    pausiert, gestoppt = nicht_laufend or (0, None)
+def host_kopf(infos, gestoppt=None):
+    """Kopfzeilen zum Host: Name, Zahl der laufenden, pausierten und gestoppten Container (gestoppt: Zahl oder
+    None), die laufenden mit Erstellung, Laufzeit, Zustand (healthcheck) und Neustarts."""
+    pause = pausiert(infos)
+    infos = [d for d in infos if name_von(d) not in pause]
     zeilen = ["Host: %s mit %d laufenden%s%s Containern%s" % (
-        os.uname().nodename, len(infos), ", %d pausierten" % pausiert if pausiert else "",
+        os.uname().nodename, len(infos), ", %d pausierten" % len(pause) if pause else "",
         " und %d gestoppten" % gestoppt if gestoppt is not None else "", ":" if infos else "")]
     breite = max([len(name_von(d)) for d in infos] or [0])
     for d in sorted(infos, key=name_von):
@@ -4404,14 +4411,15 @@ def container_auswahl(infos, muster):
     return sorted(treffer)
 
 
-def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None, ziel_urls=None):
+def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None, ziel_urls=None, auslassen=()):
     """Reihenfolge und Weitergabe der Erreichbarkeit und der Webadressen: zuerst die erreichbaren Container und
     (wiederholt) die Backends ihrer Proxys in anderen Containern – vorgezogen, damit sie schon mit ihrer
     Erreichbarkeit geprüft werden –, danach die übrigen (spaeter). Ein schon geprüftes Ziel, für das neue
     Webadressen hinzukommen, wird erneut geprüft (wie bei neuen Gründen höchstens dreimal). pruefen(Name, via,
     urls, anlass) -> (Rückgabewert, Backends, Bericht, Webadressen der Ziele): scan_container bzw.
     erreichbarkeit_pruefen; anlass: warum ein schon geprüfter Container erneut geprüft wird (sonst None).
-    ziele, ziel_urls: Ziele der Proxys auf dem Host und deren Webadressen. Liefert (via je Container, Webadressen
+    ziele, ziel_urls: Ziele der Proxys auf dem Host und deren Webadressen; auslassen: nicht prüfen, auch nicht als
+    Ziel eines Proxys (pausierte Container). Liefert (via je Container, Webadressen
     je Container {Container: {Port: [Webadresse]}}, Container mit Fehler); codes: Rückgabewerte je Container."""
     codes = {} if codes is None else codes
     urls = {}
@@ -4435,6 +4443,8 @@ def durchlauf(public, spaeter, ziele, gruppen, pruefen, codes=None, ziel_urls=No
                 queue[n] = {}
             continue
         name, via = queue.popitem(last=False)
+        if name in auslassen:
+            continue
         anlass = " und ".join(anlaesse.pop(name, [])) or None
         vias[name] = via
         runs[name] += 1
@@ -4589,9 +4599,11 @@ def main():
     sys.stdout.flush()          # vor Meldungen auf stderr (Wrapper: 2>&1)
     try:
         infos, netze = docker_lage()
-        print("\n".join(host_kopf(infos, nicht_laufende_container())))
+        print("\n".join(host_kopf(infos, gestoppte_container())))
         sys.stdout.flush()
         public, rest, gruppen = container_liste(infos, netze)
+        pause = pausiert(infos)         # Kontext für die Erreichbarkeit, nicht prüfen
+        public, rest = [n for n in public if n not in pause], [n for n in rest if n not in pause]
         ziele, services, warnings, problems, ziel_urls = host_proxys(infos)
     except ScanError as e:
         log("FEHLER: %s" % e)
@@ -4601,14 +4613,14 @@ def main():
     if muster:
         # Auswahl: Erreichbarkeit wie im Gesamtlauf über alle laufenden Container ermitteln (ohne Inventar und
         # Abgleich), dann nur die ausgewählten vollständig prüfen – mit denselben Ergebnissen wie im Gesamtlauf
-        auswahl = container_auswahl(infos, muster)
+        auswahl = [n for n in container_auswahl(infos, muster) if n not in pause]
         if not auswahl:
             log("FEHLER: kein laufender Container passt zu %s" % ", ".join(muster))
             return 2
-        log("Ermittle die Erreichbarkeit über alle %d laufenden Container ..." % len(infos))
+        log("Ermittle die Erreichbarkeit über alle %d laufenden Container ..." % (len(public) + len(rest)))
         vias, urls, fehler = durchlauf(public, rest, ziele, gruppen,
                                        lambda n, via, u, anlass: erreichbarkeit_pruefen(n, a, via, u),
-                                       ziel_urls=ziel_urls)
+                                       ziel_urls=ziel_urls, auslassen=pause)
         codes = {}
         for name in auswahl:
             try:
@@ -4639,7 +4651,7 @@ def main():
         print("Keine laufenden Container gefunden." if a.alle_container else "Keine Container mit veröffentlichten Ports gefunden.")
         return host_code
     codes = {}
-    durchlauf(public, rest if a.alle_container else [], ziele, gruppen, pruefen, codes, ziel_urls)
+    durchlauf(public, rest if a.alle_container else [], ziele, gruppen, pruefen, codes, ziel_urls, pause)
     code = 2 if 2 in codes.values() or host_code == 2 else 1 if 1 in codes.values() else 0
     print("\nGesamt: %d Container geprüft – %s" % (len(codes), GESAMT_TEXT[code]))
     return code

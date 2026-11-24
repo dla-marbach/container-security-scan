@@ -340,7 +340,8 @@ CONF-SOCKET     monitoring    2027-03-31  liest nur den Status der Container, So
 Auf der Konsole (Rundeck, Log, Mail) zuerst Version, Zeitpunkt des Scans, Stand der Daten (älteste
 Aktualisierung) und der Host (Hostname) mit der Zahl der laufenden, pausierten und gestoppten Container, die
 laufenden mit Erstellung, Laufzeit, Healthcheck und Neustarts, dazu Proxys direkt auf dem Host (`Host: …`).
-Geprüft werden nur laufende Container; pausierte (`docker pause`) und gestoppte nicht. Danach je Container ein
+Geprüft werden nur laufende Container; pausierte (`docker pause`) und gestoppte nicht (ein pausierter zählt aber
+für die Erreichbarkeit mit, etwa wenn ein laufender Container seinen Netzwerk-Namespace nutzt). Danach je Container ein
 Abschnitt `=== <container> ===`. Bringt ein später geprüfter Proxy einen weiteren Weg oder weitere Webadressen zu
 einem schon geprüften Container, prüft der Scan ihn erneut; die Überschrift nennt dann den Anlass, und dieser
 Abschnitt ersetzt den früheren:
@@ -348,9 +349,10 @@ Abschnitt ersetzt den früheren:
 - Warnungen
 - Ergebnis mit der Zahl der Befunde und der relevanten
 - `Image …` mit Betriebssystem
-- `Dienst …` je Prozess mit offenem Port: Programm und Version (Anwendung, Arbeitsverzeichnis), Ports und wie sie
-  erreichbar sind (`Port 9000: öffentlich über nginx:80 in app-proxy`); darunter die [Webadressen](#webadressen),
-  bei einem Proxy die Ziele (`leitet weiter an: …`), bei einer Anwendung die aufgerufenen Container (`ruft auf: …`)
+- `Dienst …` je Prozess mit offenem Port: Programm und Version (Skript ohne Optionswerte, Arbeitsverzeichnis),
+  Ports und wie sie erreichbar sind (`Port 9000: öffentlich über nginx:80 in app-proxy`); darunter die
+  [Webadressen](#webadressen), bei einem Proxy die Ziele (`leitet weiter an: …`), bei einer Anwendung die
+  aufgerufenen Container (`ruft auf: …`)
 - [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) (`CONF-…`)
 - relevante Funde, eine Zeile je Fund: Kennung, Schweregrad, Paket und Version, Fix-Version, genutzt von, aktiv
   ausgenutzt (KEV); neue zuerst mit `NEU:`, wenn ein Fund im letzten Lauf noch nicht relevant war
