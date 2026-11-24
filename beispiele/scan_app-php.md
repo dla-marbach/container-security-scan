@@ -2,8 +2,8 @@
 
 - Image: php:8.3.30-fpm-bookworm (sha256:e7ca6c7f5a59)  
 - OS: Debian GNU/Linux 12 (bookworm)  
-- Zeitpunkt: 2026-11-24 20:08  
-- Scanner: container-security-scan 1.1.0  
+- Zeitpunkt: 2026-11-24 21:59  
+- Scanner: container-security-scan 1.1.1  
 - Datenbank: OSV, Stand 2026-11-24 13:43 UTC (daten)  
 - Erfassung: OS-Pakete dpkg; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer); 1 Kernel-Pakete nicht geprüft (Container nutzen den Kernel des Hosts)
 
@@ -699,8 +699,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        edc25c01983c9f4ea7e23cfc320c85ccb85656c8007c5656966d592d30844fce
-Gestartet: 2026-11-24T20:08:19.578393048Z
+ID:        3a5bb73b457151db9284e9b1b345664940b8ad163fb9983a0b5a50f836307401
+Gestartet: 2026-11-24T21:59:50.376344381Z
 Kommando:  ["docker-php-entrypoint"] ["php-fpm"]
 Mounts:    /w/beispiele/umgebung/php->/srv/app
 Host:      Kernel 7.0.14-linuxkit
@@ -710,9 +710,9 @@ Host:      Kernel 7.0.14-linuxkit
 
 ```
 PID                 USER                COMMAND
-52770               root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
-52840               33                  php-fpm: pool www
-52841               33                  php-fpm: pool www
+5175                root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
+5205                33                  php-fpm: pool www
+5206                33                  php-fpm: pool www
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

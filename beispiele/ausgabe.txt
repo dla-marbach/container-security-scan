@@ -1,11 +1,11 @@
-container-security-scan 1.1.0
-Scan: 2026-11-24 20:08 UTC
+container-security-scan 1.1.1
+Scan: 2026-11-24 21:59 UTC
 Daten: 2026-11-24 13:43 UTC
 Host: <rechner> mit 4 laufenden und 0 gestoppten Containern:
-- app-node     erstellt 2026-11-24 20:08 UTC, läuft seit 0 min
-- app-php      erstellt 2026-11-24 20:08 UTC, läuft seit 0 min
-- app-proxy    erstellt 2026-11-24 20:08 UTC, läuft seit 0 min
-- app-traefik  erstellt 2026-11-24 20:08 UTC, läuft seit 0 min
+- app-node     erstellt 2026-11-24 21:59 UTC, läuft seit 0 min
+- app-php      erstellt 2026-11-24 21:59 UTC, läuft seit 0 min
+- app-proxy    erstellt 2026-11-24 21:59 UTC, läuft seit 0 min
+- app-traefik  erstellt 2026-11-24 21:59 UTC, läuft seit 0 min
 
 === app-proxy ===
 RELEVANTE SCHWACHSTELLEN – 2 Befunde, davon 1 relevant (1 neu)

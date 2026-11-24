@@ -78,10 +78,12 @@ class Bericht(unittest.TestCase):
         w = web(raw=["--- nginx -T (Auszug)\nserver {"])
         stale = proc(5, "/usr/sbin/nginx", maps={"/usr/lib/libssl.so.3 (deleted)", "/dev/zero (deleted)"})
         with mock.patch.object(scanner, "run", side_effect=fake_run):
-            rows, relevant = scanner.write_report(
+            bewertet = scanner.befunde_bewerten([dict(f) for f in self.findings], self.services, (), nur_behebbare,
+                                                known, how["warnungen"])
+            scanner.write_report(
                 path, FakeContainer(), DEBIAN, [self.p1, self.p2, self.p3], self.services, {"5": stale}, w, how,
-                [dict(f) for f in self.findings], {"problems": list(problems), "text": "OSV, Stand heute"},
-                alle, nur_behebbare, known)
+                bewertet, {"problems": list(problems), "text": "OSV, Stand heute"}, alle, nur_behebbare, known)
+            rows, relevant = bewertet[:2]
         with open(path, encoding="utf-8") as f:
             return rows, relevant, f.read()
 

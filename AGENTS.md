@@ -19,6 +19,11 @@ Die Daten (OSV-Auszug, EOL, KEV) liegen im Branch `daten` und werden nur von `da
 liegen sie unter `daten/` (in `.gitignore`), geholt mit `./container-security-scan.py --db-aktualisieren`.
 Den Branch `daten` nie von Hand ändern.
 
+Der Scanner ist in nummerierte Abschnitte in der Reihenfolge des Ablaufs gegliedert (Zugriff, Inventar,
+Prozesse, Docker, Webserver, Ziele, Nutzung, Webadressen, Daten, Abgleich, Bewertung, Ausgabe, Ablauf); Neues
+gehört in den passenden Abschnitt. Die Felder des Kontexts je Container beschreibt `web_leer`, die der Dienste
+`dienste_beschreiben`.
+
 ## Regeln für den Code
 
 - **Python ≥ 3.6 und nur die Standardbibliothek** (SLES 15). Kein `capture_output`/`text=` bei
