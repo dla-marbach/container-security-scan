@@ -2,15 +2,15 @@
 
 Szenario (Lauf mit --alle-container):
 - nginx (eigene Konfiguration per -c) als öffentlicher Reverse Proxy vor Node.js in einem Nachbarcontainer ohne
-  veröffentlichten Port, einmal direkt, einmal über eine Variable (set $backend; proxy_pass $backend)
-- Traefik (Konfiguration wird nicht ausgewertet) mit einem Ziel aus Docker-Labels und einem Nachbarn ohne Labels:
-  im Zweifel erreichbar
-- Node.js im Netzwerk-Namespace eines anderen Containers (network_mode: container:), der den Port veröffentlicht
-- Node.js in einem eigenen Netz ohne veröffentlichten Port: wird mitgeprüft, gilt als intern
+  veröffentlichten Port, einmal direkt, einmal über eine Variable (set $backend; proxy_pass $backend), dazu ein
+  nicht auswertbares Ziel (proxy_pass http://$host:…): ein weiterer Nachbar gilt im Zweifel als erreichbar (dieselbe
+  Rückfallregel wie bei Traefik, HAProxy u.a.)
+- Dienst im Netzwerk-Namespace eines anderen Containers (network_mode: container:), der den Port veröffentlicht
+- Dienst in einem eigenen Netz ohne veröffentlichten Port: wird mitgeprüft, gilt als intern
 - Gateway in Node.js (veröffentlichter Port): Ziel-URL in der Umgebung (API_URL), offene Verbindungen zu einem
   weiteren Dienst und zu Redis – die Ziele gelten als öffentlich, Redis nicht (Datenbank/Cache)
 - nur wenn nginx auf dem Host installiert ist: nginx direkt auf dem Host (eigene Konfiguration, ohne root)
-  vor Node.js über die Container-IP, ohne veröffentlichten Port, und über 127.0.0.1 vor Node.js in zwei
+  vor einem Dienst über die Container-IP, ohne veröffentlichten Port, und über 127.0.0.1 vor Diensten in zwei
   Containern im Host-Netzwerk (einer nur auf Loopback) und vor dem Gateway (Port auf 127.0.0.1 veröffentlicht):
   jeder Port nur beim Container, der dort lauscht
 - gehärteter Node.js-Container (read_only, cap_drop: ALL, no-new-privileges, Benutzer node) mit npm-Paketen in
@@ -18,6 +18,8 @@ Szenario (Lauf mit --alle-container):
   hinein, der Scanner liest dann passiv von außen (docker export, docker cp) und ist trotzdem vollständig
 Geprüft werden Rückgabewert, Erreichbarkeit, Webadressen, Berichte, EOL-Warnungen und dass der Scan im Container nichts
 verändert (docker diff) und keine Prozesse zurücklässt (Zombies).
+Dienste, bei denen es nur um die Erreichbarkeit geht, laufen in einem kleinen Alpine-Image mit dem httpd aus
+busybox-extras statt in Node.js: dessen Inventar (Programm, npm) kostet je Container einige Sekunden.
 """
 import os
 import re
@@ -36,7 +38,7 @@ from _laden import SKRIPT
 AKTIV = os.environ.get("CSS_DOCKER_TESTS") == "1"
 NGINX_IMAGE = os.environ.get("CSS_NGINX_IMAGE", "nginx:1.27-alpine")
 NODE_IMAGE = os.environ.get("CSS_NODE_IMAGE", "node:20-alpine")
-TRAEFIK_IMAGE = os.environ.get("CSS_TRAEFIK_IMAGE", "traefik:v3.3")
+ALPINE_IMAGE = os.environ.get("CSS_ALPINE_IMAGE", "alpine:3.22")
 REDIS_IMAGE = os.environ.get("CSS_REDIS_IMAGE", "redis:7-alpine")
 # Gateway: HTTP-Server, dazu dauerhafte Verbindungen zu Zielen (bei Abbruch neu)
 GATEWAY = ("require('http').createServer((q, r) => r.end('ok')).listen(3007);"
@@ -44,6 +46,13 @@ GATEWAY = ("require('http').createServer((q, r) => r.end('ok')).listen(3007);"
            " s.on('error', () => {}); s.on('close', () => setTimeout(() => verbinde(port, host), 500)); };"
            "verbinde(3009, '%s'); verbinde(6379, '%s');")
 NODE_SERVER = "require('http').createServer((q, r) => r.end('ok')).listen(%d)"
+# kleiner HTTP-Dienst: antwortet unter /, /lo/ und /hn/ (Pfade des nginx auf dem Host) mit "ok"
+KLEIN_DOCKERFILE = ("FROM %s\nRUN apk add --no-cache busybox-extras && mkdir -p /w/lo /w/hn "
+                    "&& for d in /w /w/lo /w/hn; do printf ok > $d/index.html; done\n" % ALPINE_IMAGE)
+
+
+def klein_server(port, adresse=""):
+    return ["busybox-extras", "httpd", "-f", "-h", "/w", "-p", "%s%d" % (adresse + ":" if adresse else "", port)]
 LOOPBACK_PORT = 18100       # Node im Host-Netzwerk, nur auf 127.0.0.1 (Port des Hosts, daher nicht < 10000)
 HOSTNETZ_PORT = 18101       # zweiter Node im Host-Netzwerk, auf allen Adressen
 HOST_NGINX = shutil.which("nginx") or next((p for p in ("/usr/sbin/nginx", "/usr/local/sbin/nginx") if os.path.exists(p)), None)
@@ -62,7 +71,7 @@ class Integration(unittest.TestCase):
         cls.id = "csstest-" + uuid.uuid4().hex[:8]
         cls.net, cls.node, cls.proxy = cls.id, cls.id + "-node", cls.id + "-proxy"
         cls.varnode = cls.id + "-varnode"
-        cls.tnet, cls.traefik, cls.label, cls.nachbar = cls.id + "-t", cls.id + "-traefik", cls.id + "-label", cls.id + "-nachbar"
+        cls.nachbar, cls.klein = cls.id + "-nachbar", cls.id + "-klein"
         cls.vpn, cls.mit = cls.id + "-vpn", cls.id + "-mit"
         cls.inet, cls.intern = cls.id + "-i", cls.id + "-intern"
         cls.hnet, cls.hinterhost = cls.id + "-h", cls.id + "-hinterhost"
@@ -73,28 +82,29 @@ class Integration(unittest.TestCase):
         with open(conf, "w") as f:
             f.write("events {}\nhttp { server { listen 8080; server_name shop.test; resolver 127.0.0.11 valid=10s;\n"
                     "  location / { proxy_pass http://%s:3000; }\n"
-                    "  location /v/ { set $backend http://%s:3001; proxy_pass $backend; } } }\n" % (cls.node, cls.varnode))
+                    "  location /v/ { set $backend http://%s:3001; proxy_pass $backend; }\n"
+                    "  location /h/ { proxy_pass http://$host:3003; } } }\n" % (cls.node, cls.varnode))
         os.chmod(cls.tmp, 0o755)
         os.chmod(conf, 0o644)
-        for net in (cls.net, cls.tnet, cls.inet, cls.hnet, cls.gnet):
+        for net in (cls.net, cls.inet, cls.hnet, cls.gnet):
             docker("network", "create", net)
+        bau = os.path.join(cls.tmp, "klein")
+        os.makedirs(bau)
+        with open(os.path.join(bau, "Dockerfile"), "w") as f:
+            f.write(KLEIN_DOCKERFILE)
+        docker("build", "-q", "-t", cls.klein, bau, timeout=600)
         docker("run", "-d", "--name", cls.node, "--network", cls.net, NODE_IMAGE, "node", "-e", NODE_SERVER % 3000)
         docker("run", "-d", "--name", cls.varnode, "--network", cls.net, NODE_IMAGE, "node", "-e", NODE_SERVER % 3001)
         docker("run", "-d", "--name", cls.proxy, "--network", cls.net, "-p", "127.0.0.1::8080",
                "-v", conf + ":/etc/nginx/eigen/proxy.conf:ro", NGINX_IMAGE,
                "nginx", "-c", "/etc/nginx/eigen/proxy.conf", "-g", "daemon off;")
-        docker("run", "-d", "--name", cls.label, "--network", cls.tnet, "--label", "traefik.enable=true",
-               "--label", "traefik.http.services.l.loadbalancer.server.port=3002", NODE_IMAGE, "node", "-e", NODE_SERVER % 3002)
-        docker("run", "-d", "--name", cls.nachbar, "--network", cls.tnet, NODE_IMAGE, "node", "-e", NODE_SERVER % 3003)
-        docker("run", "-d", "--name", cls.traefik, "--network", cls.tnet, "-p", "127.0.0.1::80", TRAEFIK_IMAGE,
-               "--entrypoints.web.address=:80")
-        docker("run", "-d", "--name", cls.vpn, "--network", cls.net, "-p", "127.0.0.1::3004", NODE_IMAGE,
+        docker("run", "-d", "--name", cls.nachbar, "--network", cls.net, cls.klein, *klein_server(3003))
+        docker("run", "-d", "--name", cls.vpn, "--network", cls.net, "-p", "127.0.0.1::3004", cls.klein,
                "sleep", "3600")
-        docker("run", "-d", "--name", cls.mit, "--network", "container:" + cls.vpn, NODE_IMAGE, "node", "-e",
-               NODE_SERVER % 3004)
-        docker("run", "-d", "--name", cls.intern, "--network", cls.inet, NODE_IMAGE, "node", "-e", NODE_SERVER % 3005)
-        docker("run", "-d", "--name", cls.hinterhost, "--network", cls.hnet, NODE_IMAGE, "node", "-e", NODE_SERVER % 3006)
-        docker("run", "-d", "--name", cls.api, "--network", cls.gnet, NODE_IMAGE, "node", "-e", NODE_SERVER % 3008)
+        docker("run", "-d", "--name", cls.mit, "--network", "container:" + cls.vpn, cls.klein, *klein_server(3004))
+        docker("run", "-d", "--name", cls.intern, "--network", cls.inet, cls.klein, *klein_server(3005))
+        docker("run", "-d", "--name", cls.hinterhost, "--network", cls.hnet, cls.klein, *klein_server(3006))
+        docker("run", "-d", "--name", cls.api, "--network", cls.gnet, cls.klein, *klein_server(3008))
         docker("run", "-d", "--name", cls.ziel, "--network", cls.gnet, NODE_IMAGE, "node", "-e",
                "require('net').createServer(s => s.on('error', () => {})).listen(3009)")
         docker("run", "-d", "--name", cls.redis, "--network", cls.gnet, REDIS_IMAGE)
@@ -120,16 +130,15 @@ class Integration(unittest.TestCase):
                cls.hart, "node", "-e", NODE_SERVER % 3010)
         docker("run", "-d", "--name", cls.gw, "--network", cls.gnet, "-p", "127.0.0.1::3007",
                "-e", "API_URL=http://%s:3008/v1" % cls.api, NODE_IMAGE, "node", "-e", GATEWAY % (cls.ziel, cls.redis))
-        cls.alle = (cls.node, cls.varnode, cls.proxy, cls.label, cls.nachbar, cls.traefik, cls.vpn, cls.mit, cls.intern,
+        cls.alle = (cls.node, cls.varnode, cls.proxy, cls.nachbar, cls.vpn, cls.mit, cls.intern,
                     cls.hinterhost, cls.api, cls.ziel, cls.redis, cls.gw, cls.hart)
         cls.host_nginx = None
         if HOST_NGINX:      # nginx auf dem Host vor hinterhost, über dessen IP (wie ein Proxy außerhalb von Docker),
             # und über 127.0.0.1 vor hostlo (Host-Netzwerk, nur Loopback), hostnetz (Host-Netzwerk) und gw
             # (veröffentlichter Port)
-            docker("run", "-d", "--name", cls.hostlo, "--network", "host", NODE_IMAGE, "node", "-e",
-                   (NODE_SERVER % LOOPBACK_PORT)[:-1] + ", '127.0.0.1')")
-            docker("run", "-d", "--name", cls.hostnetz, "--network", "host", NODE_IMAGE, "node", "-e",
-                   NODE_SERVER % HOSTNETZ_PORT)
+            docker("run", "-d", "--name", cls.hostlo, "--network", "host", cls.klein,
+                   *klein_server(LOOPBACK_PORT, "127.0.0.1"))
+            docker("run", "-d", "--name", cls.hostnetz, "--network", "host", cls.klein, *klein_server(HOSTNETZ_PORT))
             cls.alle += (cls.hostlo, cls.hostnetz)
             gw_port = docker("port", cls.gw, "3007/tcp").split(":")[-1].strip()
             ip = docker("inspect", "-f", "{{(index .NetworkSettings.Networks \"%s\").IPAddress}}" % cls.hnet,
@@ -189,8 +198,8 @@ class Integration(unittest.TestCase):
             cls.host_nginx.wait(30)
         docker("rm", "-f", cls.mit)
         docker("rm", "-f", *cls.alle)
-        docker("rmi", "-f", cls.hart)
-        docker("network", "rm", cls.net, cls.tnet, cls.inet, cls.hnet, cls.gnet)
+        docker("rmi", "-f", cls.hart, cls.klein)
+        docker("network", "rm", cls.net, cls.inet, cls.hnet, cls.gnet)
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def bericht(self, container):
@@ -223,12 +232,15 @@ class Integration(unittest.TestCase):
         self.assertIn("Backend http://%s:3001 -> Container %s" % (self.varnode, self.varnode), self.bericht(self.proxy))
         self.assertIn("Port 3001/tcp (alle) öffentlich über", self.bericht(self.varnode))
 
-    def test_traefik_label_und_nachbar(self):
-        self.assertIn("Ziel aus Docker-Labels: Container %s, Port 3002" % self.label, self.bericht(self.traefik))
-        self.assertIn("Port 3002/tcp (alle) öffentlich über traefik", self.bericht(self.label))
-        self.assertIn("Port 3003/tcp (alle) möglicherweise öffentlich über traefik", self.bericht(self.nachbar))
-        self.assertTrue(any(l.startswith("WARNUNG: Weiterleitungen von traefik")
-                            for l in self.abschnitt(self.ausgabe, self.traefik)), self.ausgabe)
+    def test_nicht_auswertbares_ziel_und_nachbar(self):
+        # proxy_pass http://$host:3003: Ziele nicht vollständig bekannt -> Container in denselben Docker-Netzen
+        # gelten als möglicherweise öffentlich; bekannte Ziele bleiben öffentlich über den Proxy
+        self.assertIn("Port 3003/tcp (alle) möglicherweise öffentlich über nginx:8080 in %s" % self.proxy,
+                      self.bericht(self.nachbar))
+        self.assertIn("Port 3000/tcp (alle) öffentlich über nginx:8080 in %s" % self.proxy, self.bericht(self.node))
+        self.assertTrue(any(l.startswith("WARNUNG: Weiterleitungen von nginx:8080 nicht vollständig auswertbar "
+                                         "(Ziel http://$host:3003)")
+                            for l in self.abschnitt(self.ausgabe, self.proxy)), self.ausgabe)
 
     def test_gemeinsamer_netzwerk_namespace(self):
         self.assertIn("Port 3004/tcp (alle) veröffentlicht als 127.0.0.1:", self.bericht(self.mit))
@@ -328,14 +340,14 @@ class Integration(unittest.TestCase):
                         zeilen[dienst[0] + 1])
         self.assertNotIn(" über nginx:8080", zeilen[dienst[0] + 1])
         if self.host_nginx:      # nginx direkt auf dem Host, ohne server_name
-            self.assertIn("| http://*:18099/ | ja | node:3006 | nginx:18099 auf dem Host → node:3006 |",
+            self.assertIn("| http://*:18099/ | ja | busybox-extras:3006 | nginx:18099 auf dem Host → busybox-extras:3006 |",
                           self.bericht(self.hinterhost))
 
     def test_auswahl_wie_im_gesamtlauf(self):
-        # nur über einen anderen Container erreichbar (nginx, nginx-Variable, Traefik-Label, Aufruf eines
+        # nur über einen anderen Container erreichbar (nginx, nginx-Variable, nicht auswertbares Ziel, Aufruf eines
         # Gateways): ausgewählt bzw. einzeln geprüft dieselbe Erreichbarkeit wie im Gesamtlauf
-        for args, erwartet in ((["--container", self.id + "-*node", "--container", self.label],
-                                [self.node, self.varnode, self.label]),
+        for args, erwartet in ((["--container", self.id + "-*node", "--container", self.nachbar],
+                                [self.node, self.varnode, self.nachbar]),
                                ([self.api], [self.api])):
             out = os.path.join(self.tmp, "auswahl-" + erwartet[0])
             p = subprocess.run([sys.executable, SKRIPT] + args + [out, "--nur-behebbare", "--bericht"], stdout=subprocess.PIPE,

@@ -1,10 +1,10 @@
 {
  "bomFormat": "CycloneDX",
  "specVersion": "1.5",
- "serialNumber": "urn:uuid:b91a4e31-dacc-4cf0-a247-e847e104003b",
+ "serialNumber": "urn:uuid:6888ed5a-c8c6-408f-8324-5d80d0009413",
  "version": 1,
  "metadata": {
-  "timestamp": "2026-11-24T22:00:20Z",
+  "timestamp": "2026-11-24T22:33:59Z",
   "tools": {
    "components": [
     {
@@ -26,7 +26,7 @@
     },
     {
      "name": "container-security-scan:container-id",
-     "value": "95235a76e50d6792a532876551408b503a64976a857523dfcb21264390b97a93"
+     "value": "be3d1a99fc6d16945df8a32b6265957588c273bc8e8816657ed5388e9e7b85be"
     },
     {
      "name": "container-security-scan:repo-digest",
@@ -4842,7 +4842,7 @@
    "endpoints": [
     "http://shop.example.org:8080/"
    ],
-   "description": "Port 3000/tcp (alle) öffentlich über nginx:80 in app-proxy, traefik:80 in app-traefik; Anwendung: server.js; Arbeitsverzeichnis: /app",
+   "description": "Port 3000/tcp (alle) öffentlich über nginx:80 in app-proxy; Anwendung: server.js; Arbeitsverzeichnis: /app",
    "properties": [
     {
      "name": "container-security-scan:aktiv",

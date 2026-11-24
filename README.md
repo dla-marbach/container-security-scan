@@ -485,7 +485,7 @@ sudo bash beispiele/erzeugen.sh                                              # B
 ```
 
 - Was welche Testdatei prüft: [`tests/README.md`](tests/README.md). Die Action
-  [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6, 3.11, 3.13 und 3.14 aus, den Docker-Test
+  [`tests.yml`](.github/workflows/tests.yml) führt die Unit-Tests mit Python 3.6 (älteste unterstützte) und 3.14 aus, den Docker-Test
   bei Pull Requests und auf `main`.
 - [Beispiele](beispiele/) im selben Pull Request neu erzeugen, wenn sich `VERSION` oder das Format der Berichte
   ändert (ein Test prüft die Version). Das Skript startet die Testumgebung

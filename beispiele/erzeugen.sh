@@ -1,6 +1,6 @@
 #!/bin/bash
 # Beispiele neu erzeugen (README: Releases): Testumgebung starten, alle Container scannen, Berichte nach
-# beispiele/ schreiben. Voraussetzungen: Docker mit Compose, freie Ports 8080 und 8081, Daten unter daten/
+# beispiele/ schreiben. Voraussetzungen: Docker mit Compose, freier Port 8080, Daten unter daten/
 # (./container-security-scan.py --db-aktualisieren). Als root, wie im Betrieb (sonst Warnung zum Host):
 #   sudo bash beispiele/erzeugen.sh
 set -euo pipefail
@@ -8,8 +8,8 @@ cd "$(dirname "$0")/.."
 COMPOSE=(docker compose -f beispiele/umgebung/compose.yml)
 trap '"${COMPOSE[@]}" down' EXIT
 "${COMPOSE[@]}" up -d
-bereit() {                     # beide Proxys erreichen ihre Ziele
-  curl -fs localhost:8080/index.php >/dev/null && curl -fs localhost:8080/ >/dev/null && curl -fs localhost:8081/ >/dev/null
+bereit() {                     # der Proxy erreicht beide Ziele
+  curl -fs localhost:8080/index.php >/dev/null && curl -fs localhost:8080/ >/dev/null
 }
 for _ in $(seq 60); do bereit && break; sleep 1; done
 bereit || { "${COMPOSE[@]}" ps -a; echo "FEHLER: Testumgebung antwortet nicht" >&2; exit 2; }
