@@ -1899,14 +1899,19 @@ def webserver_lesen(c, procs, web):
                 calls.setdefault((server_user(p), tuple(args)), None)
             for user, args in calls:
                 rc, conf = c.exec([exe] + list(args) + ["-T"], timeout=60, user=user)
-                quelle = "-T"
+                quelle, fehlt = "-T", []
                 if rc != 0 or not conf.strip():
                     # nginx vor 1.9.2 kennt -T nicht: dieselben Dateien selbst lesen
-                    conf, quelle = nginx_dateien(c, exe, dict(zip(args[::2], args[1::2])), user), "Dateien"
+                    (conf, fehlt), quelle = nginx_dateien(c, exe, dict(zip(args[::2], args[1::2])), user), "Dateien"
                 if not conf.strip():
                     web["unlesbar"].add(exe)
                     web["problems"].append("%s %s-T fehlgeschlagen und Konfigurationsdateien nicht lesbar: Konfiguration "
                                            "(vHosts, Proxy-Backends) nicht lesbar" % (exe, " ".join(args) + " " if args else ""))
+                elif fehlt:
+                    web["unlesbar"].add(exe)
+                    web["problems"].append("%s %s-T fehlgeschlagen und Konfigurationsdateien nicht vollständig lesbar (%s): "
+                                           "Proxy-Backends unvollständig" % (exe, " ".join(args) + " " if args else "",
+                                                                             "; ".join(fehlt)))
                 web["raw"].append("--- %s %s (Auszug)\n" % (exe, quelle) + "\n".join(
                     l for l in conf.splitlines() if re.match(r"# configuration file|\s*(server|listen|server_name|root|location|\w+_pass|upstream)[\s;{]", l)))
                 parse_nginx(conf, web, exe)
@@ -1920,14 +1925,20 @@ def webserver_lesen(c, procs, web):
 
 
 # Dateien zu Mustern (glob wie nginx include bzw. stunnel include) mit den Rechten des Aufrufers ausgeben, im
-# Format von 'nginx -T'. IFS leer: keine Worttrennung, nur Pfadnamen-Erweiterung.
+# Format von 'nginx -T'. IFS leer: keine Worttrennung, nur Pfadnamen-Erweiterung. Fehlt eine Datei oder ist sie
+# nicht lesbar, folgt eine Zeile \037<Pfad> (ein Muster ohne Treffer erscheint dabei unverändert); Verzeichnisse
+# werden übergangen.
 KONFIG_DATEIEN_SH = r"""IFS=''
 for m in "$@"; do
     for f in $m; do
-        [ -f "$f" ] && [ -r "$f" ] || continue
-        printf '# configuration file %s:\n' "$f"
-        cat "$f"
-        printf '\n'
+        [ -d "$f" ] && continue
+        if [ -f "$f" ] && [ -r "$f" ]; then
+            printf '# configuration file %s:\n' "$f"
+            cat "$f" || printf '\n\037%s\n' "$f"
+            printf '\n'
+        else
+            printf '\037%s\n' "$f"
+        fi
     done
 done
 """
@@ -1935,8 +1946,10 @@ done
 
 def konfig_dateien(c, muster, user, includes, basis, runden=10):
     """Konfigurationsdateien zu den Mustern und ihre include-Dateien (includes: Text einer Datei ->
-    Muster, relativ zu basis) als Benutzer des Hauptprozesses lesen. Liefert den Text im Format von 'nginx -T'."""
-    teile, gefragt, gelesen = [], set(), set()
+    Muster, relativ zu basis) als Benutzer des Hauptprozesses lesen. Liefert (Text im Format von 'nginx -T',
+    [was fehlt]): nicht vorhandene oder nicht lesbare Dateien, fehlgeschlagene Abfragen, include-Ebenen über
+    runden. Ein Muster mit Platzhalter ohne Treffer fehlt nicht (wie in nginx und stunnel zulässig)."""
+    teile, gefragt, gelesen, fehlt = [], set(), set(), []
     for _ in range(runden):
         muster = [m for m in OrderedDict.fromkeys(muster) if m not in gefragt]
         if not muster:
@@ -1944,16 +1957,22 @@ def konfig_dateien(c, muster, user, includes, basis, runden=10):
         gefragt.update(muster)
         rc, out = c.exec(["sh", "-s", "--"] + muster, input=KONFIG_DATEIEN_SH, timeout=60, user=user)
         if rc != 0:
+            fehlt.append("Abfrage fehlgeschlagen: " + ", ".join(muster))
             break
+        fehlt += [f for f in re.findall(r"^\x1f(.*)$", out, re.M) if not (f in muster and re.search(r"[*?[]", f))]
         neu = []
-        for m in re.finditer(r"^# configuration file (.+?):\n(.*?)(?=^# configuration file .+?:\n|\Z)", out, re.M | re.S):
+        for m in re.finditer(r"^# configuration file (.+?):\n(.*?)(?=^# configuration file .+?:\n|^\x1f|\Z)", out,
+                             re.M | re.S):
             if m.group(1) in gelesen:
                 continue
             gelesen.add(m.group(1))
             teile.append(m.group(0))
             neu += [i if i.startswith("/") else posixpath.join(basis, i) for i in includes(m.group(2))]
         muster = neu
-    return "".join(teile)
+    else:
+        if [m for m in muster if m not in gefragt]:
+            fehlt.append("mehr als %d include-Ebenen" % runden)
+    return "".join(teile), fehlt
 
 
 def nginx_includes(text):
@@ -1990,11 +2009,11 @@ def stunnel_lesen(c, procs, web, exe):
         datei = None if "-fd" in args or "-" in args else next((a for a in args if not a.startswith("-")), "")
         aufrufe.setdefault((server_user(p), datei), None)
     for user, datei in aufrufe:
-        conf = ""
+        conf, fehlt = "", []
         # ohne Datei in der Kommandozeile die erste vorhandene der üblichen
         kandidaten = [] if datei is None else [datei] if datei else STUNNEL_KONF
         for kandidat in kandidaten:
-            conf = konfig_dateien(c, [kandidat], user, stunnel_includes, "/")
+            conf, fehlt = konfig_dateien(c, [kandidat], user, stunnel_includes, "/")
             if conf.strip():
                 break
         if not conf.strip():
@@ -2002,6 +2021,10 @@ def stunnel_lesen(c, procs, web, exe):
             web["problems"].append("%s: Konfiguration %snicht lesbar (Weiterleitungen nicht auswertbar)"
                                    % (exe, datei + " " if datei else ""))
             continue
+        if fehlt:
+            web["unlesbar"].add(exe)
+            web["problems"].append("%s: Konfiguration nicht vollständig lesbar (%s): Weiterleitungen unvollständig"
+                                   % (exe, "; ".join(fehlt)))
         parse_stunnel(conf, web, exe)
 
 

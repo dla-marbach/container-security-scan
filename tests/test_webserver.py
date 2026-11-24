@@ -152,6 +152,46 @@ class Nginx(unittest.TestCase):
         self.assertEqual((w["problems"], w["backends"]["/usr/sbin/nginx"]), ([], ["http://app:3000"]))
         self.assertEqual(exec_.aufrufe[2][0][3:], [tmp + "/nginx.conf"])
 
+    def test_ohne_nginx_t_unvollstaendig(self):
+        # fehlende eingebundene Datei: Gelesenes wird ausgewertet, aber unvollständig (Rückfallregel, Rückgabewert 2);
+        # ein Muster mit Platzhalter ohne Treffer ist zulässig
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        dateien(tmp, {"nginx.conf": "http { include leer/*.conf; include fehlt.conf; "
+                                    "server { location / { proxy_pass http://app:3000; } } }\n"})
+        c = self.container()
+        c.exec.side_effect = sh_echt({"-T": (1, 'nginx: invalid option: "T"')})
+        master = proc(1, "/usr/sbin/nginx", ["nginx: master process nginx -c %s/nginx.conf" % tmp])
+        with mock.patch.object(scanner, "run", return_value=(0, "")):
+            w = scanner.collect_web(c, {"1": master})
+        self.assertEqual(w["backends"]["/usr/sbin/nginx"], ["http://app:3000"])
+        self.assertEqual(w["unlesbar"], {"/usr/sbin/nginx"})
+        self.assertEqual(len(w["problems"]), 1)
+        self.assertIn("nicht vollständig lesbar (%s/fehlt.conf)" % tmp, w["problems"][0])
+        self.assertNotIn("leer", w["problems"][0])
+
+    def test_konfig_dateien_unvollstaendig(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        dateien(tmp, {"a.conf": "include b.conf;", "b.conf": "include c.conf;", "c.conf": "include a.conf;",
+                      "leer.conf": "", "ok.conf": "include conf.d/*;", "conf.d/x": "events {}", "conf.d/sub/y": ""})
+        c = mock.Mock()
+        c.exec.side_effect = sh_echt()
+        # Kreis: jede Datei nur einmal, vollständig; Verzeichnisse unter einem Platzhalter werden übergangen
+        text, fehlt = scanner.konfig_dateien(c, [tmp + "/a.conf"], "0:0", scanner.nginx_includes, tmp)
+        self.assertEqual((text.count("# configuration file"), fehlt), (3, []))
+        self.assertEqual(scanner.konfig_dateien(c, [tmp + "/ok.conf"], "0:0", scanner.nginx_includes, tmp)[1], [])
+        # leere Datei: gelesen, nicht fehlend
+        self.assertEqual(scanner.konfig_dateien(c, [tmp + "/leer.conf"], "0:0", scanner.nginx_includes, tmp)[1], [])
+        # mehr include-Ebenen als Runden
+        fehlt = scanner.konfig_dateien(c, [tmp + "/a.conf"], "0:0", scanner.nginx_includes, tmp, runden=2)[1]
+        self.assertEqual(fehlt, ["mehr als 2 include-Ebenen"])
+        # spätere Abfrage fehlgeschlagen
+        echt = sh_echt()
+        c.exec.side_effect = lambda cmd, **kw: echt(cmd, **kw) if not echt.aufrufe else (126, "")
+        text, fehlt = scanner.konfig_dateien(c, [tmp + "/a.conf"], "0:0", scanner.nginx_includes, tmp)
+        self.assertEqual((text.count("# configuration file"), fehlt), (1, ["Abfrage fehlgeschlagen: %s/b.conf" % tmp]))
+
     def test_veroeffentlichte_ports_und_andere_container(self):
         c = self.container()
         andere = [{"Name": "/app-api", "Config": {"Hostname": "f00", "Labels": {"com.docker.compose.service": "api"}},
@@ -365,6 +405,18 @@ class Stunnel(unittest.TestCase):
             w, _ = self.lesen(argv)
             self.assertEqual(w["unlesbar"], {"/usr/bin/stunnel4"}, argv)
             self.assertIn("nicht lesbar", w["problems"][0])
+
+    def test_include_unvollstaendig(self):
+        # Abfrage des include-Verzeichnisses fehlgeschlagen: Gelesenes zählt, aber unvollständig
+        c = mock.Mock(info={"HostConfig": {"NetworkMode": "bridge"}, "NetworkSettings": {}})
+        echt = sh_echt()
+        c.exec.side_effect = lambda cmd, **kw: echt(cmd, **kw) if not echt.aufrufe else (1, "")
+        procs = {"1": proc(1, "/usr/bin/stunnel4", ["stunnel4", self.tmp + "/stunnel.conf"])}
+        with mock.patch.object(scanner, "run", return_value=(0, "")):
+            w = scanner.collect_web(c, procs)
+        self.assertEqual(w["backends"]["/usr/bin/stunnel4"], ["db:5432", "127.0.0.1:8080"])
+        self.assertEqual(w["unlesbar"], {"/usr/bin/stunnel4"})
+        self.assertIn("nicht vollständig lesbar (Abfrage fehlgeschlagen: %s/conf.d/*)" % self.tmp, w["problems"][0])
 
     def test_auf_dem_host(self):
         # stunnel auf dem Host vor der Datenbank eines Containers: genau dieses Ziel, nicht alle Container
