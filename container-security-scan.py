@@ -89,7 +89,7 @@ from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
@@ -441,6 +441,44 @@ def comp(typ, name, version, ort="", **extra):
 # ===========================================================================
 # Zugriff auf den Container
 # ===========================================================================
+# Zeitlimit für Versionsabfragen im Container ($1 Sekunden, dann das Programm aus "$@"). Nicht über timeout: das von
+# BusyBox (auch Alpine) startet je Aufruf einen Wächter, der sofort an PID 1 fällt und dort als Zombie bleibt, wenn
+# PID 1 nicht aufräumt (node, sleep …) – bei jedem Lauf ein Dutzend mehr. Hier sind Programm und Wächter Kinder
+# dieser Shell, die beide einsammelt; der Wächter beendet sich auf TERM erst nach seinem laufenden sleep (die Falle
+# folgt dem Vordergrundbefehl) und hinterlässt so kein Kind. Bei Ablauf beendet er das Programm samt Nachkommen
+# (über PPid in /proc/*/status gesammelt, solange sie noch an ihm hängen; erst angehalten, dann beendet) – nur
+# diese, keine anderen Prozesse des Containers; ein Enkel hielte sonst die Ausgabe von docker exec offen. Ohne
+# sleep: kein Zeitlimit im Container.
+PROBE_SEKUNDEN = 50
+PROBE_SH = r"""t=$1
+shift
+"$@" &
+p=$!
+( trap 'exit 0' TERM
+  if sleep 0.01 2>/dev/null; then d=0.1 n=$((t * 10)); else d=1 n=$t; fi
+  while [ $n -gt 0 ]; do sleep $d || exit 0; n=$((n - 1)); done
+  alle=" $p " neu=" $p "
+  while [ "$neu" != " " ]; do
+    kill -STOP $neu 2>/dev/null
+    kinder=" "
+    for f in /proc/[0-9]*/status; do
+      while read -r k v; do
+        case $k in PPid:) case $neu in *" $v "*) q=${f#/proc/}; kinder="$kinder${q%/status} ";; esac; break;; esac
+      done < "$f"
+    done 2>/dev/null
+    neu=" "
+    for q in $kinder; do case $alle in *" $q "*) ;; *) neu="$neu$q " alle="$alle$q ";; esac; done
+  done
+  kill -9 $alle 2>/dev/null ) &
+w=$!
+wait $p
+r=$?
+kill $w 2>/dev/null
+wait $w 2>/dev/null
+exit $r
+"""
+
+
 class Container(object):
     def __init__(self, ref, user):
         rc, out = run(["docker", "inspect", "--type", "container", ref])
@@ -453,11 +491,10 @@ class Container(object):
         self.name = self.info["Name"].lstrip("/")
         self.user = user
         self.has_sh = self.exec(["sh", "-c", "exit 0"])[0] == 0
-        tools = self.exec(["sh", "-c", "for t in find tar awk sed tr sort readlink timeout; do "
+        tools = self.exec(["sh", "-c", "for t in find tar awk sed tr sort readlink; do "
                                        "command -v $t >/dev/null && echo $t; done"])[1].split() if self.has_sh else []
         self.has_find_tar = "find" in tools and "tar" in tools
         self.has_proc_tools = all(t in tools for t in ("awk", "sed", "tr", "sort", "readlink"))
-        self.has_timeout = "timeout" in tools
         # Volumes und Bind-Mounts mit Anwendungsdaten (nicht: Host-Wurzel, Docker-Daten, /proc, Sockets ...)
         self.mounts = sorted({m["Destination"] for m in self.info.get("Mounts") or []
                               if m.get("Destination", "").startswith("/")
@@ -474,10 +511,11 @@ class Container(object):
                    input, binary, stderr, timeout)
 
     def probe(self, cmd, user, stderr=False, path=SAFE_PATH):
-        """Versionsabfrage: mit den Rechten des laufenden Prozesses (nie mehr), Zeitlimit auch im Container."""
-        if self.has_timeout:
-            cmd = ["timeout", "50"] + cmd
-        return self.exec(cmd, stderr=stderr, user=user, timeout=60, path=path)
+        """Versionsabfrage: mit den Rechten des laufenden Prozesses (nie mehr), Zeitlimit auch im Container (mit
+        Shell über PROBE_SH, ohne verwaiste Prozesse; ohne Shell nur das Zeitlimit von docker exec)."""
+        if self.has_sh:
+            cmd = ["sh", "-c", PROBE_SH, "sh", str(PROBE_SEKUNDEN)] + cmd
+        return self.exec(cmd, stderr=stderr, user=user, timeout=PROBE_SEKUNDEN + 10, path=path)
 
     def sh(self, script, binary=False, user=None, args=()):
         """POSIX-sh-Skript im Container ausführen."""
@@ -1282,7 +1320,9 @@ def probe_runtimes(c, procs, owners):
             m = re.search(r"nginx/(\S+)", probe([exe, "-v"], stderr=True)[1])
             add("server", "nginx", m and m.group(1), exe)
         elif base in ("httpd", "apache2"):
-            m = re.search(r"Apache/(\S+)", probe([exe, "-v"], stderr=True)[1])
+            # -V statt -v: das httpd von BusyBox versteht -v als "ausführlich" und startet einen Webserver (Port 80,
+            # Arbeitsverzeichnis als Docroot, im Hintergrund); -V lehnt es ab, Apache nennt damit ebenfalls die Version
+            m = re.search(r"Apache/(\S+)", probe([exe, "-V"], stderr=True)[1])
             add("server", "apache-httpd", m and m.group(1), exe)
         elif base == "java":
             m = re.search(r'version "([^"]+)"', probe([exe, "-XX:-UsePerfData", "-version"], stderr=True)[1])
@@ -1507,7 +1547,10 @@ def apache_sites(exe, s_out, bloecke, haupt):
     for v in vhs:
         b = bloecke.get((v["datei"], v["zeile"])) or {"roots": [], "weiter": [], "ssl": False}
         adr = v["adresse"].strip("[]")
-        sites.append({"exe": exe, "art": "apache", "namen": [v["name"]] + v["aliase"], "roots": b["roots"],
+        # ohne ServerName (weder im Block noch global) nennt -S den Namen, den Apache selbst ermittelt: im Container
+        # dessen IP bzw. Rechnernamen – keine Webadresse (mit dem Port des Hosts sonst falsch: http://172.18.0.3:8080/)
+        namen = [v["name"]] if b.get("name", True) or haupt["namen"] else []
+        sites.append({"exe": exe, "art": "apache", "namen": namen + v["aliase"], "roots": b["roots"],
                       "weiter": b["weiter"], "datei": "%s:%d" % (v["datei"], v["zeile"]),
                       "listen": [{"adresse": "*" if adr in ("*", "_default_", "0.0.0.0", "::") else adr,
                                   "port": v["port"], "ssl": b["ssl"]}]})
@@ -1903,6 +1946,65 @@ def container_index(infos, von=None):
     return index
 
 
+BUSYBOX_HTTPD_WERTE = "cdehmpru"     # Optionen von BusyBox-httpd mit Wert (-h DIR, -c DATEI, -p PORT …)
+# Zustand einer Datei, deren Inhalt passiv nicht zu lesen war: 3 fehlt, 4 leer, 0 vorhanden (also nicht lesbar)
+DATEI_ZUSTAND_SH = 'if [ ! -e "$1" ]; then exit 3; elif [ ! -s "$1" ]; then exit 4; fi'
+
+
+def busybox_httpd(c, exe, masters, web):
+    """Ist dieses httpd das von BusyBox (im Image busybox ein harter Link, /proc/…/exe zeigt dann /bin/httpd)? Dann
+    ist es kein Apache und kennt -S, -M und -t nicht. Abfrage mit -V (BusyBox: Fehler und Name, Apache: Version), nie
+    -v (startete bei BusyBox einen Webserver).
+    BusyBox wechselt beim Start in den wirksamen Docroot (-h, überschrieben von H: in der Konfiguration): er ist das
+    Arbeitsverzeichnis des Prozesses; nur wenn es nicht lesbar ist, ein absolutes -h. Weiterleitungen (P:) gelten nur
+    aus -c (relativ zum Docroot; muss vorhanden sein) bzw. /etc/httpd.conf (darf fehlen) – in der Ersatzdatei
+    httpd.conf im Docroot verwirft BusyBox sie. Der Scan wertet sie nicht aus: mit P: oder nicht lesbarer bzw.
+    nicht ermittelbarer Konfiguration unvollständig."""
+    if posixpath.basename(exe) != "httpd" or not masters:
+        return False
+    rc, out = c.exec([exe, "-V"], stderr=True, user=server_user(masters[0]), timeout=60)
+    if "BusyBox" not in out or "Apache/" in out:
+        return False
+
+    def problem(text):
+        web["unlesbar"].add(exe)
+        web["problems"].append("%s (BusyBox) %s" % (exe, text))
+    for p in masters:
+        werte, argv, i = {}, p["argv"], 1
+        while i < len(argv):
+            a = argv[i]
+            if a.startswith("-") and a != "-":
+                for j, ch in enumerate(a[1:], 2):
+                    if ch in BUSYBOX_HTTPD_WERTE:
+                        if a[j:]:
+                            werte.setdefault(ch, a[j:])
+                        elif i + 1 < len(argv):
+                            i += 1
+                            werte.setdefault(ch, argv[i])
+                        break
+            i += 1
+        root = p["cwd"] or (werte["h"] if werte.get("h", "").startswith("/") else "")
+        if root:
+            web["docroots"][exe].append(posixpath.normpath(root))
+        if "c" in werte and not werte["c"].startswith("/") and not p["cwd"]:
+            problem("-c %s: Konfiguration nicht ermittelbar (Arbeitsverzeichnis nicht lesbar) – Weiterleitungen (P:) "
+                    "unbekannt" % werte["c"])
+            continue
+        conf = posixpath.join(p["cwd"] or "/", werte.get("c", "/etc/httpd.conf"))
+        text = c.read_file(conf)
+        if not text:
+            zustand = c.exec(["sh", "-c", DATEI_ZUSTAND_SH, "sh", conf], timeout=60)[0]
+            if zustand == 3 and "c" in werte:
+                problem("-c %s: Konfiguration fehlt – Weiterleitungen (P:) unbekannt" % conf)
+            elif zustand not in (3, 4):
+                problem("Konfiguration %s nicht lesbar – Weiterleitungen (P:) unbekannt" % conf)
+        elif any(re.match(r"\s*P:", l) for l in text.splitlines()):
+            problem("leitet laut %s weiter (P:) – Weiterleitungen nicht ausgewertet" % conf)
+    web["raw"].append("--- %s: httpd von BusyBox (kein Apache), Docroot %s\n" % (
+        exe, ", ".join(web["docroots"][exe]) or "unbekannt"))
+    return True
+
+
 def webserver_lesen(c, procs, web):
     """Konfiguration der laufenden nginx- und Apache-Server lesen (im Container bzw. auf dem Host)."""
     for exe in sorted({p["exe"] for p in procs.values() if p["base"] in ("nginx", "apache2", "httpd")}):
@@ -1935,6 +2037,8 @@ def webserver_lesen(c, procs, web):
                 web["raw"].append("--- %s %s (Auszug)\n" % (exe, quelle) + "\n".join(
                     l for l in conf.splitlines() if re.match(r"# configuration file|\s*(server|listen|server_name|root|location|\w+_pass|upstream)[\s;{]", l)))
                 parse_nginx(conf, web, exe)
+        elif busybox_httpd(c, exe, masters, web):
+            continue
         else:
             # je Hauptprozess mit dessen Benutzer und dessen Optionen (-f, -C, -D …)
             for user, optionen in OrderedDict.fromkeys((server_user(p), tuple(apache_optionen(p["argv"])))
@@ -3776,8 +3880,9 @@ def offene_datendienste(procs, web):
         for port, addr in p["ports"].items():
             if nur_lokal(addr):
                 continue
-            wege = ["veröffentlicht als " + e.split(" ")[0] for e in web["published"].get(port, [])
-                    if not (nur_lokal(e.split(" ")[0].rpartition(":")[0]) or e.startswith("::1:"))]
+            pub = [e.split(" ")[0] for e in web["published"].get(port, [])
+                   if not (nur_lokal(e.split(" ")[0].rpartition(":")[0]) or e.startswith("::1:"))]
+            wege = ["veröffentlicht als " + ", ".join(pub)] if pub else []
             if web["host_network"]:
                 wege.append("Host-Netzwerk")
             wege += ["im " + n for n in web.get("lan", [])]
@@ -3828,6 +3933,13 @@ def ausnahmen_anwenden(rows, ausnahmen, warnings):
             r["ausgenommen"] = "Ausnahme bis %s: %s" % (a["bis"].isoformat(), a["grund"])
 
 
+def ohne_schweregrad(rows, nur_behebbare):
+    """P1-Funde ohne Schweregrad: nicht gezählt, aber eigens ausgewiesen (Bericht und Konsole) – ohne Ausnahmen und
+    ohne KEV (schon relevant), mit --nur-behebbare nur mit Fix."""
+    return [r for r in rows if r["prio"] == 1 and r["sev"] == "UNKNOWN" and not r.get("ausgenommen")
+            and not r.get("kev") and bool(r["fix"] or not nur_behebbare)]
+
+
 def ist_relevant(r, nur_behebbare):
     return not r.get("ausgenommen") and ((r["prio"], r["sev"]) in RELEVANT or bool(r.get("kev"))) \
         and bool(r["fix"] or not nur_behebbare)
@@ -3841,7 +3953,7 @@ def fund_text(r, fett=""):
     """Eine Zeile je relevantem Fund – im Bericht (fett = "**") und auf der Konsole."""
     return "%s%s%s (%s) in %s %s – " % (fett, r["id"], fett, schwere_text(r), r["pkg"], r["ver"]) + \
         (("behoben in " + fix_text(r["ver"], r["fix"])) if r["fix"] else "noch kein Fix") + \
-        " – genutzt von %(users)s" % r + \
+        (" – genutzt von %s" % r["users"] if r["users"] not in ("", "–") else " – von keinem erkannten Prozess genutzt") + \
         (" – %saktiv ausgenutzt%s (KEV seit %s)" % (fett, fett, r["kev"]) if r.get("kev") else "")
 
 
@@ -3945,9 +4057,13 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
             w("- %s (%s) in %s %s – %s" % (r["id"], schwere_text(r), r["pkg"], r["ver"], r["ausgenommen"]))
         for k in konf_ausgenommen:
             w("- %s – %s" % (konf_text(k), k["ausgenommen"]))
-    unknown = sum(1 for r in rows if r["prio"] == 1 and r["sev"] == "UNKNOWN")
+    unknown = ohne_schweregrad(rows, nur_behebbare)
     if unknown:
-        w("\nHinweis: %d Befunde in P1 haben noch keinen Schweregrad (UNKNOWN) – bitte mit ansehen." % unknown)
+        w("\n**%d Befunde in P1 ohne Schweregrad** (nicht gezählt, bitte selbst einschätzen):\n" % len(unknown))
+        for r in unknown[:30]:
+            w("- " + fund_text(r, "**"))
+        if len(unknown) > 30:
+            w("- … weitere %d in der Tabelle unten" % (len(unknown) - 30))
 
     w("\n## Laufende Dienste\n")
     if services:
@@ -4104,6 +4220,18 @@ def backends_von(services, name):
     return [(ct, port, "%s in %s" % (label, name)) for s in services for ct, port, label in s["backends"]]
 
 
+def ohne_betriebssystem(c, osinfo, how, procs):
+    """Image ganz ohne Betriebssystem (FROM scratch mit statischem Programm, z.B. portainer): kein os-release, keine
+    Paketdatenbank, keine Shell, und kein laufender Prozess nutzt eine gemeinsam genutzte Bibliothek (Speicherabbild
+    gelesen – es enthält mindestens das Programm –, keine verdeckten Kindprozesse; per mmap eingeblendete Daten wie
+    /data/portainer.db zählen nicht). Dann gibt es keine OS-Pakete zu prüfen. Images mit BusyBox (Shell) oder
+    hineinkopierten Bibliotheken (auch dem Lader ld-*.so) bleiben unvollständig."""
+    return osinfo["id"] == "unbekannt" and how["pkgdb"] == "keine Paketdatenbank gefunden" and not c.has_sh \
+        and bool(procs) and all(p["maps"] and not p.get("kinder") and
+                                not any(re.search(r"\.so(\.[\d.]+)?( \(deleted\))?$", m) for m in p["maps"])
+                                for p in procs.values())
+
+
 def erreichbarkeit_pruefen(name, a, via_proxy=None, via_urls=None):
     """Nur die Erreichbarkeit eines Containers, ohne Inventar und Abgleich mit den Daten (Einzelscan, --container):
     Prozesse, Ports und Konfiguration der Webserver wie in scan_container, in Sekunden statt Minuten. Liefert wie
@@ -4171,8 +4299,12 @@ def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None, anlass=
             problems.append("%s – OS-Pakete nicht geprüft" % m[1:-1])
     if fehlt:
         problems.append("Daten fehlen für: " + ", ".join(fehlt) + " (--db-aktualisieren --oekosysteme " + ",".join(fehlt) + ")")
-    if not pkgs:
-        problems.append("keine OS-Paketdatenbank gefunden (%s)" % how["pkgdb"])
+    if not pkgs and ohne_betriebssystem(c, osinfo, how, procs):
+        osinfo["pretty"] = "ohne Betriebssystem (nur statische Programme)"
+        how["pkgdb"] = "keine (Image ohne Betriebssystem)"
+    elif not pkgs:
+        problems.append("keine OS-Paketdatenbank gefunden" + (
+            "" if how["pkgdb"] == "keine Paketdatenbank gefunden" else " (%s)" % how["pkgdb"]))
     elif not missing and db_date and (not os_newest or (db_date - os_newest).days > OS_DATEN_MAX_TAGE):
         # für eine unterstützte Distribution erscheinen laufend neue Einträge; fehlen sie, ist sie vermutlich EOL
         problems.append("keine aktuellen Sicherheitsdaten für %s (jüngster Eintrag: %s) – Distribution vermutlich "
@@ -4213,7 +4345,7 @@ def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None, anlass=
                 f.write("%s  %s\n" % (datei_sha256(base + ext), os.path.basename(base + ext)))
 
     code = 2 if problems else 1 if relevant or konf_relevant else 0
-    unknown = sum(1 for r in rows if r["prio"] == 1 and r["sev"] == "UNKNOWN")
+    unknown = ohne_schweregrad(rows, a.nur_behebbare)
     kev = sum(1 for r in relevant if r.get("kev"))
     for warn in how["warnungen"]:
         print("WARNUNG: %s" % warn)
@@ -4222,7 +4354,7 @@ def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None, anlass=
     print("%s – %d Befunde, davon %d relevant (%d neu%s)%s%s%s" % (
         {0: "OK", 1: funde, 2: "UNVOLLSTÄNDIG: " + "; ".join(problems)}[code],
         len(rows), len(relevant), sum(r["neu"] for r in relevant), ", %d aktiv ausgenutzt" % kev if kev else "",
-        ", P1 ohne Schweregrad: %d" % unknown if unknown else "",
+        ", P1 ohne Schweregrad: %d" % len(unknown) if unknown else "",
         ", %d gefährliche Einstellungen" % len(konf_relevant) if konf_relevant else "",
         " – Bericht: %s.md" % base if a.bericht else ""))
     # für Rundeck-Log und Mail ohne Bericht: Image, Dienste mit Erreichbarkeit und Webadressen, relevante Funde
@@ -4233,6 +4365,10 @@ def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None, anlass=
         print("%s%s" % ("NEU: " if k["neu"] and known is not None else "", konf_text(k)))
     for r in relevant:          # neue zuerst (write_report)
         print("%s%s" % ("NEU: " if r["neu"] and known is not None else "", fund_text(r)))
+    if unknown:
+        print("P1 ohne Schweregrad (nicht gezählt, bitte selbst einschätzen):")
+        for r in unknown:
+            print(fund_text(r))
     sys.stdout.flush()
     return code, backends_von(services, c.name), base, web["ziel_urls"]
 

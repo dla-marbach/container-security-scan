@@ -30,7 +30,7 @@ Host: <rechner> mit 4 laufenden und 0 gestoppten Containern:
 
 === app-php ===
 WARNUNG: Supportende: jquery 1.12.4 (jquery 1, Datum unbekannt; /srv/app/public/js/jquery-1.12.4.min.js)
-RELEVANTE SCHWACHSTELLEN – 1437 Befunde, davon 65 relevant (65 neu, 4 aktiv ausgenutzt), P1 ohne Schweregrad: 25
+RELEVANTE SCHWACHSTELLEN – 1437 Befunde, davon 65 relevant (65 neu, 4 aktiv ausgenutzt), P1 ohne Schweregrad: 1
 Image php:8.3.30-fpm-bookworm – Debian GNU/Linux 12 (bookworm)
 Dienst php-fpm 8.3.30 (in /var/www/html), Port 9000: öffentlich über nginx:80 in app-proxy
   Webadressen: http://shop.example.org:8080/ (\.php$)
@@ -41,6 +41,8 @@ CVE-2026-109618 (CRITICAL KEV) in php 8.3.30 – behoben in 8.3.36 – genutzt v
 …
 CVE-2022-29248 (HIGH) in guzzlehttp/guzzle 7.4.0 – behoben in 7.4.3 – genutzt von php-fpm:9000 (Docroot unbekannt)
 …
+P1 ohne Schweregrad (nicht gezählt, bitte selbst einschätzen):
+DLA-4783-1 (UNKNOWN) in liblzma5 5.4.1-1 – behoben in 5.4.1-1+deb12u2 – genutzt von php-fpm:9000
 
 === app-node ===
 WARNUNG: Öffentlicher Dienst node:3000 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image
@@ -173,6 +175,9 @@ chmod 440 /etc/sudoers.d/rundeck-container-scan && visudo -c
 Gründe für `2` sind z. B.: Docker nicht erreichbar, Daten fehlen oder sind 3 Tage oder älter, Dateien, Prozesse
 oder Webserver-Konfiguration nicht vollständig lesbar (auch die eines Proxys auf dem Host), Distribution ohne
 Sicherheitsupdates (Supportende) oder nicht unterstützt (z. B. Oracle Linux), Ausnahmeliste fehlerhaft.
+Keine Paketdatenbank ist nur bei einem Image ganz ohne Betriebssystem kein Grund (`FROM scratch` mit statischem
+Programm wie Portainer: kein `os-release`, keine Shell, keine gemeinsam genutzten Bibliotheken); ein Image mit
+BusyBox ohne Paketdatenbank bleibt unvollständig.
 
 [Warnungen](#warnungen) (Supportende, Dienst als root …) ändern den Rückgabewert nicht. Der Server selbst (seine
 Pakete und Dienste) ist nicht Teil des Scans, siehe [Abgrenzung](#abgrenzung-und-grenzen).
@@ -229,8 +234,8 @@ Einlesen dauert länger (Ubuntu ca. 30 statt 5 s je Container).
 **Relevant** (Rückgabewert 1) sind P1 CRITICAL/HIGH und P2 CRITICAL (`RELEVANT` im Skript) sowie jede **aktiv
 ausgenutzte Lücke** aus dem [KEV-Katalog der CISA](https://www.cisa.gov/known-exploited-vulnerabilities-catalog),
 auch als P4 – Programme wie ImageMagick oder ffmpeg laufen nur bei Bedarf. Der Wrapper zählt nur Funde mit Fix
-(`--nur-behebbare`). Nicht relevant sind Funde aus der Ausnahmeliste, Funde ohne Schweregrad (eigens
-ausgewiesen) und Lücken, die laut Titel nur Windows betreffen.
+(`--nur-behebbare`). Nicht relevant sind Funde aus der Ausnahmeliste, Funde ohne Schweregrad (in P1 einzeln
+aufgeführt, zum selbst Einschätzen) und Lücken, die laut Titel nur Windows betreffen.
 
 „Genutzt von“ ermittelt der Scan aus `/proc` (Programm, geladene Bibliotheken, offene Dateien und Ports) und für
 npm/Composer/PyPI über das Projektverzeichnis (Arbeitsverzeichnis, Skriptpfad, venv, Docroot des Webservers).
@@ -356,6 +361,8 @@ Abschnitt ersetzt den früheren:
 - [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) (`CONF-…`)
 - relevante Funde, eine Zeile je Fund: Kennung, Schweregrad, Paket und Version, Fix-Version, genutzt von, aktiv
   ausgenutzt (KEV); neue zuerst mit `NEU:`, wenn ein Fund im letzten Lauf noch nicht relevant war
+- unter `P1 ohne Schweregrad (nicht gezählt, bitte selbst einschätzen):` die P1-Funde, die noch keinen Schweregrad
+  haben, gleiches Format (mit `--nur-behebbare` nur mit Fix)
 
 Dateien im Ausgabeverzeichnis, nur für den Aufrufer lesbar:
 
@@ -452,6 +459,8 @@ Bekannte Grenzen:
 - Nur nginx, Apache und stunnel werden als Proxy ausgewertet; andere machen ihre Nachbarn „möglicherweise“ erreichbar
   (eher zu viel). Ziele, die nur in Konfigurationsdateien einer Anwendung stehen (z. B. Spring
   `application.yml`), fehlen, wenn gerade keine Verbindung besteht.
+- Das `httpd` von BusyBox gilt als Webserver ohne Weiterleitungen; stehen welche (`P:`) in seiner
+  Konfiguration (`-c` bzw. `/etc/httpd.conf`) oder ist sie nicht lesbar, ist die Prüfung unvollständig.
 - Apache: `.htaccess` wird nicht ausgewertet.
 - Webadressen: Eine weitergeleitete Adresse gilt für alle Websites am Port des Ziels (welche antwortet,
   entscheidet der Host-Header; im Zweifel eine Adresse zu viel). Über mehrere Stufen werden die Pfade

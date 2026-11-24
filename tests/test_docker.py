@@ -17,7 +17,7 @@ Szenario (Lauf mit --alle-container):
   Verzeichnissen, die nur node lesen darf (im Image und in einem Bind-Mount): root im Container darf dort nicht
   hinein, der Scanner liest dann passiv von außen (docker export, docker cp) und ist trotzdem vollständig
 Geprüft werden Rückgabewert, Erreichbarkeit, Webadressen, Berichte, EOL-Warnungen und dass der Scan im Container nichts
-verändert (docker diff).
+verändert (docker diff) und keine Prozesse zurücklässt (Zombies).
 """
 import os
 import re
@@ -297,6 +297,14 @@ class Integration(unittest.TestCase):
     def test_container_unveraendert(self):
         for c, vorher in self.diff_vorher.items():
             self.assertEqual(self.diff(c), vorher, c)
+
+    def test_keine_prozesse_zurueckgelassen(self):
+        # Versionsabfragen hinterlassen nichts: keine Wächter von timeout, die an PID 1 fallen und dort Zombies
+        # werden (node als PID 1 räumt nicht auf), kein von "httpd -v" gestarteter Webserver
+        for c in self.alle:
+            zeilen = docker("top", c, "-eo", "pid,stat,args").splitlines()[1:]
+            self.assertEqual([z for z in zeilen if (z.split() + ["", ""])[1].startswith("Z")
+                              or "timeout" in z or "httpd -v" in z], [], c)
 
     @staticmethod
     def dienste(text):
