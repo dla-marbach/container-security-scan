@@ -160,6 +160,23 @@ class Versionsabfrage(unittest.TestCase):
         self.assertEqual(sorted(aufrufe), [["/usr/local/apache2/bin/httpd", "-V"], ["apache2", "-V"], ["httpd", "-V"]])
         self.assertIn(("apache-httpd", "2.4.71"), [(x["name"], x["version"]) for x in comps])
 
+    def test_host_komponenten(self):
+        version = (0, '[{"Name": "Engine", "Version": "29.1.0"}, {"Name": "containerd", "Version": "2.2.0"}]')
+        for lesbar, name in ((True, "SUSE Linux Enterprise Server 15 SP7"), (False, "")):
+            def oeffnen(pfad, *a, **kw):
+                if pfad != "/etc/os-release":
+                    return open(pfad, *a, **kw)
+                if not lesbar:
+                    raise PermissionError(13, "Permission denied", pfad)
+                return mock.mock_open(read_data='NAME="SLES"\nPRETTY_NAME="%s"\n' % name)()
+            with mock.patch.object(scanner, "open", side_effect=oeffnen, create=True), \
+                    mock.patch.object(scanner, "run", return_value=version):
+                comps = scanner.host_components()
+            # nicht lesbares /etc/os-release des Hosts: nur der Name fehlt, Kernel und Laufzeit bleiben erfasst
+            self.assertEqual([(x["name"], x["version"]) for x in comps],
+                             [("linux-kernel", os.uname().release), ("docker-engine", "29.1.0"), ("containerd", "2.2.0")])
+            self.assertEqual(comps[0]["hinweise"], [name])
+
 
 class Zeitlimit(unittest.TestCase):
     """Versionsabfragen im Container über PROBE_SH statt timeout (BusyBox-timeout hinterlässt Zombies an PID 1)."""
