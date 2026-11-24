@@ -1,159 +1,75 @@
-container-security-scan 0.6.0
-Erfasse Container 'app-proxy' ...
-Abgleich mit OSV-Daten daten ...
-app-proxy: RELEVANTE SCHWACHSTELLEN – 13 Befunde, davon 9 relevant (9 neu); öffentlich: nginx:80 – Bericht: beispiele/scan_app-proxy.md
-app-proxy:   Webadressen nginx:80: erreichbar: http://shop.example.org:8080/
-app-proxy:   CVE-2026-107496 (HIGH) in libcrypto3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
-app-proxy:   CVE-2026-88823 (HIGH) in libcrypto3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
-app-proxy:   CVE-2026-95691 (HIGH) in libcrypto3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
-app-proxy:   CVE-2026-95692 (HIGH) in libcrypto3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
-app-proxy:   CVE-2026-107496 (HIGH) in libssl3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
-app-proxy:   CVE-2026-88823 (HIGH) in libssl3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
-app-proxy:   CVE-2026-95691 (HIGH) in libssl3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
-app-proxy:   CVE-2026-95692 (HIGH) in libssl3 3.5.9-r0 – behoben in 3.5.9-r1 – genutzt von nginx:80
-app-proxy:   CVE-2026-4738 (HIGH) in zlib 1.3.2-r1 – behoben in 1.4-r0 – genutzt von nginx:80
-Erfasse Container 'app-php' ...
-Abgleich mit OSV-Daten daten ...
-app-php: WARNUNG: Supportende: jquery 1.12.4 (jquery 1, Datum unbekannt; /srv/app/public/js/jquery-1.12.4.min.js)
-app-php: RELEVANTE SCHWACHSTELLEN – 1440 Befunde, davon 65 relevant (65 neu, 4 aktiv ausgenutzt), P1 ohne Schweregrad: 25; öffentlich: php-fpm:9000 – Bericht: beispiele/scan_app-php.md
-app-php:   Webadressen php-fpm:9000: erreichbar: http://shop.example.org:8080/ (\.php$)
-app-php:   CVE-2026-111497 (CRITICAL KEV) in libbrotli1 1.0.9-2+b6 – behoben in 1.0.9-2+deb12u1 – genutzt von php-fpm:9000 – aktiv ausgenutzt (KEV seit 2026-10-27)
-app-php:   CVE-2026-33845 (CRITICAL) in libgnutls30 3.7.9-2+deb12u6 – behoben in 3.7.9-2+deb12u7 – genutzt von php-fpm:9000
-app-php:   CVE-2026-42010 (CRITICAL) in libgnutls30 3.7.9-2+deb12u6 – behoben in 3.7.9-2+deb12u7 – genutzt von php-fpm:9000
-app-php:   CVE-2026-34182 (CRITICAL) in libssl3 3.0.19-1~deb12u2 – behoben in 3.0.20-1~deb12u2 – genutzt von php-fpm:9000
-app-php:   CVE-2026-75803 (CRITICAL) in libssl3 3.0.19-1~deb12u2 – behoben in 3.0.22-1~deb12u1 – genutzt von php-fpm:9000
-app-php:   CVE-2025-14179 (CRITICAL) in php 8.3.30 – behoben in 8.3.31 – genutzt von php-fpm:9000
-app-php:   CVE-2026-109618 (CRITICAL KEV) in php 8.3.30 – behoben in 8.3.36 – genutzt von php-fpm:9000 – aktiv ausgenutzt (KEV seit 2026-10-26)
-app-php:   CVE-2026-109619 (CRITICAL KEV) in php 8.3.30 – behoben in 8.3.36 – genutzt von php-fpm:9000 – aktiv ausgenutzt (KEV seit 2026-10-26)
-app-php:   CVE-2026-17543 (CRITICAL) in php 8.3.30 – behoben in 8.3.33 – genutzt von php-fpm:9000
-app-php:   CVE-2026-6722 (CRITICAL) in php 8.3.30 – behoben in 8.3.31 – genutzt von php-fpm:9000
-app-php:   CVE-2026-7261 (CRITICAL) in php 8.3.30 – behoben in 8.3.31 – genutzt von php-fpm:9000
-app-php:   CVE-2022-29248 (HIGH) in guzzlehttp/guzzle 7.4.0 – behoben in 7.4.3 – genutzt von php-fpm:9000 (Docroot unbekannt)
-app-php:   CVE-2022-31042 (HIGH) in guzzlehttp/guzzle 7.4.0 – behoben in 7.4.4 – genutzt von php-fpm:9000 (Docroot unbekannt)
-app-php:   CVE-2022-31043 (HIGH) in guzzlehttp/guzzle 7.4.0 – behoben in 7.4.4 – genutzt von php-fpm:9000 (Docroot unbekannt)
-app-php:   CVE-2022-31090 (HIGH) in guzzlehttp/guzzle 7.4.0 – behoben in 7.4.5 – genutzt von php-fpm:9000 (Docroot unbekannt)
-app-php:   CVE-2022-31091 (HIGH) in guzzlehttp/guzzle 7.4.0 – behoben in 7.4.5 – genutzt von php-fpm:9000 (Docroot unbekannt)
-app-php:   CVE-2026-69246 (HIGH) in guzzlehttp/guzzle 7.4.0 – behoben in 7.15.2 – genutzt von php-fpm:9000 (Docroot unbekannt)
-app-php:   CVE-2025-15281 (HIGH) in libc-bin 2.36-9+deb12u13 – behoben in 2.36-9+deb12u14 – genutzt von php-fpm:9000
-app-php:   CVE-2026-0861 (HIGH) in libc-bin 2.36-9+deb12u13 – behoben in 2.36-9+deb12u14 – genutzt von php-fpm:9000
-app-php:   CVE-2026-0915 (HIGH) in libc-bin 2.36-9+deb12u13 – behoben in 2.36-9+deb12u14 – genutzt von php-fpm:9000
-app-php:   CVE-2026-4046 (HIGH) in libc-bin 2.36-9+deb12u13 – behoben in 2.36-9+deb12u14 – genutzt von php-fpm:9000
-app-php:   CVE-2026-4437 (HIGH) in libc-bin 2.36-9+deb12u13 – behoben in 2.36-9+deb12u14 – genutzt von php-fpm:9000
-app-php:   CVE-2025-15281 (HIGH) in libc6 2.36-9+deb12u13 – behoben in 2.36-9+deb12u14 – genutzt von php-fpm:9000
-app-php:   CVE-2026-0861 (HIGH) in libc6 2.36-9+deb12u13 – behoben in 2.36-9+deb12u14 – genutzt von php-fpm:9000
-app-php:   CVE-2026-0915 (HIGH) in libc6 2.36-9+deb12u13 – behoben in 2.36-9+deb12u14 – genutzt von php-fpm:9000
-app-php:   CVE-2026-4046 (HIGH) in libc6 2.36-9+deb12u13 – behoben in 2.36-9+deb12u14 – genutzt von php-fpm:9000
-app-php:   CVE-2026-4437 (HIGH) in libc6 2.36-9+deb12u13 – behoben in 2.36-9+deb12u14 – genutzt von php-fpm:9000
-app-php:   CVE-2026-5773 (HIGH) in libcurl4 7.88.1-10+deb12u14 – behoben in 7.88.1-10+deb12u15 – genutzt von php-fpm:9000
-app-php:   CVE-2026-33846 (HIGH) in libgnutls30 3.7.9-2+deb12u6 – behoben in 3.7.9-2+deb12u7 – genutzt von php-fpm:9000
-app-php:   CVE-2026-3833 (HIGH) in libgnutls30 3.7.9-2+deb12u6 – behoben in 3.7.9-2+deb12u7 – genutzt von php-fpm:9000
-app-php:   CVE-2026-42009 (HIGH) in libgnutls30 3.7.9-2+deb12u6 – behoben in 3.7.9-2+deb12u7 – genutzt von php-fpm:9000
-app-php:   CVE-2026-42011 (HIGH) in libgnutls30 3.7.9-2+deb12u6 – behoben in 3.7.9-2+deb12u7 – genutzt von php-fpm:9000
-app-php:   CVE-2026-42012 (HIGH) in libgnutls30 3.7.9-2+deb12u6 – behoben in 3.7.9-2+deb12u7 – genutzt von php-fpm:9000
-app-php:   CVE-2026-42013 (HIGH) in libgnutls30 3.7.9-2+deb12u6 – behoben in 3.7.9-2+deb12u7 – genutzt von php-fpm:9000
-app-php:   CVE-2026-5260 (HIGH) in libgnutls30 3.7.9-2+deb12u6 – behoben in 3.7.9-2+deb12u7 – genutzt von php-fpm:9000
-app-php:   CVE-2026-40355 (HIGH) in libgssapi-krb5-2 1.20.1-2+deb12u4 – behoben in 1.20.1-2+deb12u5 – genutzt von php-fpm:9000
-app-php:   CVE-2026-40356 (HIGH) in libgssapi-krb5-2 1.20.1-2+deb12u4 – behoben in 1.20.1-2+deb12u5 – genutzt von php-fpm:9000
-app-php:   CVE-2026-40355 (HIGH) in libk5crypto3 1.20.1-2+deb12u4 – behoben in 1.20.1-2+deb12u5 – genutzt von php-fpm:9000
-app-php:   CVE-2026-40356 (HIGH) in libk5crypto3 1.20.1-2+deb12u4 – behoben in 1.20.1-2+deb12u5 – genutzt von php-fpm:9000
-app-php:   CVE-2026-40355 (HIGH) in libkrb5-3 1.20.1-2+deb12u4 – behoben in 1.20.1-2+deb12u5 – genutzt von php-fpm:9000
-app-php:   CVE-2026-40356 (HIGH) in libkrb5-3 1.20.1-2+deb12u4 – behoben in 1.20.1-2+deb12u5 – genutzt von php-fpm:9000
-app-php:   CVE-2026-40355 (HIGH) in libkrb5support0 1.20.1-2+deb12u4 – behoben in 1.20.1-2+deb12u5 – genutzt von php-fpm:9000
-app-php:   CVE-2026-40356 (HIGH) in libkrb5support0 1.20.1-2+deb12u4 – behoben in 1.20.1-2+deb12u5 – genutzt von php-fpm:9000
-app-php:   CVE-2026-27135 (HIGH) in libnghttp2-14 1.52.0-1+deb12u2 – behoben in 1.52.0-1+deb12u3 – genutzt von php-fpm:9000
-app-php:   CVE-2026-107161 (HIGH) in libsasl2-2 2.1.28+dfsg-10 – behoben in 2.1.28+dfsg-10+deb12u1 – genutzt von php-fpm:9000
-app-php:   CVE-2026-58050 (HIGH) in libssh2-1 1.10.0-3+b1 – behoben in 1.10.0-3+deb12u1 – genutzt von php-fpm:9000
-app-php:   CVE-2026-58051 (HIGH) in libssh2-1 1.10.0-3+b1 – behoben in 1.10.0-3+deb12u1 – genutzt von php-fpm:9000
-app-php:   CVE-2026-66032 (HIGH) in libssh2-1 1.10.0-3+b1 – behoben in 1.10.0-3+deb12u1 – genutzt von php-fpm:9000
-app-php:   CVE-2026-66034 (HIGH) in libssh2-1 1.10.0-3+b1 – behoben in 1.10.0-3+deb12u1 – genutzt von php-fpm:9000
-app-php:   CVE-2026-7598 (HIGH) in libssh2-1 1.10.0-3+b1 – behoben in 1.10.0-3+deb12u1 – genutzt von php-fpm:9000
-app-php:   CVE-2026-34180 (HIGH) in libssl3 3.0.19-1~deb12u2 – behoben in 3.0.20-1~deb12u2 – genutzt von php-fpm:9000
-app-php:   CVE-2026-45445 (HIGH) in libssl3 3.0.19-1~deb12u2 – behoben in 3.0.20-1~deb12u2 – genutzt von php-fpm:9000
-app-php:   CVE-2026-45447 (HIGH) in libssl3 3.0.19-1~deb12u2 – behoben in 3.0.20-1~deb12u2 – genutzt von php-fpm:9000
-app-php:   CVE-2026-54874 (HIGH) in libssl3 3.0.19-1~deb12u2 – behoben in 3.0.22-1~deb12u1 – genutzt von php-fpm:9000
-app-php:   CVE-2026-63072 (HIGH) in libssl3 3.0.19-1~deb12u2 – behoben in 3.0.22-1~deb12u1 – genutzt von php-fpm:9000
-app-php:   CVE-2026-63076 (HIGH) in libssl3 3.0.19-1~deb12u2 – behoben in 3.0.22-1~deb12u1 – genutzt von php-fpm:9000
-app-php:   CVE-2026-7383 (HIGH) in libssl3 3.0.19-1~deb12u2 – behoben in 3.0.20-1~deb12u2 – genutzt von php-fpm:9000
-app-php:   CVE-2026-84782 (HIGH) in libssl3 3.0.19-1~deb12u2 – behoben in 3.0.22-1~deb12u2 – genutzt von php-fpm:9000
-app-php:   CVE-2026-9076 (HIGH) in libssl3 3.0.19-1~deb12u2 – behoben in 3.0.20-1~deb12u2 – genutzt von php-fpm:9000
-app-php:   CVE-2026-6735 (HIGH) in php 8.3.30 – behoben in 8.3.31 – genutzt von php-fpm:9000
-app-php:   CVE-2026-7258 (HIGH) in php 8.3.30 – behoben in 8.3.31 – genutzt von php-fpm:9000
-app-php:   CVE-2026-7262 (HIGH) in php 8.3.30 – behoben in 8.3.31 – genutzt von php-fpm:9000
-app-php:   CVE-2026-7568 (HIGH) in php 8.3.30 – behoben in 8.3.31 – genutzt von php-fpm:9000
-app-php:   CVE-2026-91765 (HIGH) in php 8.3.30 – behoben in 8.3.35 – genutzt von php-fpm:9000
-app-php:   CVE-2020-11023 (MEDIUM KEV) in jquery 1.12.4 – behoben in 3.5.0 (anderer Versionszweig: Upgrade nötig) – genutzt von – – aktiv ausgenutzt (KEV seit 2025-01-23)
-Erfasse Container 'app-node' ...
-Abgleich mit OSV-Daten daten ...
-app-node: WARNUNG: Öffentlicher Dienst node:3000 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image
-app-node: RELEVANTE SCHWACHSTELLEN – 170 Befunde, davon 13 relevant (13 neu, 1 aktiv ausgenutzt); öffentlich: node:3000 – Bericht: beispiele/scan_app-node.md
-app-node:   Webadressen node:3000: erreichbar: http://shop.example.org:8080/
-app-node:   CVE-2026-111497 (CRITICAL KEV) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000 – aktiv ausgenutzt (KEV seit 2026-10-27)
-app-node:   CVE-2021-23337 (HIGH) in lodash 4.17.20 – behoben in 4.17.21 – genutzt von node:3000
-app-node:   CVE-2026-4800 (HIGH) in lodash 4.17.20 – behoben in 4.18.0 – genutzt von node:3000
-app-node:   CVE-2026-107891 (HIGH) in musl 1.2.5-r21 – behoben in 1.2.5-r24 – genutzt von node:3000
-app-node:   CVE-2026-40200 (HIGH) in musl 1.2.5-r21 – behoben in 1.2.5-r23 – genutzt von node:3000
-app-node:   CVE-2026-105482 (HIGH) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000
-app-node:   CVE-2026-106069 (HIGH) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000
-app-node:   CVE-2026-21710 (HIGH) in node 22.22.0 – behoben in 22.22.2 – genutzt von node:3000
-app-node:   CVE-2026-48617 (HIGH) in node 22.22.0 – behoben in 22.23.0 – genutzt von node:3000
-app-node:   CVE-2026-48937 (HIGH) in node 22.22.0 – behoben in 22.23.0 – genutzt von node:3000
-app-node:   CVE-2026-56846 (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
-app-node:   CVE-2026-56848 (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
-app-node:   CVE-2026-58043 (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
-Erfasse Container 'app-traefik' ...
-Abgleich mit OSV-Daten daten ...
-app-traefik: WARNUNG: Weiterleitungen von traefik:80 nicht vollständig auswertbar (traefik: Konfiguration wird nicht ausgewertet) – Container in denselben Docker-Netzen gelten als möglicherweise öffentlich: app-node
-app-traefik: WARNUNG: Öffentlicher Dienst traefik:80 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image
-app-traefik: RELEVANTE SCHWACHSTELLEN und GEFÄHRLICHE EINSTELLUNGEN – 101 Befunde, davon 32 relevant (32 neu, 1 aktiv ausgenutzt), P1 ohne Schweregrad: 9, 1 gefährliche Einstellungen; öffentlich: traefik:80 – Bericht: beispiele/scan_app-traefik.md
-app-traefik:   CONF-SOCKET: /var/run/docker.sock eingebunden als /var/run/docker.sock: Zugriff auf die Container-Laufzeit = root auf dem Host (auch schreibgeschützt)
-app-traefik:   CVE-2026-111497 (CRITICAL* KEV) in github.com/andybalholm/brotli v1.2.0 – behoben in 1.2.7 – genutzt von traefik:80 – aktiv ausgenutzt (KEV seit 2026-10-27)
-app-traefik:   CVE-2026-78663 (CRITICAL*) in golang.org/x/net v0.57.0 – behoben in 0.60.0 – genutzt von traefik:80
-app-traefik:   CVE-2026-39821 (CRITICAL*) in stdlib 1.26.5 – behoben in 1.26.6 – genutzt von traefik:80
-app-traefik:   CVE-2026-78663 (CRITICAL*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-app-traefik:   CVE-2026-116587 (HIGH) in github.com/go-jose/go-jose/v4 v4.1.4 – behoben in 4.1.6 – genutzt von traefik:80
-app-traefik:   CVE-2026-116591 (HIGH*) in github.com/klauspost/compress v1.18.7 – behoben in 1.20.2 – genutzt von traefik:80
-app-traefik:   CVE-2026-88004 (HIGH) in github.com/traefik/traefik/v3 v3.6.25 – behoben in 3.7.13 – genutzt von traefik:80
-app-traefik:   CVE-2026-88008 (HIGH) in github.com/traefik/traefik/v3 v3.6.25 – behoben in 3.7.13 – genutzt von traefik:80
-app-traefik:   CVE-2026-88009 (HIGH) in github.com/traefik/traefik/v3 v3.6.25 – behoben in 3.7.13 – genutzt von traefik:80
-app-traefik:   CVE-2026-73500 (HIGH*) in go.etcd.io/etcd/client/pkg/v3 v3.6.4 – behoben in 3.6.14 – genutzt von traefik:80
-app-traefik:   CVE-2026-56864 (HIGH*) in golang.org/x/mod v0.37.0 – behoben in 0.40.0 – genutzt von traefik:80
-app-traefik:   CVE-2026-56865 (HIGH*) in golang.org/x/mod v0.37.0 – behoben in 0.40.0 – genutzt von traefik:80
-app-traefik:   CVE-2026-78659 (HIGH*) in golang.org/x/net v0.57.0 – behoben in 0.60.0 – genutzt von traefik:80
-app-traefik:   CVE-2026-78660 (HIGH*) in golang.org/x/net v0.57.0 – behoben in 0.60.0 – genutzt von traefik:80
-app-traefik:   CVE-2026-78669 (HIGH*) in golang.org/x/net v0.57.0 – behoben in 0.60.0 – genutzt von traefik:80
-app-traefik:   CVE-2026-97032 (HIGH*) in golang.org/x/net v0.57.0 – behoben in 0.60.0 – genutzt von traefik:80
-app-traefik:   CVE-2026-84304 (HIGH) in google.golang.org/grpc v1.82.1 – behoben in 1.83.1 – genutzt von traefik:80
-app-traefik:   CVE-2026-84445 (HIGH) in google.golang.org/grpc v1.82.1 – behoben in 1.82.2 – genutzt von traefik:80
-app-traefik:   CVE-2026-33818 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.6 – genutzt von traefik:80
-app-traefik:   CVE-2026-46600 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.6 – genutzt von traefik:80
-app-traefik:   CVE-2026-56853 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.6 – genutzt von traefik:80
-app-traefik:   CVE-2026-56859 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.6 – genutzt von traefik:80
-app-traefik:   CVE-2026-56862 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.6 – genutzt von traefik:80
-app-traefik:   CVE-2026-56866 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-app-traefik:   CVE-2026-78659 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-app-traefik:   CVE-2026-78660 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-app-traefik:   CVE-2026-78667 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-app-traefik:   CVE-2026-78669 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-app-traefik:   CVE-2026-94439 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-app-traefik:   CVE-2026-94440 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-app-traefik:   CVE-2026-97031 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-app-traefik:   CVE-2026-97032 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-Erfasse Container 'app-node' ...
-Abgleich mit OSV-Daten daten ...
-app-node: WARNUNG: Öffentlicher Dienst node:3000 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image
-app-node: RELEVANTE SCHWACHSTELLEN – 170 Befunde, davon 13 relevant (13 neu, 1 aktiv ausgenutzt); öffentlich: node:3000 – Bericht: beispiele/scan_app-node.md
-app-node:   Webadressen node:3000: erreichbar: http://shop.example.org:8080/
-app-node:   CVE-2026-111497 (CRITICAL KEV) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000 – aktiv ausgenutzt (KEV seit 2026-10-27)
-app-node:   CVE-2021-23337 (HIGH) in lodash 4.17.20 – behoben in 4.17.21 – genutzt von node:3000
-app-node:   CVE-2026-4800 (HIGH) in lodash 4.17.20 – behoben in 4.18.0 – genutzt von node:3000
-app-node:   CVE-2026-107891 (HIGH) in musl 1.2.5-r21 – behoben in 1.2.5-r24 – genutzt von node:3000
-app-node:   CVE-2026-40200 (HIGH) in musl 1.2.5-r21 – behoben in 1.2.5-r23 – genutzt von node:3000
-app-node:   CVE-2026-105482 (HIGH) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000
-app-node:   CVE-2026-106069 (HIGH) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000
-app-node:   CVE-2026-21710 (HIGH) in node 22.22.0 – behoben in 22.22.2 – genutzt von node:3000
-app-node:   CVE-2026-48617 (HIGH) in node 22.22.0 – behoben in 22.23.0 – genutzt von node:3000
-app-node:   CVE-2026-48937 (HIGH) in node 22.22.0 – behoben in 22.23.0 – genutzt von node:3000
-app-node:   CVE-2026-56846 (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
-app-node:   CVE-2026-56848 (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
-app-node:   CVE-2026-58043 (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
+container-security-scan 1.0.0
+Scan: 2026-11-24 15:36 UTC
+Daten: 2026-11-24 13:43 UTC
+Host: <rechner> mit 4 laufenden und 0 gestoppten Containern:
+- app-node     erstellt 2026-11-24 15:36 UTC, läuft seit 0 min
+- app-php      erstellt 2026-11-24 15:36 UTC, läuft seit 0 min
+- app-proxy    erstellt 2026-11-24 15:36 UTC, läuft seit 0 min
+- app-traefik  erstellt 2026-11-24 15:36 UTC, läuft seit 0 min
+
+=== app-proxy ===
+RELEVANTE SCHWACHSTELLEN – 2 Befunde, davon 1 relevant (1 neu)
+Image nginx:1.31-alpine – Alpine Linux v3.24
+Dienst nginx 1.31.10, Port 80: veröffentlicht als 127.0.0.1:8080 (nur lokal – vermutlich hinter einem Reverse Proxy auf dem Host)
+  Webadressen: http://shop.example.org:8080/
+  leitet weiter an: app-node:3000, app-php:9000
+zlib 1.3.2-r1 – behoben in 1.4-r0 – genutzt von nginx:80 – 1 HIGH: CVE-2026-4738
+
+=== app-php ===
+WARNUNG: Supportende: jquery 1.12.4 (jquery 1, Datum unbekannt; /srv/app/public/js/jquery-1.12.4.min.js)
+RELEVANTE SCHWACHSTELLEN – 1437 Befunde, davon 65 relevant (65 neu, 4 aktiv ausgenutzt), P1 ohne Schweregrad: 25
+Image php:8.3.30-fpm-bookworm – Debian GNU/Linux 12 (bookworm)
+Dienst php-fpm 8.3.30 (in /var/www/html), Port 9000: öffentlich über nginx:80 in app-proxy
+  Webadressen: http://shop.example.org:8080/ (\.php$)
+libbrotli1 1.0.9-2+b6 – behoben in 1.0.9-2+deb12u1 – genutzt von php-fpm:9000 – 1 CRITICAL (1 aktiv ausgenutzt): CVE-2026-111497 (KEV seit 2026-10-27)
+php 8.3.30 – behoben in 8.3.36 – genutzt von php-fpm:9000 – 6 CRITICAL, 5 HIGH (2 aktiv ausgenutzt): CVE-2026-109618 (KEV seit 2026-10-26), CVE-2026-109619 (KEV seit 2026-10-26), CVE-2025-14179, CVE-2026-17543, CVE-2026-6722, CVE-2026-7261, CVE-2026-6735, CVE-2026-7258, CVE-2026-7262, CVE-2026-7568, CVE-2026-91765
+jquery 1.12.4 – behoben in 3.5.0 (anderer Versionszweig: Upgrade nötig) – von keinem erkannten Prozess genutzt – 1 MEDIUM (1 aktiv ausgenutzt): CVE-2020-11023 (KEV seit 2025-01-23)
+libgnutls30 3.7.9-2+deb12u6 – behoben in 3.7.9-2+deb12u7 – genutzt von php-fpm:9000 – 2 CRITICAL, 7 HIGH: CVE-2026-33845, CVE-2026-42010, CVE-2026-33846, CVE-2026-3833, CVE-2026-42009, CVE-2026-42011, CVE-2026-42012, CVE-2026-42013, CVE-2026-5260
+libssl3 3.0.19-1~deb12u2 – behoben in 3.0.22-1~deb12u2 – genutzt von php-fpm:9000 – 2 CRITICAL, 9 HIGH: CVE-2026-34182, CVE-2026-75803, CVE-2026-34180, CVE-2026-45445, CVE-2026-45447, CVE-2026-54874, CVE-2026-63072, CVE-2026-63076, CVE-2026-7383, CVE-2026-84782, CVE-2026-9076
+guzzlehttp/guzzle 7.4.0 – behoben in 7.15.2 – genutzt von php-fpm:9000 (Docroot unbekannt) – 6 HIGH: CVE-2022-29248, CVE-2022-31042, CVE-2022-31043, CVE-2022-31090, CVE-2022-31091, CVE-2026-69246
+libc-bin, libc6 2.36-9+deb12u13 – behoben in 2.36-9+deb12u14 – genutzt von php-fpm:9000 – 5 HIGH: CVE-2025-15281, CVE-2026-0861, CVE-2026-0915, CVE-2026-4046, CVE-2026-4437
+libcurl4 7.88.1-10+deb12u14 – behoben in 7.88.1-10+deb12u15 – genutzt von php-fpm:9000 – 1 HIGH: CVE-2026-5773
+libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0 1.20.1-2+deb12u4 – behoben in 1.20.1-2+deb12u5 – genutzt von php-fpm:9000 – 2 HIGH: CVE-2026-40355, CVE-2026-40356
+libnghttp2-14 1.52.0-1+deb12u2 – behoben in 1.52.0-1+deb12u3 – genutzt von php-fpm:9000 – 1 HIGH: CVE-2026-27135
+libsasl2-2 2.1.28+dfsg-10 – behoben in 2.1.28+dfsg-10+deb12u1 – genutzt von php-fpm:9000 – 1 HIGH: CVE-2026-107161
+libssh2-1 1.10.0-3+b1 – behoben in 1.10.0-3+deb12u1 – genutzt von php-fpm:9000 – 5 HIGH: CVE-2026-58050, CVE-2026-58051, CVE-2026-66032, CVE-2026-66034, CVE-2026-7598
+
+=== app-node ===
+WARNUNG: Öffentlicher Dienst node:3000 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image
+RELEVANTE SCHWACHSTELLEN – 180 Befunde, davon 13 relevant (13 neu, 1 aktiv ausgenutzt)
+Image node:22.22.0-alpine – Alpine Linux v3.23
+Dienst node 22.22.0 (server.js in /app), Port 3000: öffentlich über nginx:80 in app-proxy
+  Webadressen: http://shop.example.org:8080/
+node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000 – 1 CRITICAL, 8 HIGH (1 aktiv ausgenutzt): CVE-2026-111497 (KEV seit 2026-10-27), CVE-2026-105482, CVE-2026-106069, CVE-2026-21710, CVE-2026-48617, CVE-2026-48937, CVE-2026-56846, CVE-2026-56848, CVE-2026-58043
+lodash 4.17.20 – behoben in 4.18.0 – genutzt von node:3000 – 2 HIGH: CVE-2021-23337, CVE-2026-4800
+musl 1.2.5-r21 – behoben in 1.2.5-r24 – genutzt von node:3000 – 2 HIGH: CVE-2026-107891, CVE-2026-40200
+
+=== app-traefik ===
+WARNUNG: Weiterleitungen von traefik:80 nicht vollständig auswertbar (traefik: Konfiguration wird nicht ausgewertet) – Container in denselben Docker-Netzen gelten als möglicherweise öffentlich: app-node
+WARNUNG: Öffentlicher Dienst traefik:80 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image
+RELEVANTE SCHWACHSTELLEN und GEFÄHRLICHE EINSTELLUNGEN – 102 Befunde, davon 32 relevant (32 neu, 1 aktiv ausgenutzt), P1 ohne Schweregrad: 10, 1 gefährliche Einstellungen
+Image traefik:v3.6 – Alpine Linux v3.24
+Dienst traefik, Port 80: veröffentlicht als 127.0.0.1:8081 (nur lokal – vermutlich hinter einem Reverse Proxy auf dem Host)
+  leitet weiter an: app-node:3000 (Docker-Label)
+CONF-SOCKET: /var/run/docker.sock eingebunden als /var/run/docker.sock: Zugriff auf die Container-Laufzeit = root auf dem Host (auch schreibgeschützt)
+github.com/andybalholm/brotli v1.2.0 – behoben in 1.2.7 – genutzt von traefik:80 – 1 CRITICAL* (1 aktiv ausgenutzt): CVE-2026-111497 (KEV seit 2026-10-27)
+golang.org/x/net v0.57.0 – behoben in 0.60.0 – genutzt von traefik:80 – 1 CRITICAL*, 4 HIGH*: CVE-2026-78663, CVE-2026-78659, CVE-2026-78660, CVE-2026-78669, CVE-2026-97032
+stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80 – 2 CRITICAL*, 14 HIGH*: CVE-2026-39821, CVE-2026-78663, CVE-2026-33818, CVE-2026-46600, CVE-2026-56853, CVE-2026-56859, CVE-2026-56862, CVE-2026-56866, CVE-2026-78659, CVE-2026-78660, CVE-2026-78667, CVE-2026-78669, CVE-2026-94439, CVE-2026-94440, CVE-2026-97031, CVE-2026-97032
+github.com/go-jose/go-jose/v4 v4.1.4 – behoben in 4.1.6 – genutzt von traefik:80 – 1 HIGH: CVE-2026-116587
+github.com/klauspost/compress v1.18.7 – behoben in 1.20.2 – genutzt von traefik:80 – 1 HIGH*: CVE-2026-116591
+github.com/traefik/traefik/v3 v3.6.25 – behoben in 3.7.13 – genutzt von traefik:80 – 3 HIGH: CVE-2026-88004, CVE-2026-88008, CVE-2026-88009
+go.etcd.io/etcd/client/pkg/v3 v3.6.4 – behoben in 3.6.14 – genutzt von traefik:80 – 1 HIGH*: CVE-2026-73500
+golang.org/x/mod v0.37.0 – behoben in 0.40.0 – genutzt von traefik:80 – 2 HIGH*: CVE-2026-56864, CVE-2026-56865
+google.golang.org/grpc v1.82.1 – behoben in 1.83.1 – genutzt von traefik:80 – 2 HIGH: CVE-2026-84304, CVE-2026-84445
+
+=== app-node (erneute Prüfung wegen eines neuen Wegs über traefik:80 in app-traefik; ersetzt den Abschnitt oben) ===
+WARNUNG: Öffentlicher Dienst node:3000 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image
+RELEVANTE SCHWACHSTELLEN – 180 Befunde, davon 13 relevant (13 neu, 1 aktiv ausgenutzt)
+Image node:22.22.0-alpine – Alpine Linux v3.23
+Dienst node 22.22.0 (server.js in /app), Port 3000: öffentlich über nginx:80 in app-proxy, traefik:80 in app-traefik
+  Webadressen: http://shop.example.org:8080/
+node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000 – 1 CRITICAL, 8 HIGH (1 aktiv ausgenutzt): CVE-2026-111497 (KEV seit 2026-10-27), CVE-2026-105482, CVE-2026-106069, CVE-2026-21710, CVE-2026-48617, CVE-2026-48937, CVE-2026-56846, CVE-2026-56848, CVE-2026-58043
+lodash 4.17.20 – behoben in 4.18.0 – genutzt von node:3000 – 2 HIGH: CVE-2021-23337, CVE-2026-4800
+musl 1.2.5-r21 – behoben in 1.2.5-r24 – genutzt von node:3000 – 2 HIGH: CVE-2026-107891, CVE-2026-40200
+
 Gesamt: 4 Container geprüft – RELEVANTE FUNDE (Schwachstellen bzw. gefährliche Einstellungen)

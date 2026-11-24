@@ -2,9 +2,9 @@
 
 - Image: node:22.22.0-alpine (sha256:e4bf2a82ad0a)  
 - OS: Alpine Linux v3.23  
-- Zeitpunkt: 2026-11-23 20:54  
-- Scanner: container-security-scan 0.6.0  
-- Datenbank: OSV, Stand 2026-11-23 12:40 UTC (daten)  
+- Zeitpunkt: 2026-11-24 15:37  
+- Scanner: container-security-scan 1.0.0  
+- Datenbank: OSV, Stand 2026-11-24 13:43 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
 ## Ergebnis
@@ -49,9 +49,9 @@ Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen
 | P1 Dienst mit veröffentlichtem Port | 1 | 12 | 14 | 8 | 0 |
 | P2 Dienst intern | 0 | 0 | 0 | 0 | 0 |
 | P3 Prozess ohne Port | 0 | 0 | 0 | 0 | 0 |
-| P4 nicht genutzt / dev | 12 | 82 | 34 | 7 | 0 |
+| P4 nicht genutzt / dev | 12 | 90 | 36 | 7 | 0 |
 
-## Befunde (129 von 170; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
+## Befunde (137 von 180; P3/P4 nur CRITICAL/HIGH/KEV, alle mit --alle)
 
 | P | Schwere | ID | Paket | Installiert | Behoben in | Genutzt von | Titel |
 |---|---|---|---|---|---|---|---|
@@ -109,6 +109,7 @@ Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen
 | 4 | HIGH | CVE-2026-69152 | brace-expansion | 2.0.2 | 2.1.4 | – | brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitig |
 | 4 | HIGH | CVE-2025-64756 | glob | 10.4.5 | 10.5.0 | – | glob CLI: Command injection via -c/--cmd executes matches with shell:true |
 | 4 | HIGH | CVE-2026-69192 | ip-address | 9.0.5 | 10.3.1 (anderer Versionszweig: Upgrade nötig) | – | ip-address: Address4 decodes leading-zero octets as decimal while resolvers decode them as |
+| 4 | HIGH | CVE-2026-107496 | libcrypto3 | 3.5.5-r0 | 3.5.9-r1 | – | Issue summary: Encrypting a CMS message to an EC certificate whose group order |
 | 4 | HIGH | CVE-2026-14456 | libcrypto3 | 3.5.5-r0 | 3.5.8-r0 | – | Issue summary: When an OpenSSL QUIC server (Listener SSL object) processes |
 | 4 | HIGH | CVE-2026-14457 | libcrypto3 | 3.5.5-r0 | 3.5.8-r0 | – | Issue summary: In a server or client configuration with RFC7250 Raw Public Keys (RPKs) |
 | 4 | HIGH | CVE-2026-18798 | libcrypto3 | 3.5.5-r0 | 3.5.8-r0 | – | Issue summary: QUIC server may double free QRX (QUIC record layer RX) object |
@@ -128,7 +129,11 @@ Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen
 | 4 | HIGH | CVE-2026-63075 | libcrypto3 | 3.5.5-r0 | 3.5.8-r0 | – | Issue summary: When OpenSSL processes QUIC traffic from a peer that repeatedly |
 | 4 | HIGH | CVE-2026-63076 | libcrypto3 | 3.5.5-r0 | 3.5.8-r0 | – | Issue summary: OpenSSL CMP password based protection verification only |
 | 4 | HIGH | CVE-2026-7383 | libcrypto3 | 3.5.5-r0 | 3.5.7-r0 | – | Issue summary: A signed integer overflow when sizing the destination |
+| 4 | HIGH | CVE-2026-88823 | libcrypto3 | 3.5.5-r0 | 3.5.9-r1 | – | Issue summary: The AES-GCM-SIV implementation treats a zero-length Additional |
 | 4 | HIGH | CVE-2026-9076 | libcrypto3 | 3.5.5-r0 | 3.5.7-r0 | – | Issue summary: When CMS password-based decryption (RFC 3211 / PWRI key unwrap) |
+| 4 | HIGH | CVE-2026-95691 | libcrypto3 | 3.5.5-r0 | 3.5.9-r1 | – | Issue summary: A retransmitted QUIC CRYPTO frame can release packet storage |
+| 4 | HIGH | CVE-2026-95692 | libcrypto3 | 3.5.5-r0 | 3.5.9-r1 | – | Issue summary: Setting an AES-GCM-SIV IV shorter than the expected nonce |
+| 4 | HIGH | CVE-2026-107496 | libssl3 | 3.5.5-r0 | 3.5.9-r1 | – | Issue summary: Encrypting a CMS message to an EC certificate whose group order |
 | 4 | HIGH | CVE-2026-14456 | libssl3 | 3.5.5-r0 | 3.5.8-r0 | – | Issue summary: When an OpenSSL QUIC server (Listener SSL object) processes |
 | 4 | HIGH | CVE-2026-14457 | libssl3 | 3.5.5-r0 | 3.5.8-r0 | – | Issue summary: In a server or client configuration with RFC7250 Raw Public Keys (RPKs) |
 | 4 | HIGH | CVE-2026-18798 | libssl3 | 3.5.5-r0 | 3.5.8-r0 | – | Issue summary: QUIC server may double free QRX (QUIC record layer RX) object |
@@ -148,7 +153,10 @@ Aus der Konfiguration der Webserver (server_name, ServerName/ServerAlias, listen
 | 4 | HIGH | CVE-2026-63075 | libssl3 | 3.5.5-r0 | 3.5.8-r0 | – | Issue summary: When OpenSSL processes QUIC traffic from a peer that repeatedly |
 | 4 | HIGH | CVE-2026-63076 | libssl3 | 3.5.5-r0 | 3.5.8-r0 | – | Issue summary: OpenSSL CMP password based protection verification only |
 | 4 | HIGH | CVE-2026-7383 | libssl3 | 3.5.5-r0 | 3.5.7-r0 | – | Issue summary: A signed integer overflow when sizing the destination |
+| 4 | HIGH | CVE-2026-88823 | libssl3 | 3.5.5-r0 | 3.5.9-r1 | – | Issue summary: The AES-GCM-SIV implementation treats a zero-length Additional |
 | 4 | HIGH | CVE-2026-9076 | libssl3 | 3.5.5-r0 | 3.5.7-r0 | – | Issue summary: When CMS password-based decryption (RFC 3211 / PWRI key unwrap) |
+| 4 | HIGH | CVE-2026-95691 | libssl3 | 3.5.5-r0 | 3.5.9-r1 | – | Issue summary: A retransmitted QUIC CRYPTO frame can release packet storage |
+| 4 | HIGH | CVE-2026-95692 | libssl3 | 3.5.5-r0 | 3.5.9-r1 | – | Issue summary: Setting an AES-GCM-SIV IV shorter than the expected nonce |
 | 4 | HIGH | CVE-2026-26996 | minimatch | 9.0.5 | 9.0.6 | – | minimatch has a ReDoS via repeated wildcards with non-matching literal in pattern |
 | 4 | HIGH | CVE-2026-27903 | minimatch | 9.0.5 | 9.0.7 | – | minimatch has ReDoS: matchOne() combinatorial backtracking via multiple non-adjacent GLOBS |
 | 4 | HIGH | CVE-2026-27904 | minimatch | 9.0.5 | 9.0.7 | – | minimatch ReDoS: nested *() extglobs generate catastrophically backtracking regular expres |
@@ -214,8 +222,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        f4e9956fdaac099085483d90d436aacfe6dc65201a3cd045a5cacbf37c1e473c
-Gestartet: 2026-11-23T20:53:55.652669929Z
+ID:        abb5168704c3dcf8a54021d90aa27253c956717c6531e6a94e2339e74225b525
+Gestartet: 2026-11-24T15:36:54.13770459Z
 Kommando:  ["docker-entrypoint.sh"] ["node", "server.js"]
 Mounts:    /w/beispiele/umgebung/node->/app
 Host:      Kernel 7.0.14-linuxkit
@@ -225,21 +233,20 @@ Host:      Kernel 7.0.14-linuxkit
 
 ```
 PID                 USER                COMMAND
-713                 root                node server.js
-4271                root                timeout 50 /usr/local/bin/node -e console.log(JSON.stringify({exe: require("fs").realpathSync(process.execPath), versions: process.versions}))
-4306                nobody              timeout 50 node -e console.log(JSON.stringify({exe: require("fs").realpathSync(process.execPath), versions: process.versions}))
-4342                nobody              timeout 50 php -r $r = array("exe" => realpath(PHP_BINARY) ?: PHP_BINARY, "version" => PHP_VERSION, "sapi" => PHP_SAPI, "ext" => array(), "libs" => array()); foreach (get_loaded_extensions() as $e) { $v = phpversion($e); if ($v && strpos($v, PHP_VERSION) === false && $e !== "dom") $r["ext"][$e] = $v; } if (defined("OPENSSL_VERSION_TEXT")) { $p = explode(" ", OPENSSL_VERSION_TEXT); $r["libs"][strtolower($p[0])] = $p[1]; } if (function_exists("curl_version")) { $c = curl_version(); $r["libs"]["curl"] = $c["version"]; } if (defined("LIBXML_DOTTED_VERSION")) $r["libs"]["libxml2"] = LIBXML_DOTTED_VERSION; if (defined("PCRE_VERSION")) { $p = explode(" ", PCRE_VERSION); $r["libs"]["pcre2"] = $p[0]; } if (defined("INTL_ICU_VERSION")) $r["libs"]["icu"] = INTL_ICU_VERSION; if (class_exists("SQLite3")) { $s = SQLite3::version(); $r["libs"]["sqlite"] = $s["versionString"]; } if (defined("SODIUM_LIBRARY_VERSION")) $r["libs"]["libsodium"] = SODIUM_LIBRARY_VERSION; if (defined("ZLIB_VERSION")) $r["libs"]["zlib"] = ZLIB_VERSION; echo json_encode($r);
-4372                nobody              timeout 50 python3 -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-4403                nobody              timeout 50 python3 -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-4432                nobody              timeout 50 python -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-4462                nobody              timeout 50 python -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-4492                nobody              timeout 50 nginx -v
-4522                nobody              timeout 50 httpd -v
-4552                nobody              timeout 50 apache2 -v
-4582                nobody              timeout 50 java -XX:-UsePerfData -version
-4613                nobody              timeout 50 mariadbd --version
-4643                nobody              timeout 50 mysqld --version
-4674                nobody              timeout 50 postgres --version
+39097               root                node server.js
+42803               nobody              timeout 50 node -e console.log(JSON.stringify({exe: require("fs").realpathSync(process.execPath), versions: process.versions}))
+42839               nobody              timeout 50 php -r $r = array("exe" => realpath(PHP_BINARY) ?: PHP_BINARY, "version" => PHP_VERSION, "sapi" => PHP_SAPI, "ext" => array(), "libs" => array()); foreach (get_loaded_extensions() as $e) { $v = phpversion($e); if ($v && strpos($v, PHP_VERSION) === false && $e !== "dom") $r["ext"][$e] = $v; } if (defined("OPENSSL_VERSION_TEXT")) { $p = explode(" ", OPENSSL_VERSION_TEXT); $r["libs"][strtolower($p[0])] = $p[1]; } if (function_exists("curl_version")) { $c = curl_version(); $r["libs"]["curl"] = $c["version"]; } if (defined("LIBXML_DOTTED_VERSION")) $r["libs"]["libxml2"] = LIBXML_DOTTED_VERSION; if (defined("PCRE_VERSION")) { $p = explode(" ", PCRE_VERSION); $r["libs"]["pcre2"] = $p[0]; } if (defined("INTL_ICU_VERSION")) $r["libs"]["icu"] = INTL_ICU_VERSION; if (class_exists("SQLite3")) { $s = SQLite3::version(); $r["libs"]["sqlite"] = $s["versionString"]; } if (defined("SODIUM_LIBRARY_VERSION")) $r["libs"]["libsodium"] = SODIUM_LIBRARY_VERSION; if (defined("ZLIB_VERSION")) $r["libs"]["zlib"] = ZLIB_VERSION; echo json_encode($r);
+42869               nobody              timeout 50 python3 -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+42900               nobody              timeout 50 python3 -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+42930               nobody              timeout 50 python -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+42960               nobody              timeout 50 python -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+42990               nobody              timeout 50 nginx -v
+43021               nobody              timeout 50 httpd -v
+43052               nobody              timeout 50 apache2 -v
+43082               nobody              timeout 50 java -XX:-UsePerfData -version
+43110               nobody              timeout 50 mariadbd --version
+43140               nobody              timeout 50 mysqld --version
+43170               nobody              timeout 50 postgres --version
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher
