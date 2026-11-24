@@ -1,11 +1,10 @@
 container-security-scan 1.1.1
-Scan: 2026-11-24 21:59 UTC
+Scan: 2026-11-24 22:33 UTC
 Daten: 2026-11-24 13:43 UTC
-Host: <rechner> mit 4 laufenden und 0 gestoppten Containern:
-- app-node     erstellt 2026-11-24 21:59 UTC, läuft seit 0 min
-- app-php      erstellt 2026-11-24 21:59 UTC, läuft seit 0 min
-- app-proxy    erstellt 2026-11-24 21:59 UTC, läuft seit 0 min
-- app-traefik  erstellt 2026-11-24 21:59 UTC, läuft seit 0 min
+Host: <rechner> mit 3 laufenden und 0 gestoppten Containern:
+- app-node   erstellt 2026-11-24 22:33 UTC, läuft seit 0 min
+- app-php    erstellt 2026-11-24 22:33 UTC, läuft seit 0 min
+- app-proxy  erstellt 2026-11-24 22:33 UTC, läuft seit 0 min
 
 === app-proxy ===
 RELEVANTE SCHWACHSTELLEN – 2 Befunde, davon 1 relevant (1 neu)
@@ -109,76 +108,4 @@ CVE-2026-56846 (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von nod
 CVE-2026-56848 (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
 CVE-2026-58043 (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
 
-=== app-traefik ===
-WARNUNG: Weiterleitungen von traefik:80 nicht vollständig auswertbar (traefik: Konfiguration wird nicht ausgewertet) – Container in denselben Docker-Netzen gelten als möglicherweise öffentlich: app-node
-WARNUNG: Öffentlicher Dienst traefik:80 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image
-RELEVANTE SCHWACHSTELLEN und GEFÄHRLICHE EINSTELLUNGEN – 102 Befunde, davon 32 relevant (32 neu, 1 aktiv ausgenutzt), P1 ohne Schweregrad: 10, 1 gefährliche Einstellungen
-Image traefik:v3.6 – Alpine Linux v3.24
-Dienst traefik, Port 80: veröffentlicht als 127.0.0.1:8081 (nur lokal – vermutlich hinter einem Reverse Proxy auf dem Host)
-  leitet weiter an: app-node:3000 (Docker-Label)
-CONF-SOCKET: /var/run/docker.sock eingebunden als /var/run/docker.sock: Zugriff auf die Container-Laufzeit = root auf dem Host (auch schreibgeschützt)
-CVE-2026-111497 (CRITICAL* KEV) in github.com/andybalholm/brotli v1.2.0 – behoben in 1.2.7 – genutzt von traefik:80 – aktiv ausgenutzt (KEV seit 2026-10-27)
-CVE-2026-78663 (CRITICAL*) in golang.org/x/net v0.57.0 – behoben in 0.60.0 – genutzt von traefik:80
-CVE-2026-39821 (CRITICAL*) in stdlib 1.26.5 – behoben in 1.26.6 – genutzt von traefik:80
-CVE-2026-78663 (CRITICAL*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-CVE-2026-116587 (HIGH) in github.com/go-jose/go-jose/v4 v4.1.4 – behoben in 4.1.6 – genutzt von traefik:80
-CVE-2026-116591 (HIGH*) in github.com/klauspost/compress v1.18.7 – behoben in 1.20.2 – genutzt von traefik:80
-CVE-2026-88004 (HIGH) in github.com/traefik/traefik/v3 v3.6.25 – behoben in 3.7.13 – genutzt von traefik:80
-CVE-2026-88008 (HIGH) in github.com/traefik/traefik/v3 v3.6.25 – behoben in 3.7.13 – genutzt von traefik:80
-CVE-2026-88009 (HIGH) in github.com/traefik/traefik/v3 v3.6.25 – behoben in 3.7.13 – genutzt von traefik:80
-CVE-2026-73500 (HIGH*) in go.etcd.io/etcd/client/pkg/v3 v3.6.4 – behoben in 3.6.14 – genutzt von traefik:80
-CVE-2026-56864 (HIGH*) in golang.org/x/mod v0.37.0 – behoben in 0.40.0 – genutzt von traefik:80
-CVE-2026-56865 (HIGH*) in golang.org/x/mod v0.37.0 – behoben in 0.40.0 – genutzt von traefik:80
-CVE-2026-78659 (HIGH*) in golang.org/x/net v0.57.0 – behoben in 0.60.0 – genutzt von traefik:80
-CVE-2026-78660 (HIGH*) in golang.org/x/net v0.57.0 – behoben in 0.60.0 – genutzt von traefik:80
-CVE-2026-78669 (HIGH*) in golang.org/x/net v0.57.0 – behoben in 0.60.0 – genutzt von traefik:80
-CVE-2026-97032 (HIGH*) in golang.org/x/net v0.57.0 – behoben in 0.60.0 – genutzt von traefik:80
-CVE-2026-84304 (HIGH) in google.golang.org/grpc v1.82.1 – behoben in 1.83.1 – genutzt von traefik:80
-CVE-2026-84445 (HIGH) in google.golang.org/grpc v1.82.1 – behoben in 1.82.2 – genutzt von traefik:80
-CVE-2026-33818 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.6 – genutzt von traefik:80
-CVE-2026-46600 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.6 – genutzt von traefik:80
-CVE-2026-56853 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.6 – genutzt von traefik:80
-CVE-2026-56859 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.6 – genutzt von traefik:80
-CVE-2026-56862 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.6 – genutzt von traefik:80
-CVE-2026-56866 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-CVE-2026-78659 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-CVE-2026-78660 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-CVE-2026-78667 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-CVE-2026-78669 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-CVE-2026-94439 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-CVE-2026-94440 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-CVE-2026-97031 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-CVE-2026-97032 (HIGH*) in stdlib 1.26.5 – behoben in 1.26.9 – genutzt von traefik:80
-P1 ohne Schweregrad (nicht gezählt, bitte selbst einschätzen):
-CVE-2026-53622 (UNKNOWN) in github.com/traefik/traefik/v3 v3.6.25 – behoben in 3.7.3 – genutzt von traefik:80
-GO-2026-4950 (UNKNOWN) in github.com/valyala/fasthttp v1.69.0 – behoben in 1.70.0 – genutzt von traefik:80
-CVE-2026-128086 (UNKNOWN) in go.opentelemetry.io/otel v1.44.0 – behoben in 1.47.0 – genutzt von traefik:80
-CVE-2026-56854 (UNKNOWN) in golang.org/x/crypto v0.54.0 – behoben in 0.55.0 – genutzt von traefik:80
-CVE-2026-56855 (UNKNOWN) in golang.org/x/crypto v0.54.0 – behoben in 0.56.0 – genutzt von traefik:80
-CVE-2026-78662 (UNKNOWN) in golang.org/x/crypto v0.54.0 – behoben in 0.56.0 – genutzt von traefik:80
-GO-2026-5932 (UNKNOWN) in golang.org/x/crypto v0.54.0 – behoben in 0.58.1-0.20261009181718-2f1f834330b2 – genutzt von traefik:80
-CVE-2026-78661 (UNKNOWN) in golang.org/x/net v0.57.0 – behoben in 0.62.0 – genutzt von traefik:80
-CVE-2026-97045 (UNKNOWN) in golang.org/x/net v0.57.0 – behoben in 0.62.0 – genutzt von traefik:80
-CVE-2026-56851 (UNKNOWN) in golang.org/x/text v0.40.0 – behoben in 0.41.0 – genutzt von traefik:80
-
-=== app-node (erneute Prüfung wegen eines neuen Wegs über traefik:80 in app-traefik; ersetzt den Abschnitt oben) ===
-WARNUNG: Öffentlicher Dienst node:3000 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image
-RELEVANTE SCHWACHSTELLEN – 180 Befunde, davon 13 relevant (13 neu, 1 aktiv ausgenutzt)
-Image node:22.22.0-alpine – Alpine Linux v3.23
-Dienst node 22.22.0 (server.js in /app), Port 3000: öffentlich über nginx:80 in app-proxy, traefik:80 in app-traefik
-  Webadressen: http://shop.example.org:8080/
-CVE-2026-111497 (CRITICAL KEV) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000 – aktiv ausgenutzt (KEV seit 2026-10-27)
-CVE-2021-23337 (HIGH) in lodash 4.17.20 – behoben in 4.17.21 – genutzt von node:3000
-CVE-2026-4800 (HIGH) in lodash 4.17.20 – behoben in 4.18.0 – genutzt von node:3000
-CVE-2026-107891 (HIGH) in musl 1.2.5-r21 – behoben in 1.2.5-r24 – genutzt von node:3000
-CVE-2026-40200 (HIGH) in musl 1.2.5-r21 – behoben in 1.2.5-r23 – genutzt von node:3000
-CVE-2026-105482 (HIGH) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000
-CVE-2026-106069 (HIGH) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000
-CVE-2026-21710 (HIGH) in node 22.22.0 – behoben in 22.22.2 – genutzt von node:3000
-CVE-2026-48617 (HIGH) in node 22.22.0 – behoben in 22.23.0 – genutzt von node:3000
-CVE-2026-48937 (HIGH) in node 22.22.0 – behoben in 22.23.0 – genutzt von node:3000
-CVE-2026-56846 (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
-CVE-2026-56848 (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
-CVE-2026-58043 (HIGH) in node 22.22.0 – behoben in 22.23.2 – genutzt von node:3000
-
-Gesamt: 4 Container geprüft – RELEVANTE FUNDE (Schwachstellen bzw. gefährliche Einstellungen)
+Gesamt: 3 Container geprüft – RELEVANTE FUNDE (Schwachstellen bzw. gefährliche Einstellungen)

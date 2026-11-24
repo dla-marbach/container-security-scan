@@ -15,12 +15,13 @@ jobs:
   unittest:
     name: Unit-Tests (Python ${{ matrix.python }})
     runs-on: ubuntu-26.04
-    # offizielle Python-Images statt setup-python: dort gibt es auch ältere Versionen (3.6 wie SLES 15)
+    # offizielle Python-Images statt setup-python: dort gibt es auch ältere Versionen. Die älteste unterstützte
+    # (3.6 wie SLES 15) und die neueste genügen: was unter beiden läuft, läuft auch dazwischen
     container: python:${{ matrix.python }}-slim
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.6", "3.11", "3.13", "3.14"]
+        python: ["3.6", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: python -W error::ResourceWarning -m unittest discover -s tests -v
@@ -39,7 +40,7 @@ jobs:
           ref: daten
           path: daten
           persist-credentials: false
-      - run: docker pull -q nginx:1.27-alpine && docker pull -q node:20-alpine && docker pull -q traefik:v3.3 && docker pull -q redis:7-alpine
+      - run: docker pull -q nginx:1.27-alpine && docker pull -q node:20-alpine && docker pull -q alpine:3.22 && docker pull -q redis:7-alpine
       - run: python3 -m unittest discover -s tests -p "test_docker.py" -v
         env:
           CSS_DOCKER_TESTS: "1"
