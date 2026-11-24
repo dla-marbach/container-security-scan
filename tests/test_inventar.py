@@ -343,6 +343,16 @@ class Dateisuche(unittest.TestCase):
                          ["/app/package.json", "/nc/apps/package.json", "/nc/data2/package.json"])
         self.assertIn(self.tmp.lstrip("/") + "/nc/data/.ocdata", [n.lstrip("/") for n in self.alle])
         self.assertFalse([n for n in self.alle if "/nc/data/admin" in n])
+        # neuere Nextcloud-Versionen: .ncdata statt .ocdata (auch Papierkorb und alte Versionen der Nutzer)
+        for pfad in ("nc2/data/.ncdata", "nc2/data/u/files_trashbin/files/x.d1/package.json",
+                     "nc2/data/u/files/alt.jar", "nc2/apps/package.json"):
+            os.makedirs(os.path.dirname(os.path.join(self.tmp, pfad)), exist_ok=True)
+            with open(os.path.join(self.tmp, pfad), "w") as f:
+                f.write("# Nextcloud data directory\n" if pfad.endswith(".ncdata") else "{}")
+        rc, namen, err = self.suche(self.tmp)
+        self.assertEqual((rc, err), (0, ""))
+        self.assertIn("/nc2/apps/package.json", [n[len(self.tmp.lstrip("/")):] for n in namen])
+        self.assertFalse([n for n in self.alle if "/nc2/data/u" in n])
         # Lesen von außen (docker export, docker cp) liefert die Nutzerdaten mit: im Ergebnis entfernt, vermerkt
         c = mock.Mock(has_find_tar=False, user="0", id="abc", mounts=[])
 
@@ -356,6 +366,11 @@ class Dateisuche(unittest.TestCase):
         self.assertEqual((sorted(files), extra, problems),
                          (["/var/www/html/package.json"], [{"datei": "/var/www/html/lib/b.jar"}], []))
         self.assertTrue(how.endswith("; Nutzerdaten nicht ausgewertet (Nextcloud: /var/www/html/data)"), how)
+        files = {"/srv/nc/data/.ncdata": b"# Nextcloud data directory", "/srv/nc/data/u/files_trashbin/package.json": b"{}",
+                 "/srv/nc/package.json": b"{}"}
+        extra = [{"datei": "/srv/nc/data/appdata_x/a.jar"}]
+        self.assertEqual(scanner.nutzerdaten_entfernen(files, extra), ["/srv/nc/data"])
+        self.assertEqual((sorted(files), extra), (["/srv/nc/package.json"], []))
 
     def test_meldungen_im_bericht(self):
         meldungen = []

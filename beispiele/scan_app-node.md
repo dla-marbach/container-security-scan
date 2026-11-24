@@ -2,8 +2,8 @@
 
 - Image: node:22.22.0-alpine (sha256:e4bf2a82ad0a)  
 - OS: Alpine Linux v3.23  
-- Zeitpunkt: 2026-11-23 18:13  
-- Scanner: container-security-scan 0.5.2  
+- Zeitpunkt: 2026-11-23 20:54  
+- Scanner: container-security-scan 0.6.0  
 - Datenbank: OSV, Stand 2026-11-23 12:40 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
@@ -214,8 +214,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        329ece0b35821afa1b1267e0a78d56388034f4af940e449d12bc52c5239512f0
-Gestartet: 2026-11-23T18:13:22.097715418Z
+ID:        f4e9956fdaac099085483d90d436aacfe6dc65201a3cd045a5cacbf37c1e473c
+Gestartet: 2026-11-23T20:53:55.652669929Z
 Kommando:  ["docker-entrypoint.sh"] ["node", "server.js"]
 Mounts:    /w/beispiele/umgebung/node->/app
 Host:      Kernel 7.0.14-linuxkit
@@ -225,21 +225,21 @@ Host:      Kernel 7.0.14-linuxkit
 
 ```
 PID                 USER                COMMAND
-613                 root                node server.js
-4153                root                timeout 50 /usr/local/bin/node -e console.log(JSON.stringify({exe: require("fs").realpathSync(process.execPath), versions: process.versions}))
-4188                nobody              timeout 50 node -e console.log(JSON.stringify({exe: require("fs").realpathSync(process.execPath), versions: process.versions}))
-4224                nobody              timeout 50 php -r $r = array("exe" => realpath(PHP_BINARY) ?: PHP_BINARY, "version" => PHP_VERSION, "sapi" => PHP_SAPI, "ext" => array(), "libs" => array()); foreach (get_loaded_extensions() as $e) { $v = phpversion($e); if ($v && strpos($v, PHP_VERSION) === false && $e !== "dom") $r["ext"][$e] = $v; } if (defined("OPENSSL_VERSION_TEXT")) { $p = explode(" ", OPENSSL_VERSION_TEXT); $r["libs"][strtolower($p[0])] = $p[1]; } if (function_exists("curl_version")) { $c = curl_version(); $r["libs"]["curl"] = $c["version"]; } if (defined("LIBXML_DOTTED_VERSION")) $r["libs"]["libxml2"] = LIBXML_DOTTED_VERSION; if (defined("PCRE_VERSION")) { $p = explode(" ", PCRE_VERSION); $r["libs"]["pcre2"] = $p[0]; } if (defined("INTL_ICU_VERSION")) $r["libs"]["icu"] = INTL_ICU_VERSION; if (class_exists("SQLite3")) { $s = SQLite3::version(); $r["libs"]["sqlite"] = $s["versionString"]; } if (defined("SODIUM_LIBRARY_VERSION")) $r["libs"]["libsodium"] = SODIUM_LIBRARY_VERSION; if (defined("ZLIB_VERSION")) $r["libs"]["zlib"] = ZLIB_VERSION; echo json_encode($r);
-4254                nobody              timeout 50 python3 -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-4283                nobody              timeout 50 python3 -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-4314                nobody              timeout 50 python -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-4344                nobody              timeout 50 python -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
-4375                nobody              timeout 50 nginx -v
-4405                nobody              timeout 50 httpd -v
-4435                nobody              timeout 50 apache2 -v
-4465                nobody              timeout 50 java -XX:-UsePerfData -version
-4495                nobody              timeout 50 mariadbd --version
-4525                nobody              timeout 50 mysqld --version
-4555                nobody              timeout 50 postgres --version
+713                 root                node server.js
+4271                root                timeout 50 /usr/local/bin/node -e console.log(JSON.stringify({exe: require("fs").realpathSync(process.execPath), versions: process.versions}))
+4306                nobody              timeout 50 node -e console.log(JSON.stringify({exe: require("fs").realpathSync(process.execPath), versions: process.versions}))
+4342                nobody              timeout 50 php -r $r = array("exe" => realpath(PHP_BINARY) ?: PHP_BINARY, "version" => PHP_VERSION, "sapi" => PHP_SAPI, "ext" => array(), "libs" => array()); foreach (get_loaded_extensions() as $e) { $v = phpversion($e); if ($v && strpos($v, PHP_VERSION) === false && $e !== "dom") $r["ext"][$e] = $v; } if (defined("OPENSSL_VERSION_TEXT")) { $p = explode(" ", OPENSSL_VERSION_TEXT); $r["libs"][strtolower($p[0])] = $p[1]; } if (function_exists("curl_version")) { $c = curl_version(); $r["libs"]["curl"] = $c["version"]; } if (defined("LIBXML_DOTTED_VERSION")) $r["libs"]["libxml2"] = LIBXML_DOTTED_VERSION; if (defined("PCRE_VERSION")) { $p = explode(" ", PCRE_VERSION); $r["libs"]["pcre2"] = $p[0]; } if (defined("INTL_ICU_VERSION")) $r["libs"]["icu"] = INTL_ICU_VERSION; if (class_exists("SQLite3")) { $s = SQLite3::version(); $r["libs"]["sqlite"] = $s["versionString"]; } if (defined("SODIUM_LIBRARY_VERSION")) $r["libs"]["libsodium"] = SODIUM_LIBRARY_VERSION; if (defined("ZLIB_VERSION")) $r["libs"]["zlib"] = ZLIB_VERSION; echo json_encode($r);
+4372                nobody              timeout 50 python3 -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+4403                nobody              timeout 50 python3 -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+4432                nobody              timeout 50 python -I -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+4462                nobody              timeout 50 python -E -s -S -c import json, os, platform, sys r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}} try: import ssl n, v = ssl.OPENSSL_VERSION.split()[:2] r["libs"][n.lower()] = v except Exception: pass for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "expat", "EXPAT_VERSION"), ("zlib", "zlib", "ZLIB_RUNTIME_VERSION")): try: r["libs"][name] = str(getattr(__import__(mod), attr)).replace("expat_", "") except Exception: pass sys.stdout.write(json.dumps(r))
+4492                nobody              timeout 50 nginx -v
+4522                nobody              timeout 50 httpd -v
+4552                nobody              timeout 50 apache2 -v
+4582                nobody              timeout 50 java -XX:-UsePerfData -version
+4613                nobody              timeout 50 mariadbd --version
+4643                nobody              timeout 50 mysqld --version
+4674                nobody              timeout 50 postgres --version
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

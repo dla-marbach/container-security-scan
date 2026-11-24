@@ -85,7 +85,7 @@ from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "0.5.2"
+VERSION = "0.6.0"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
@@ -501,7 +501,7 @@ WANTED = re.compile(r"""^/(etc/os-release|usr/lib/os-release|etc/alpine-release|
                       |/(package\.json|\.?package-lock\.json)$
                       |\.dist-info/METADATA$|\.egg-info/PKG-INFO$|\.egg-info$
                       |/vendor/composer/installed\.json$|/pyvenv\.cfg$
-                      |/\.ocdata$""", re.X)
+                      |/\.[on]cdata$""", re.X)
 
 # Eingebettete JavaScript-Bibliotheken (wie Retire.js): npm-Name, Dateiname (regulärer Ausdruck),
 # Version im Dateikopf. Abgleich über die npm-Daten von OSV.
@@ -536,8 +536,9 @@ GO_MAGIC = b"\xff Go buildinf:"
 # verloren. Alle übrigen Meldungen und Fehler ohne Meldung ergeben Exit-Code 3 (Meldungen auf stderr). Die
 # Auswertung nutzt nur die Shell selbst (grep, sed fehlen in manchen Containern).
 # grep/xargs liefern auch ohne Treffer einen Fehlercode und werden nicht gewertet (wie bisher).
-# Nutzerdaten (Nextcloud: Datenverzeichnis mit .ocdata) werden vor tar aus der Liste entfernt: hochgeladene
-# Dateien verlassen den Container nicht und werden nicht ausgewertet; übertragen wird nur .ocdata selbst (leer).
+# Nutzerdaten (Nextcloud: Datenverzeichnis mit .ocdata, in neueren Versionen .ncdata) werden vor tar aus der Liste
+# entfernt: hochgeladene Dateien verlassen den Container nicht und werden nicht ausgewertet; übertragen wird nur
+# die Markierungsdatei selbst (leer bzw. ein Kommentar).
 # BusyBox-tar meldet eine leere Liste (nichts gefunden) als Fehler "tar: empty archive"; das ist keiner.
 FIND_SH = r"""
 LC_ALL=C; export LC_ALL
@@ -545,17 +546,18 @@ ohne_nutzerdaten() (
   liste=$(cat)
   case "$liste" in
     */.ocdata|*/.ocdata"
+"*|*/.ncdata|*/.ncdata"
 "*) ;;
     *) [ -z "$liste" ] || printf '%s\n' "$liste"; exit 0 ;;
   esac
   set -f; IFS='
 '
   nc=
-  for f in $liste; do case "$f" in */.ocdata) nc="$nc${f%.ocdata}
+  for f in $liste; do case "$f" in */.ocdata|*/.ncdata) nc="$nc${f%/*}/
 " ;; esac; done
   for f in $liste; do
     weg=
-    case "$f" in */.ocdata) ;; *) for d in $nc; do case "$f" in "$d"*) weg=1; break ;; esac; done ;; esac
+    case "$f" in */.ocdata|*/.ncdata) ;; *) for d in $nc; do case "$f" in "$d"*) weg=1; break ;; esac; done ;; esac
     [ -n "$weg" ] || printf '%s\n' "$f"
   done
 )
@@ -567,7 +569,7 @@ meldungen=$( { for r in / "$@"; do
     -o -path /lib/apk/db/installed -o -name package.json -o -name .package-lock.json -o -name package-lock.json \
     -o -path '*.dist-info/METADATA' -o -path '*.egg-info/PKG-INFO' -o -name '*.egg-info' \
     -o -path '*/vendor/composer/installed.json' -o -name '*.jar' -o -name '*.war' -o -name '*.ear' \
-    -o -name pyvenv.cfg -o -name .ocdata JSGLOBS \) -print 2>&3 || echo "@find $r" >&3
+    -o -name pyvenv.cfg -o -name .ocdata -o -name .ncdata JSGLOBS \) -print 2>&3 || echo "@find $r" >&3
   { find "$r" -xdev \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -perm -100 -size +1000k -print \
       2>&3 || echo "@find $r" >&3; } | xargs grep -l 'Go buildinf:' 2>/dev/null
 done | sort -u | ohne_nutzerdaten | tar -cf - -T - 2>&3 || echo "@tar" >&3; } 3>&1 1>&4 )
@@ -750,9 +752,9 @@ def stream_tar(cmd, files, extra, prefix="", input=None, timeout=1800, meldungen
 
 
 def nutzerdaten_entfernen(files, extra):
-    """Nutzerdaten (Nextcloud: Verzeichnis mit .ocdata) aus dem Ergebnis entfernen. FIND_SH lässt sie schon im
-    Container weg; docker export und docker cp liefern sie aber mit. Liefert die Verzeichnisse (sortiert)."""
-    dirs = sorted({posixpath.dirname(p) for p in files if posixpath.basename(p) == ".ocdata"})
+    """Nutzerdaten (Nextcloud: Verzeichnis mit .ocdata bzw. .ncdata) aus dem Ergebnis entfernen. FIND_SH lässt
+    sie schon im Container weg; docker export und docker cp liefern sie aber mit. Liefert die Verzeichnisse (sortiert)."""
+    dirs = sorted({posixpath.dirname(p) for p in files if posixpath.basename(p) in (".ocdata", ".ncdata")})
     for p in [p for p in files if any(under(p, d) for d in dirs)]:
         del files[p]
     extra[:] = [x for x in extra if not any(under(x.get("datei") or "", d) for d in dirs)]
@@ -1009,6 +1011,7 @@ def pypi_packages(files):
 # 4. Laufende Prozesse: Programm, Arbeitsverzeichnis, Kommandozeile, geladene Dateien, Ports
 # ===========================================================================
 # Ausgabe je Zeile: P <pid> <exe> <cwd> <argv mit \037 getrennt> <uid:gid> <ppid> | M <pid> <datei>
+#                   N <pid> <uid:gid> <ppid> <Name>  (exe nicht lesbar: nur aus /proc/<pid>/status)
 #                   F <pid> <offene datei> | E <pid> <PATH=... bzw. VIRTUAL_ENV=...> | S <pid> <socket-inode>
 #                   T <inode> <lokale-adresse:port> <tcp|udp>  (lauschende Sockets)
 #                   C <inode> <lokale-adresse:port> <entfernte-adresse:port>  (bestehende TCP-Verbindungen)
@@ -1020,9 +1023,16 @@ first=""
 for pid in "$@"; do
     [ "$pid" = "$self" ] && continue
     d=/proc/$pid
-    e=$(readlink "$d/exe" 2>/dev/null) || continue
     pp=$(sed -n 's/^PPid:[[:space:]]*//p' "$d/status" 2>/dev/null)
     [ "$pp" = "$self" ] && continue
+    e=$(readlink "$d/exe" 2>/dev/null) || {
+        # nicht lesbar (z.B. Worker nach dem Wechsel zu einem unprivilegierten Benutzer: nicht "dumpable"),
+        # /proc/<pid>/status aber schon
+        [ -n "$pp" ] && printf 'N\t%s\t%s\t%s\t%s\n' "$pid" \
+            "$(awk '/^Uid:/ { u = $3 } /^Gid:/ { g = $3 } END { print u ":" g }' "$d/status" 2>/dev/null)" "$pp" \
+            "$(sed -n 's/^Name:[[:space:]]*//p' "$d/status" 2>/dev/null)"
+        continue
+    }
     [ -z "$first" ] && first=$pid
     printf 'P\t%s\t%s\t%s\t%s\t%s\t%s\n' "$pid" "$e" "$(readlink "$d/cwd" 2>/dev/null)" "$(tr '\000\t\n' '\037  ' < "$d/cmdline" 2>/dev/null)" \
         "$(awk '/^Uid:/ { u = $3 } /^Gid:/ { g = $3 } END { print u ":" g }' "$d/status" 2>/dev/null)" "$pp"
@@ -1104,10 +1114,12 @@ def procs_auswerten(out):
     """Ausgabe von PROC_SH auswerten: (Prozesse, lauschende Ports ohne sichtbaren Prozess {Port: (Adresse, Inode)}).
     Je Prozess auch die ausgehenden TCP-Verbindungen (Ziel-Adresse, Ziel-Port), z.B. eines API-Gateways zu seinen
     Zielen, und die Pfade seiner lauschenden Unix-Sockets (z.B. puma hinter nginx per unix:/…/app.sock)."""
-    procs, sockets, listen, conns, unix = OrderedDict(), defaultdict(set), {}, [], {}
+    procs, sockets, listen, conns, unix, verdeckt = OrderedDict(), defaultdict(set), {}, [], {}, []
     for line in out.splitlines():
         f = line.split("\t")
-        if f[0] == "P" and len(f) >= 5:
+        if f[0] == "N" and len(f) >= 5:
+            verdeckt.append({"pid": f[1], "user": f[2] if f[2] != ":" else "", "ppid": f[3], "name": f[4]})
+        elif f[0] == "P" and len(f) >= 5:
             procs[f[1]] = {"pid": f[1], "exe": re.sub(r" \(deleted\)$", "", f[2]), "cwd": f[3],
                            "argv": [a for a in f[4].split("\x1f") if a], "user": f[5] if len(f) > 5 and f[5] != ":" else "",
                            "ppid": f[6] if len(f) > 6 else "",
@@ -1156,6 +1168,11 @@ def procs_auswerten(out):
     for p in procs.values():
         p["base"] = posixpath.basename(p["exe"])
         p["label"] = p["base"] + (":" + ",".join(p["ports"]) if p["ports"] else "")
+    # Kindprozesse ohne lesbares exe (Sockets, Dateien unbekannt) beim Elternprozess vermerken: Worker von Apache,
+    # php-fpm u.ä. sind nach dem Wechsel des Benutzers nicht "dumpable" und so für ihren eigenen Benutzer unlesbar
+    for k in verdeckt:
+        if k["ppid"] in procs:
+            procs[k["ppid"]].setdefault("kinder", []).append(k)
     return procs, fremd
 
 
@@ -1626,7 +1643,7 @@ def parse_apache(c, exe, web, user=NOBODY, optionen=()):
 # davon erreichbar, gelten alle Container in seinen Docker-Netzen als möglicherweise erreichbar (im Zweifel
 # erreichbar). Traefik und caddy-docker-proxy: Ziele aus Docker-Labels werden zusätzlich genau zugeordnet.
 PROXY_UNBEKANNT = {"traefik", "caddy", "haproxy", "envoy", "varnishd", "lighttpd", "h2o", "angie", "pound", "hitch",
-                   "stunnel", "stunnel4", "socat", "sniproxy", "oauth2-proxy", "squid", "frps"}
+                   "socat", "sniproxy", "oauth2-proxy", "squid", "frps"}
 # Datenhaltung und Nachrichtenvermittlung: Anwendungen rufen sie auf, leiten aber keine Anfragen von außen
 # durch -> Aufrufe (Ziel-URL, offene Verbindung) machen sie nicht erreichbar. Java-Dienste über die Kommandozeile.
 DATENDIENST = re.compile(r"(mysqld|mariadbd|postgres|postmaster|redis-server|valkey-server|keydb-server|mongod|mongos|"
@@ -1882,11 +1899,20 @@ def webserver_lesen(c, procs, web):
                 calls.setdefault((server_user(p), tuple(args)), None)
             for user, args in calls:
                 rc, conf = c.exec([exe] + list(args) + ["-T"], timeout=60, user=user)
+                quelle, fehlt = "-T", []
                 if rc != 0 or not conf.strip():
+                    # nginx vor 1.9.2 kennt -T nicht: dieselben Dateien selbst lesen
+                    (conf, fehlt), quelle = nginx_dateien(c, exe, dict(zip(args[::2], args[1::2])), user), "Dateien"
+                if not conf.strip():
                     web["unlesbar"].add(exe)
-                    web["problems"].append("%s %s-T fehlgeschlagen: Konfiguration (vHosts, Proxy-Backends) nicht lesbar"
-                                           % (exe, " ".join(args) + " " if args else ""))
-                web["raw"].append("--- %s -T (Auszug)\n" % exe + "\n".join(
+                    web["problems"].append("%s %s-T fehlgeschlagen und Konfigurationsdateien nicht lesbar: Konfiguration "
+                                           "(vHosts, Proxy-Backends) nicht lesbar" % (exe, " ".join(args) + " " if args else ""))
+                elif fehlt:
+                    web["unlesbar"].add(exe)
+                    web["problems"].append("%s %s-T fehlgeschlagen und Konfigurationsdateien nicht vollständig lesbar (%s): "
+                                           "Proxy-Backends unvollständig" % (exe, " ".join(args) + " " if args else "",
+                                                                             "; ".join(fehlt)))
+                web["raw"].append("--- %s %s (Auszug)\n" % (exe, quelle) + "\n".join(
                     l for l in conf.splitlines() if re.match(r"# configuration file|\s*(server|listen|server_name|root|location|\w+_pass|upstream)[\s;{]", l)))
                 parse_nginx(conf, web, exe)
         else:
@@ -1894,6 +1920,152 @@ def webserver_lesen(c, procs, web):
             for user, optionen in OrderedDict.fromkeys((server_user(p), tuple(apache_optionen(p["argv"])))
                                                        for p in masters):
                 parse_apache(c, exe, web, user, optionen)
+    for exe in sorted({p["exe"] for p in procs.values() if p["base"] in STUNNEL}):
+        stunnel_lesen(c, procs, web, exe)
+
+
+# Dateien zu Mustern (glob wie nginx include bzw. stunnel include) mit den Rechten des Aufrufers ausgeben, im
+# Format von 'nginx -T'. IFS leer: keine Worttrennung, nur Pfadnamen-Erweiterung. Fehlt eine Datei oder ist sie
+# nicht lesbar, folgt eine Zeile \037<Pfad> (ein Muster ohne Treffer erscheint dabei unverändert); Verzeichnisse
+# werden übergangen.
+KONFIG_DATEIEN_SH = r"""IFS=''
+for m in "$@"; do
+    for f in $m; do
+        [ -d "$f" ] && continue
+        if [ -f "$f" ] && [ -r "$f" ]; then
+            printf '# configuration file %s:\n' "$f"
+            cat "$f" || printf '\n\037%s\n' "$f"
+            printf '\n'
+        else
+            printf '\037%s\n' "$f"
+        fi
+    done
+done
+"""
+
+
+def konfig_dateien(c, muster, user, includes, basis, runden=10):
+    """Konfigurationsdateien zu den Mustern und ihre include-Dateien (includes: Text einer Datei ->
+    Muster, relativ zu basis) als Benutzer des Hauptprozesses lesen. Liefert (Text im Format von 'nginx -T',
+    [was fehlt]): nicht vorhandene oder nicht lesbare Dateien, fehlgeschlagene Abfragen, include-Ebenen über
+    runden. Ein Muster mit Platzhalter ohne Treffer fehlt nicht (wie in nginx und stunnel zulässig)."""
+    teile, gefragt, gelesen, fehlt = [], set(), set(), []
+    for _ in range(runden):
+        muster = [m for m in OrderedDict.fromkeys(muster) if m not in gefragt]
+        if not muster:
+            break
+        gefragt.update(muster)
+        rc, out = c.exec(["sh", "-s", "--"] + muster, input=KONFIG_DATEIEN_SH, timeout=60, user=user)
+        if rc != 0:
+            fehlt.append("Abfrage fehlgeschlagen: " + ", ".join(muster))
+            break
+        fehlt += [f for f in re.findall(r"^\x1f(.*)$", out, re.M) if not (f in muster and re.search(r"[*?[]", f))]
+        neu = []
+        for m in re.finditer(r"^# configuration file (.+?):\n(.*?)(?=^# configuration file .+?:\n|^\x1f|\Z)", out,
+                             re.M | re.S):
+            if m.group(1) in gelesen:
+                continue
+            gelesen.add(m.group(1))
+            teile.append(m.group(0))
+            neu += [i if i.startswith("/") else posixpath.join(basis, i) for i in includes(m.group(2))]
+        muster = neu
+    else:
+        if [m for m in muster if m not in gefragt]:
+            fehlt.append("mehr als %d include-Ebenen" % runden)
+    return "".join(teile), fehlt
+
+
+def nginx_includes(text):
+    text = re.sub(r"#[^\n]*", "", text)
+    return [m.strip("'\"") for m in re.findall(r"(?:^|(?<=[;{}]))\s*include\s+([^;{}]+?)\s*;", text)]
+
+
+def nginx_dateien(c, exe, opts, user):
+    """Ersatz für 'nginx -T' (erst ab nginx 1.9.2): Hauptdatei (-c, sonst --conf-path aus 'nginx -V', relativ zu
+    -p bzw. --prefix) und alle per include eingebundenen Dateien (relativ zum Verzeichnis der Hauptdatei) lesen."""
+    rc, v = c.exec([exe, "-V"], stderr=True, timeout=60, user=user)
+    prefix = opts.get("-p") or (re.findall(r"--prefix=(\S+)", v) or ["/usr/local/nginx/"])[0]
+    conf = opts.get("-c") or (re.findall(r"--conf-path=(\S+)", v) or ["conf/nginx.conf"])[0]
+    conf = conf if conf.startswith("/") else posixpath.join(prefix, conf)
+    return konfig_dateien(c, [conf], user, nginx_includes, posixpath.dirname(conf))
+
+
+STUNNEL = {"stunnel", "stunnel4", "stunnel3"}
+STUNNEL_KONF = ["/etc/stunnel/stunnel.conf", "/usr/local/etc/stunnel/stunnel.conf"]
+
+
+def stunnel_includes(text):
+    """include = Verzeichnis: alle Dateien darin (stunnel 5)."""
+    return [m.rstrip("/") + "/*" for m in re.findall(r"^\s*include\s*=\s*(.+?)\s*$", text, re.M | re.I)]
+
+
+def stunnel_lesen(c, procs, web, exe):
+    """stunnel-Konfiguration (Datei aus der Kommandozeile, sonst die übliche) mit dem Benutzer des
+    Hauptprozesses lesen: je Dienst accept -> connect (auch redirect), im Server- wie im Client-Modus."""
+    aufrufe = OrderedDict()
+    for p in server_masters(procs, exe):
+        args = p["argv"][1:]
+        # -fd n bzw. -: Konfiguration aus einem Dateideskriptor, nicht lesbar
+        datei = None if "-fd" in args or "-" in args else next((a for a in args if not a.startswith("-")), "")
+        aufrufe.setdefault((server_user(p), datei), None)
+    for user, datei in aufrufe:
+        conf, fehlt = "", []
+        # ohne Datei in der Kommandozeile die erste vorhandene der üblichen
+        kandidaten = [] if datei is None else [datei] if datei else STUNNEL_KONF
+        for kandidat in kandidaten:
+            conf, fehlt = konfig_dateien(c, [kandidat], user, stunnel_includes, "/")
+            if conf.strip():
+                break
+        if not conf.strip():
+            web["unlesbar"].add(exe)
+            web["problems"].append("%s: Konfiguration %snicht lesbar (Weiterleitungen nicht auswertbar)"
+                                   % (exe, datei + " " if datei else ""))
+            continue
+        if fehlt:
+            web["unlesbar"].add(exe)
+            web["problems"].append("%s: Konfiguration nicht vollständig lesbar (%s): Weiterleitungen unvollständig"
+                                   % (exe, "; ".join(fehlt)))
+        parse_stunnel(conf, web, exe)
+
+
+def stunnel_ziel(wert):
+    """connect/redirect einer stunnel-Konfiguration als Backend-Ziel: [Host:]Port (ohne Host: localhost),
+    Unix-Socket als unix:Pfad."""
+    if wert.startswith("/"):
+        return "unix:" + wert
+    return "127.0.0.1:" + wert if wert.isdigit() else wert
+
+
+def parse_stunnel(conf, web, exe):
+    dienst, zeilen, auszug = None, OrderedDict(), []
+    for line in conf.splitlines():
+        line = line.strip()
+        if line.startswith("# configuration file "):
+            auszug.append(line)
+        if not line or line[0] in "#;":
+            continue
+        m = re.match(r"^\[(.+)\]$", line)
+        if m:
+            dienst = m.group(1).strip()
+            zeilen[dienst] = {"accept": [], "connect": []}
+            auszug.append(line)
+            continue
+        key, _, wert = line.partition("=")
+        key, wert = key.strip().lower(), wert.strip()
+        if dienst is None or not wert:
+            continue
+        if key == "accept":
+            zeilen[dienst]["accept"].append(wert)
+        elif key in ("connect", "redirect"):
+            zeilen[dienst]["connect"].append(stunnel_ziel(wert))
+            web["backends"][exe].append(stunnel_ziel(wert))
+        else:
+            continue
+        auszug.append(line)
+    for dienst, z in zeilen.items():
+        web["vhosts"][exe].append("[%s] accept %s connect %s" % (dienst, ",".join(z["accept"]) or "-",
+                                                                ",".join(z["connect"]) or "-"))
+    web["raw"].append("--- %s (Auszug)\n" % exe + "\n".join(auszug))
 
 
 def resolve_backend(target, web, self_name, depth=0):
@@ -3422,17 +3594,28 @@ def userns_aktiv(c):
     return rc == 0 and bool(re.search(r"name=(userns|rootless)\b", out))
 
 
+# Dienste, die als root laufen müssen und Anfragen selbst in einem unprivilegierten Prozess verarbeiten
+ROOT_NOETIG = {"sshd"}
+
+
 def root_dienste(c, procs, web):
     """Warnungen (kein Rückgabewert): öffentliche Ports, deren Prozesse alle als root laufen. Je Port geprüft:
-    Bei nginx/Apache/php-fpm (Master root, Worker unprivilegiert) hält mindestens ein Worker den Port."""
+    Bei nginx/Apache/php-fpm (Master root, Worker unprivilegiert) hält mindestens ein Worker den Port. Worker, deren
+    Sockets nicht lesbar sind (nach dem Wechsel des Benutzers nicht "dumpable", z.B. Apache, php-fpm), zählen als
+    unprivilegierter Kindprozess gleichen Namens. sshd ist ausgenommen: Er muss als root laufen, um zum
+    angemeldeten Benutzer zu wechseln, und verarbeitet Anfragen in einem unprivilegierten Prozess."""
     ports = OrderedDict()
     for p in procs.values():
         for port, addr in p["ports"].items():
             if port_erreichbar(p, port, addr, web)[1]:     # wie die Priorität: auch LAN, "möglicherweise", nicht Loopback
                 ports.setdefault(port, []).append(p)
+
+    def unprivilegiert(p):
+        return p["user"].split(":")[0] != "0" or any(
+            k["user"].split(":")[0] not in ("", "0") and k["name"] == p["base"][:15] for k in p.get("kinder", ()))
     found = OrderedDict()   # Programm(e) -> Ports
     for port, ps in ports.items():
-        if all(p["user"].split(":")[0] == "0" for p in ps):
+        if not any(unprivilegiert(p) or p["base"] in ROOT_NOETIG for p in ps):
             found.setdefault("/".join(sorted({p["base"] for p in ps})), []).append(port)
     if not found or userns_aktiv(c):
         return []
@@ -3890,7 +4073,7 @@ def container_liste(infos, netze):
 # ===========================================================================
 # Reverse Proxys und Tunnel direkt auf dem Host
 # ===========================================================================
-HOST_PROXYS = {"nginx", "apache2", "httpd"} | PROXY_UNBEKANNT | TUNNEL
+HOST_PROXYS = {"nginx", "apache2", "httpd"} | STUNNEL | PROXY_UNBEKANNT | TUNNEL
 
 
 class Host(object):

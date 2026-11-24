@@ -342,6 +342,23 @@ class RootDienste(unittest.TestCase):
                                          proc(7, "/usr/sbin/php-fpm", ports={"9000": "alle"}, user="33:33"),
                                          proc(8, "/usr/sbin/php-fpm", ports={"9001": "alle"}, user="34:34")]), [])
 
+    def test_worker_ohne_lesbare_sockets(self):
+        # Apache/php-fpm: Worker nach dem Wechsel des Benutzers nicht "dumpable" -> ihre Sockets sind nicht lesbar,
+        # der Port gehört scheinbar nur dem Master; ein unprivilegierter Kindprozess gleichen Namens zählt als Worker
+        def master(exe, kinder):
+            p = proc(1, exe, ports={"80": "alle"}, user="0:0")
+            p["kinder"] = [{"pid": str(i), "user": u, "ppid": "1", "name": n} for i, (u, n) in enumerate(kinder, 7)]
+            return p
+        self.assertEqual(self.warnungen([master("/usr/sbin/apache2", [("33:33", "apache2"), ("33:33", "apache2")])]), [])
+        self.assertEqual(self.warnungen([master("/usr/sbin/php-fpm8.2", [("33:33", "php-fpm8.2")])]), [])
+        # nur root-Kinder, fremde Programme oder Benutzer unbekannt: weiter Warnung
+        for kinder in ([("0:0", "apache2")], [("33:33", "rotatelogs")], [("", "apache2")], []):
+            self.assertEqual(len(self.warnungen([master("/usr/sbin/apache2", kinder)])), 1, kinder)
+
+    def test_sshd_ausgenommen(self):
+        # sshd muss als root laufen (Wechsel zum angemeldeten Benutzer), Privilegientrennung je Verbindung
+        self.assertEqual(self.warnungen([proc(1, "/usr/sbin/sshd", ports={"22": "alle"}, user="0:0")]), [])
+
     def test_je_oeffentlichem_port(self):
         # root am öffentlichen Port, unprivilegiert nur an einem internen Port desselben Programms
         w = self.warnungen([proc(1, "/usr/local/bin/node", ports={"3000": "alle"}),

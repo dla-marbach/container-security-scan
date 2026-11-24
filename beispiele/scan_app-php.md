@@ -2,14 +2,13 @@
 
 - Image: php:8.3.30-fpm-bookworm (sha256:e7ca6c7f5a59)  
 - OS: Debian GNU/Linux 12 (bookworm)  
-- Zeitpunkt: 2026-11-23 18:13  
-- Scanner: container-security-scan 0.5.2  
+- Zeitpunkt: 2026-11-23 20:54  
+- Scanner: container-security-scan 0.6.0  
 - Datenbank: OSV, Stand 2026-11-23 12:39 UTC (daten)  
 - Erfassung: OS-Pakete dpkg; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer); 1 Kernel-Pakete nicht geprüft (Container nutzen den Kernel des Hosts)
 
 ## Ergebnis
 
-**Warnung:** Öffentlicher Dienst php-fpm:9000 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image  
 **Warnung:** Supportende: jquery 1.12.4 (jquery 1, Datum unbekannt; /srv/app/public/js/jquery-1.12.4.min.js)  
 **65 relevante Schwachstellen** (Kriterium: P1 CRITICAL, P1 HIGH, P2 CRITICAL; aktiv ausgenutzte (KEV) unabhängig von Priorität und Schweregrad; nur mit verfügbarem Fix)
 
@@ -698,8 +697,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        6f5d7becd2d2892fac7840e2fef4f7d17e03f6f70f5a96fad9376fc1642f787c
-Gestartet: 2026-11-23T18:13:22.16012046Z
+ID:        9a1a785fa13ed3d52bcd5650fbf2a2c230ed3027fee5a50ad01852a89b825691
+Gestartet: 2026-11-23T20:53:55.713551345Z
 Kommando:  ["docker-php-entrypoint"] ["php-fpm"]
 Mounts:    /w/beispiele/umgebung/php->/srv/app
 Host:      Kernel 7.0.14-linuxkit
@@ -709,9 +708,9 @@ Host:      Kernel 7.0.14-linuxkit
 
 ```
 PID                 USER                COMMAND
-691                 root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
-747                 33                  php-fpm: pool www
-748                 33                  php-fpm: pool www
+792                 root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
+844                 33                  php-fpm: pool www
+845                 33                  php-fpm: pool www
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher
