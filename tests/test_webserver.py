@@ -770,7 +770,10 @@ ProxyPass /anker http://anker:9001/#x
         procs = {"1": proc(1, "/usr/sbin/httpd", ["httpd", "-f", "/etc/httpd/app.conf"], user="0:0")}
         with mock.patch.object(scanner, "run", return_value=(0, "")):
             scanner.collect_web(c, procs)
-        self.assertEqual([call[0][0][4:] for call in c.exec.call_args_list],
+        # vorher nur httpd -V (BusyBox oder Apache?), mit dem Benutzer des Hauptprozesses
+        self.assertEqual((c.exec.call_args_list[0][0][0], c.exec.call_args_list[0][1]["user"]),
+                         (["/usr/sbin/httpd", "-V"], "0:0"))
+        self.assertEqual([call[0][0][4:] for call in c.exec.call_args_list[1:]],
                          [["-f", "/etc/httpd/app.conf", "-S"], ["-f", "/etc/httpd/app.conf", "-M"],
                           ["-f", "/etc/httpd/app.conf", "-t", "-D", "DUMP_INCLUDES"]])
 
@@ -1010,6 +1013,60 @@ ServerName web01.example.com
         self.assertEqual((www["namen"], www["listen"]), (["www.example.org", "example.org"],
                                                          [{"adresse": "*", "port": "443", "ssl": True}]))
         self.assertEqual([l["port"] for l in haupt["listen"]], ["80"])
+
+    def test_ohne_servername_kein_selbst_ermittelter_name(self):
+        # php:apache ohne ServerName: -S nennt die IP des Containers – mit dem Port des Hosts keine gültige Adresse
+        dateien = {"/etc/apache2/apache2.conf": "Listen 80\n",
+                   "/etc/apache2/sites-enabled/000-default.conf": "<VirtualHost *:80>\n    DocumentRoot /var/www/html\n"
+                                                                  "</VirtualHost>\n"}
+        s_out = "VirtualHost configuration:\n*:80                   172.23.19.3 " \
+                "(/etc/apache2/sites-enabled/000-default.conf:1)\n"
+        site, = self.apache(dateien, s_out)["sites"]
+        self.assertEqual(site["namen"], [])
+        self.assertEqual(scanner.site_urls(site, web(published={"80": ["127.0.0.1:53013"]})), ["http://*:53013/"])
+        # ServerName global gesetzt: der Name aus -S gilt
+        dateien["/etc/apache2/apache2.conf"] += "ServerName cloud.example.org\n"
+        s_out = s_out.replace("172.23.19.3", "cloud.example.org")
+        self.assertEqual(self.apache(dateien, s_out)["sites"][0]["namen"], ["cloud.example.org"])
+        # Block nicht gelesen: Name aus -S bleiben
+        self.assertEqual(self.apache({"/etc/apache2/apache2.conf": "Listen 80\n"}, s_out)["sites"][0]["namen"],
+                         ["cloud.example.org"])
+
+
+class BusyBoxHttpd(unittest.TestCase):
+    """httpd von BusyBox (Image busybox, z.B. Datencontainer von Greenbone): kein Apache."""
+    USAGE = "httpd: invalid option -- 'V'\nBusyBox v1.36.1 (2023-05-18 22:34:17 UTC) multi-call binary.\n"
+
+    def lesen(self, argv, conf="", antwort=None, cwd="/"):
+        c = mock.Mock(has_sh=True, info={"Config": {"Env": []}})
+        c.exec.return_value = antwort or (1, self.USAGE)
+        c.read_file.side_effect = lambda p: conf if p in ("/etc/httpd.conf", "/srv/httpd.conf") else ""
+        w = scanner.web_leer()
+        procs = {"1": proc(1, "/bin/httpd", argv, cwd=cwd, ports={"80": "alle"}, user="100:101")}
+        with mock.patch.object(scanner, "parse_apache") as pa:
+            scanner.webserver_lesen(c, procs, w)
+        return w, c, pa
+
+    def test_kein_apache_docroot_aus_h(self):
+        w, c, pa = self.lesen(["httpd", "-f", "-p", "80", "-h", "/var/www"])
+        pa.assert_not_called()                     # kein -S/-M/-t, also nicht unvollständig
+        self.assertEqual(c.exec.call_args[0][0], ["/bin/httpd", "-V"])
+        self.assertEqual(c.exec.call_args[1]["user"], "100:101")     # Benutzer des Prozesses
+        self.assertEqual((w["docroots"]["/bin/httpd"], w["problems"], w["unlesbar"]), (["/var/www"], [], set()))
+        # zusammengefasste Optionen, Wert direkt angehängt; ohne -h das Arbeitsverzeichnis
+        self.assertEqual(self.lesen(["httpd", "-fvh/srv"])[0]["docroots"]["/bin/httpd"], ["/srv"])
+        self.assertEqual(self.lesen(["httpd", "-f"], cwd="/data")[0]["docroots"]["/bin/httpd"], ["/data"])
+
+    def test_weiterleitung_unvollstaendig(self):
+        w = self.lesen(["httpd", "-f", "-c", "/srv/httpd.conf"], conf="H:/www\nP:/api:http://app:8080/\n")[0]
+        self.assertEqual(w["unlesbar"], {"/bin/httpd"})
+        self.assertIn("leitet laut /srv/httpd.conf weiter (P:)", w["problems"][0])
+
+    def test_apache_wie_bisher(self):
+        _, _, pa = self.lesen(["httpd", "-DFOREGROUND"], antwort=(0, "Server version: Apache/2.4.71 (Unix)\n"))
+        pa.assert_called_once()
+        _, _, pa = self.lesen(["httpd", "-DFOREGROUND"], antwort=(1, ""))    # unbekannt: als Apache versuchen
+        pa.assert_called_once()
 
 
 NGINX_SITES = """# configuration file /etc/nginx/nginx.conf:

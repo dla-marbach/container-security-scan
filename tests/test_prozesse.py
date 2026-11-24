@@ -4,6 +4,7 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -150,6 +151,53 @@ class Versionsabfrage(unittest.TestCase):
         for name in ("node", "php", "python3", "nginx", "java"):
             self.assertEqual(calls[name], (scanner.NOBODY, None))
 
+    def test_httpd_nie_mit_v(self):
+        # BusyBox-httpd startet mit -v ("ausführlich") einen Webserver im Hintergrund; -V lehnt es ab
+        c = mock.Mock(user="0")
+        c.probe.return_value = (0, "Server version: Apache/2.4.71 (Unix)\n")
+        comps = scanner.probe_runtimes(c, {"1": proc(1, "/usr/local/apache2/bin/httpd")}, {})
+        aufrufe = [cmd for (cmd, user), kw in c.probe.call_args_list if cmd[0].endswith(("httpd", "apache2"))]
+        self.assertEqual(sorted(aufrufe), [["/usr/local/apache2/bin/httpd", "-V"], ["apache2", "-V"], ["httpd", "-V"]])
+        self.assertIn(("apache-httpd", "2.4.71"), [(x["name"], x["version"]) for x in comps])
+
+
+class Zeitlimit(unittest.TestCase):
+    """Versionsabfragen im Container über PROBE_SH statt timeout (BusyBox-timeout hinterlässt Zombies an PID 1)."""
+
+    def sh(self, *cmd, sekunden=50):
+        p = subprocess.Popen(["sh", "-c", scanner.PROBE_SH, "sh", str(sekunden)] + list(cmd), stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, universal_newlines=True, start_new_session=True)
+        out = p.communicate(timeout=30)[0]
+        # nichts bleibt zurück: kein Prozess mehr in der eigenen Prozessgruppe (Programm, Wächter, dessen sleep)
+        with self.assertRaises(ProcessLookupError):
+            os.killpg(p.pid, 0)
+        return p.returncode, out
+
+    def test_ausgabe_und_rueckgabewert(self):
+        start = time.time()
+        self.assertEqual(self.sh("sh", "-c", "echo 'Apache/2.4.71 (Unix)'; echo fehler >&2; exit 3"),
+                         (3, "Apache/2.4.71 (Unix)\nfehler\n"))
+        self.assertLess(time.time() - start, 1)          # schnelle Abfrage wartet nicht auf den Wächter
+        rc, out = self.sh("programm-gibt-es-nicht", "-v")
+        self.assertEqual(rc, 127)
+
+    def test_zeitlimit(self):
+        start = time.time()
+        rc, _ = self.sh("sleep", "20", sekunden=1)
+        self.assertEqual(rc, 128 + 9)
+        self.assertLess(time.time() - start, 5)
+
+    def test_probe_ueber_shell(self):
+        c = mock.Mock(has_sh=True, spec=["has_sh", "exec"])
+        c.exec.return_value = (0, "")
+        scanner.Container.probe(c, ["/usr/bin/node", "-v"], "33:33")
+        cmd = c.exec.call_args[0][0]
+        self.assertEqual(cmd, ["sh", "-c", scanner.PROBE_SH, "sh", "50", "/usr/bin/node", "-v"])
+        self.assertEqual((c.exec.call_args[1]["user"], c.exec.call_args[1]["timeout"]), ("33:33", 60))
+        c.has_sh = False                                    # ohne Shell: direkt, nur Zeitlimit von docker exec
+        scanner.Container.probe(c, ["/usr/bin/node", "-v"], "33:33")
+        self.assertEqual(c.exec.call_args[0][0], ["/usr/bin/node", "-v"])
+
 
 class Container_(unittest.TestCase):
     def test_befehle_im_container_ueber_sicheren_pfad(self):
@@ -192,7 +240,6 @@ class Container_(unittest.TestCase):
             c = scanner.Container("web", "0")
         self.assertEqual((c.name, c.mounts), ("web", ["/app", "/var/www"]))
         self.assertTrue(c.has_find_tar and c.has_proc_tools and c.has_sh)
-        self.assertFalse(c.has_timeout)
 
     def test_nicht_gefunden_oder_gestoppt(self):
         with mock.patch.object(scanner, "run", return_value=(1, "")):

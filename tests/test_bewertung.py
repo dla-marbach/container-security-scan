@@ -389,6 +389,9 @@ class OffeneDatendienste(unittest.TestCase):
         self.assertEqual(w, ["Datenbank/Cache/Message Broker postgres:5432 direkt von außerhalb des Hosts erreichbar "
                              "(veröffentlicht als 0.0.0.0:5432) – Anwendungen erreichen ihn über das Docker-Netz: Port "
                              "nicht veröffentlichen (ports: entfernen) oder nur an 127.0.0.1 binden"])
+        # IPv4 und IPv6: ein "veröffentlicht als"
+        self.assertIn("(veröffentlicht als 0.0.0.0:8983, :::8983)",
+                      self.warnungen(pg, published={"5432": ["0.0.0.0:8983", ":::8983"]})[0])
         # nur an Loopback des Hosts veröffentlicht: nicht von außerhalb des Hosts
         self.assertEqual(self.warnungen(pg, published={"5432": ["127.0.0.1:5432 (nur lokal – vermutlich hinter "
                                                                 "einem Reverse Proxy auf dem Host)"]}), [])

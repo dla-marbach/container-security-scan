@@ -21,8 +21,13 @@ def C(*a, **kw):
 
 
 class FakeContainer(object):
+    has_sh = False
+
     def __init__(self, name="app"):
         self.name, self.id, self.info, self.user = name, "c" * 64, dict(INFO, Name="/" + name), "0"
+
+    def exec(self, cmd, **kw):          # z.B. rpm -qa ohne Paketdatenbank im Image
+        return 1, ""
 
 
 def fake_run(cmd, *a, **kw):
@@ -86,7 +91,8 @@ class Bericht(unittest.TestCase):
                          [(1, "CVE-2"), (1, "CVE-1"), (1, "GHSA-u"), (2, "CVE-3"), (2, "CVE-4"), (3, "CVE-5")])
         self.assertEqual(sorted(r["id"] for r in relevant), ["CVE-1", "CVE-2", "CVE-3"])
         self.assertIn("**3 relevante Schwachstellen**", text)
-        self.assertIn("Hinweis: 1 Befunde in P1 haben noch keinen Schweregrad", text)
+        self.assertIn("**1 Befunde in P1 ohne Schweregrad** (nicht gezählt, bitte selbst einschätzen):\n\n- **GHSA-u** "
+                      "(UNKNOWN) in express 4.0.0 – noch kein Fix – genutzt von node:3000", text)
         self.assertIn("Fehler / mit Pipe", text)
         self.assertIn("## Befunde (5 von 6;", text)          # P3 MEDIUM ohne --alle ausgeblendet
         self.assertIn("PID 5 (/usr/sbin/nginx): /usr/lib/libssl.so.3 (deleted)", text)
@@ -110,6 +116,14 @@ class Bericht(unittest.TestCase):
 
 class Konsole(unittest.TestCase):
     """Kopf und Zeilen je Dienst für die Konsole (Rundeck-Log, Mail) – ohne Bericht die einzige Ausgabe."""
+
+    def test_fund_ohne_nutzer(self):
+        # KEV als P4: kein "genutzt von – –"
+        r = {"id": "CVE-2026-123158", "sev": "HIGH", "kev": "2026-11-09", "pkg": "openssh-keygen",
+             "ver": "10.3_p1-r1", "fix": "10.3_p1-r2", "users": "–"}
+        self.assertEqual(scanner.fund_text(r), "CVE-2026-123158 (HIGH KEV) in openssh-keygen 10.3_p1-r1 – behoben in "
+                                               "10.3_p1-r2 – von keinem erkannten Prozess genutzt – aktiv ausgenutzt "
+                                               "(KEV seit 2026-11-09)")
 
     def test_dienste(self):
         # Programm mit Anwendung, Erreichbarkeit je Port; Webadressen mit Weg nur, wenn er nicht schon oben steht;
@@ -238,12 +252,14 @@ class Gesamtlauf(unittest.TestCase):
         self.info = {}
 
     def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, via_urls=None, bekannt=None, anlass=None,
-             **web_kw):
+             prozess=None, has_sh=False, **web_kw):
         """scan_container; liefert (Rückgabewert, Backends, Bericht), Konsole in self.konsole, Webadressen der Ziele
         in self.ziel_urls."""
-        nginx = proc(1, "/usr/sbin/nginx", ports=ports or {"80": "alle"}, maps={"/usr/lib/x86_64-linux-gnu/libssl.so.3"})
+        nginx = prozess or proc(1, "/usr/sbin/nginx", ports=ports or {"80": "alle"},
+                                maps={"/usr/lib/x86_64-linux-gnu/libssl.so.3"})
         w = web(**dict({"published": {"80": ["0.0.0.0:80"]}}, **web_kw))
         container = FakeContainer()
+        container.has_sh = has_sh
         container.info = dict(container.info, **self.info)
         patches = [mock.patch.object(scanner, "Container", return_value=container),
                    mock.patch.object(scanner, "collect_files", return_value=(dict(self.files), [], "test", list(self.problems))),
@@ -298,6 +314,53 @@ class Gesamtlauf(unittest.TestCase):
             self.assertEqual(f.read().split(), [scanner.datei_sha256(base + ".cdx.json"),
                                                 os.path.basename(base + ".cdx.json")])
         self.assertNotIn("Bericht:", self.konsole)
+
+    def test_image_ohne_betriebssystem_vollstaendig(self):
+        # FROM scratch mit statischem Programm (portainer): keine OS-Pakete zu prüfen -> 0, nicht 2
+        self.files = {}
+        statisch = proc(1, "/portainer", ports={"9000": "alle"}, maps={"/portainer", "/data/portainer.db"})   # BoltDB: mmap
+        code, _, base = self.lauf(prozess=statisch, published={"9000": ["0.0.0.0:9000"]})
+        self.assertEqual(code, 0)
+        self.assertIn("Image example/app:1 – ohne Betriebssystem (nur statische Programme)", self.konsole)
+        with open(base + ".md", encoding="utf-8") as f:
+            self.assertIn("OS-Pakete keine (Image ohne Betriebssystem)", f.read())
+        # mit Shell (BusyBox), gemeinsam genutzter Bibliothek, ungelesenem Speicherabbild, verdecktem Kindprozess
+        # oder ohne Prozess: unvollständig
+        for kw in ({"has_sh": True}, {"prozess": proc(1, "/portainer", maps={"/portainer", "/lib/ld-musl-x86_64.so.1"})},
+                   {"prozess": proc(1, "/app", maps={"/app", "/usr/lib/libssl.so.3 (deleted)"})},
+                   {"prozess": proc(1, "/portainer")}, {"prozess": dict(statisch, kinder=[{"pid": "2"}])},
+                   {"keine_prozesse": True}):
+            kw.setdefault("prozess", statisch)
+            self.assertEqual(self.lauf(**kw)[0], 2, kw)
+            self.assertIn("UNVOLLSTÄNDIG: keine OS-Paketdatenbank gefunden – ", self.konsole)
+        # os-release vorhanden (z.B. distroless): wie bisher
+        self.files = {"/etc/os-release": b'ID=debian\nVERSION_ID="12"\nPRETTY_NAME="Debian 12"\n'}
+        self.assertEqual(self.lauf(prozess=statisch)[0], 2)
+
+    def test_p1_ohne_schweregrad_aufgelistet(self):
+        # nicht gezählt, aber auf der Konsole und im Bericht einzeln; mit --nur-behebbare nur mit Fix
+        schreibe_jsonl(self.db, "Debian", [eintrag("DEBIAN-CVE-2026-10", "Debian:12", "openssl",
+                                                   [{"introduced": "0"}, {"fixed": "3.0.15-1~deb12u3"}],
+                                                   upstream=["CVE-2026-10"], published="2026-11-01T00:00:00Z"),
+                                           eintrag("DEBIAN-CVE-2026-11", "Debian:12", "openssl",
+                                                   [{"introduced": "0"}], upstream=["CVE-2026-11"],
+                                                   published="2026-11-01T00:00:00Z")], datei="01.jsonl")
+        code, _, base = self.lauf()
+        self.assertEqual(code, 1)
+        zeilen = self.konsole.splitlines()
+        self.assertTrue(any(z.startswith("RELEVANTE SCHWACHSTELLEN – 3 Befunde, davon 1 relevant (1 neu), P1 ohne "
+                                         "Schweregrad: 2 – Bericht:") for z in zeilen), zeilen)
+        i = zeilen.index("P1 ohne Schweregrad (nicht gezählt, bitte selbst einschätzen):")
+        self.assertEqual(zeilen[i + 1:], [
+            "CVE-2026-10 (UNKNOWN) in libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u3 – genutzt von nginx:80",
+            "CVE-2026-11 (UNKNOWN) in libssl3 3.0.15-1~deb12u1 – noch kein Fix – genutzt von nginx:80"])
+        with open(base + ".md", encoding="utf-8") as f:
+            self.assertIn("**2 Befunde in P1 ohne Schweregrad** (nicht gezählt, bitte selbst einschätzen):\n\n- "
+                          "**CVE-2026-10** (UNKNOWN)", f.read())
+        self.a.nur_behebbare = True
+        self.lauf()
+        self.assertIn("davon 1 relevant (0 neu), P1 ohne Schweregrad: 1", self.konsole)
+        self.assertNotIn("CVE-2026-11", self.konsole)
 
     def test_nicht_unterstuetztes_os_ergibt_2_mit_klarer_meldung(self):
         # Oracle Linux: keine OSV-Daten; keine Empfehlung für --oekosysteme, OS-Pakete nicht geprüft
