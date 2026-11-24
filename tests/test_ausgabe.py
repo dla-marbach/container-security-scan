@@ -109,51 +109,7 @@ class Bericht(unittest.TestCase):
 
 
 class Konsole(unittest.TestCase):
-    """Zeilen je Paket und je Dienst für die Konsole (Rundeck-Log, Mail) – ohne Bericht die einzige Ausgabe."""
-
-    def fund(self, comp, vid, sev, fix, neu=True, kev="", prio=1, users="php-fpm:9000", cmp=None):
-        r = {"comp": comp, "id": vid, "sev": sev, "fix": fix, "pkg": comp["name"], "ver": comp["version"],
-             "users": users, "prio": prio, "neu": neu, "title": ""}
-        if kev:
-            r["kev"] = kev
-        if cmp:
-            r["cmp"] = cmp
-        return r
-
-    def test_funde_je_paket(self):
-        libc6 = C("os-paket", "libc6", "2.36-9", src="glibc")
-        libcbin = C("os-paket", "libc-bin", "2.36-9", src="glibc")
-        php = C("runtime", "php", "8.3.30")
-        lodash = C("npm", "lodash", "4.17.20", "/app/node_modules/lodash")
-        dpkg = scanner.cmp_dpkg
-        relevant = [
-            # KEV in P4 zuerst, dann neue; dieselbe CVE in zwei Binärpaketen einmal; höchster Fix nach Version
-            self.fund(php, "CVE-K", "MEDIUM", "8.3.36", neu=False, kev="2026-10-26", prio=4, users="–"),
-            self.fund(php, "CVE-N", "CRITICAL", "", neu=False, prio=4, users="–"),
-            self.fund(libc6, "CVE-A", "HIGH", "2.36-9+deb12u10", cmp=dpkg),
-            self.fund(libc6, "CVE-B", "CRITICAL", "2.36-9+deb12u9", neu=False, cmp=dpkg),
-            self.fund(libcbin, "CVE-A", "HIGH", "2.36-9+deb12u10", cmp=dpkg),
-            self.fund(libcbin, "CVE-B", "CRITICAL", "2.36-9+deb12u9", neu=False, cmp=dpkg),
-            self.fund(lodash, "CVE-L", "HIGH", "4.17.21", neu=False, users="node:3000", cmp=scanner.cmp_semver),
-            dict(self.fund(lodash, "GHSA-x", "HIGH", "4.18.0", neu=False, users="node:3000", cmp=scanner.cmp_semver),
-                 sev_quelle="Bitnami")]
-        self.assertEqual(scanner.funde_je_paket(relevant, known=set()), [
-            "NEU: libc6, libc-bin 2.36-9 – behoben in 2.36-9+deb12u10 – genutzt von php-fpm:9000 – 1 CRITICAL, "
-            "1 HIGH (1 neu): CVE-B, CVE-A",
-            "php 8.3.30 – behoben in 8.3.36 (1 noch ohne Fix) – von keinem erkannten Prozess genutzt – 1 CRITICAL, 1 MEDIUM "
-            "(1 aktiv ausgenutzt): CVE-K (KEV seit 2026-10-26), CVE-N",
-            "lodash 4.17.20 – behoben in 4.18.0 – genutzt von node:3000 – 1 HIGH, 1 HIGH*: CVE-L, GHSA-x"])
-        # ohne vorherigen Lauf: keine Markierung "NEU"
-        self.assertTrue(scanner.funde_je_paket(relevant, known=None)[0].startswith("php 8.3.30"))
-        # verschiedene Versionen im selben Quellpaket, Nutzer getrennt
-        libssl = C("os-paket", "libssl3", "3.0.1-1", src="openssl")
-        libcrypto = C("os-paket", "libcrypto3", "3.0.1-1+b1", src="openssl")
-        self.assertEqual(scanner.funde_je_paket([self.fund(libssl, "CVE-S", "HIGH", "3.0.2-1"),
-                                                 self.fund(libcrypto, "CVE-S", "HIGH", "3.0.2-1"),
-                                                 self.fund(libssl, "CVE-S", "HIGH", "3.0.2-1", users="nginx:80")], None),
-                         ["libssl3 3.0.1-1, libcrypto3 3.0.1-1+b1 – behoben in 3.0.2-1 – genutzt von php-fpm:9000 – "
-                          "1 HIGH: CVE-S",
-                          "libssl3 3.0.1-1 – behoben in 3.0.2-1 – genutzt von nginx:80 – 1 HIGH: CVE-S"])
+    """Kopf und Zeilen je Dienst für die Konsole (Rundeck-Log, Mail) – ohne Bericht die einzige Ausgabe."""
 
     def test_dienste(self):
         # Programm mit Anwendung, Erreichbarkeit je Port; Webadressen mit Weg nur, wenn er nicht schon oben steht;
@@ -338,7 +294,7 @@ class Gesamtlauf(unittest.TestCase):
             "RELEVANTE SCHWACHSTELLEN – 1 Befunde, davon 1 relevant (1 neu)",
             "Image example/app:1 – Debian 12",
             "Dienst nginx, Port 80: veröffentlicht als 0.0.0.0:80",
-            "libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u2 – genutzt von nginx:80 – 1 HIGH: CVE-2026-9"])
+            "CVE-2026-9 (HIGH) in libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u2 – genutzt von nginx:80"])
         # nur die SBOM: Prüfsumme nur für sie
         self.a.sbom = True
         _, _, base = self.lauf()
@@ -407,7 +363,7 @@ class Gesamtlauf(unittest.TestCase):
         bekannt = {}
         for anlass in (None, "eines neuen Wegs über traefik:80 in proxy"):
             code, _, base = self.lauf(bekannt=bekannt, anlass=anlass)
-            self.assertIn("NEU: libssl3 3.0.15-1~deb12u1", self.konsole)
+            self.assertIn("NEU: CVE-2026-9 (HIGH) in libssl3", self.konsole)
             with open(base + ".md", encoding="utf-8") as f:
                 self.assertIn("Davon **1 neu** seit dem letzten Lauf.", f.read())
         self.assertEqual(bekannt, {"app": set()})
@@ -519,15 +475,15 @@ class Gesamtlauf(unittest.TestCase):
     def test_relevante_funde_auf_der_konsole(self):
         # für Rundeck/Mail: nicht nur die Zusammenfassung, sondern jeder relevante Fund
         self.lauf()
-        self.assertIn("libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u2 – genutzt von nginx:80 – "
-                      "1 HIGH: CVE-2026-9\n", self.konsole)
+        self.assertIn("\nCVE-2026-9 (HIGH) in libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u2 – "
+                      "genutzt von nginx:80\n", self.konsole)
         self.assertNotIn("NEU:", self.konsole)     # erster Lauf ohne Vergleich: keine Markierung
         with open(os.path.join(self.a.ausgabe, "bekannt_app.json"), "w") as f:
             json.dump([], f)                        # letzter Lauf ohne relevante Funde
         self.lauf()
-        self.assertIn("NEU: libssl3 3.0.15-1~deb12u1", self.konsole)
+        self.assertIn("NEU: CVE-2026-9 (HIGH) in libssl3", self.konsole)
         self.lauf()     # danach bekannt: nicht mehr neu
-        self.assertIn("libssl3 3.0.15-1~deb12u1", self.konsole)
+        self.assertIn("\nCVE-2026-9 (HIGH) in libssl3", self.konsole)
         self.assertNotIn("NEU:", self.konsole)
 
     def test_behoben_ergibt_0(self):

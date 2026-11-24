@@ -291,11 +291,20 @@ class Dienste(unittest.TestCase):
         self.assertNotIn("geheim", str(k))
         # Ziele knapp: Container:Port (Dienstname wie im Container-Netz, upstream aufgelöst, doppelte einmal), im
         # selben Container wie konfiguriert, Unix-Socket, Variable
-        w = {"containers": {"app": "proj-app-1", "php": "php"}, "upstreams": {"pool": ["php:9000", "app:3000"]}}
-        s = self.dienst(p, backends={"/usr/sbin/nginx": ["http://app:3000/api/", "fastcgi://pool", "127.0.0.1:9000",
-                                                         "unix:/run/php.sock", "http://$backend"]}, **w)
+        w = {"containers": {"app": "proj-app-1", "php": "php", "backend": "backend"},
+             "upstreams": {"pool": ["php:9000", "app:3000"], "gemischt": ["app:3000", "extern.example.org:443",
+                                                                           "unix:/run/b.sock"],
+                           "sockets": ["unix:/run/a.sock"]}}
+        s = self.dienst(p, backends={"/usr/sbin/nginx": [
+            "http://app:3000/api/", "fastcgi://pool", "127.0.0.1:9000", "unix:/run/php.sock", "http://$backend",
+            "http://gemischt", "http://sockets", "ftp://admin:geheim@backend:21/", "https://u:p@fremd.example.org/"]},
+            **w)
+        # upstream: jedes Ziel einzeln (auch externe und Unix-Sockets); nie Zugangsdaten aus der URL
         self.assertEqual(s["konsole"]["ziele"], ["proj-app-1:3000", "php:9000", "127.0.0.1:9000",
-                                                 "unix:/run/php.sock", "$backend (nicht auswertbar)"])
+                                                 "unix:/run/php.sock", "$backend (nicht auswertbar)",
+                                                 "extern.example.org:443 (extern)", "unix:/run/b.sock",
+                                                 "unix:/run/a.sock", "backend:21", "fremd.example.org (extern)"])
+        self.assertNotIn("geheim", str(s["konsole"]))
         # Ports mit gleicher Erreichbarkeit zusammen, Anwendung im Arbeitsverzeichnis
         node = proc(1, "/usr/local/bin/node", ["node", "server.js"], cwd="/app", ports={"3000": "alle", "3001": "alle"})
         k = self.dienst(node)["konsole"]

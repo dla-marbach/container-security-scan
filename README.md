@@ -22,10 +22,10 @@ vollständig: [Konsolenausgabe](beispiele/ausgabe.txt)):
 
 ```
 container-security-scan 1.0.0
-Scan: 2026-11-24 15:36 UTC
+Scan: 2026-11-24 16:00 UTC
 Daten: 2026-11-24 13:43 UTC
 Host: <rechner> mit 4 laufenden und 0 gestoppten Containern:
-- app-node     erstellt 2026-11-24 15:36 UTC, läuft seit 0 min
+- app-node     erstellt 2026-11-24 16:00 UTC, läuft seit 0 min
 …
 
 === app-php ===
@@ -34,10 +34,12 @@ RELEVANTE SCHWACHSTELLEN – 1437 Befunde, davon 65 relevant (65 neu, 4 aktiv au
 Image php:8.3.30-fpm-bookworm – Debian GNU/Linux 12 (bookworm)
 Dienst php-fpm 8.3.30 (in /var/www/html), Port 9000: öffentlich über nginx:80 in app-proxy
   Webadressen: http://shop.example.org:8080/ (\.php$)
-libbrotli1 1.0.9-2+b6 – behoben in 1.0.9-2+deb12u1 – genutzt von php-fpm:9000 – 1 CRITICAL (1 aktiv ausgenutzt): CVE-2026-111497 (KEV seit 2026-10-27)
-php 8.3.30 – behoben in 8.3.36 – genutzt von php-fpm:9000 – 6 CRITICAL, 5 HIGH (2 aktiv ausgenutzt): CVE-2026-109618 (KEV seit 2026-10-26), …
+CVE-2026-111497 (CRITICAL KEV) in libbrotli1 1.0.9-2+b6 – behoben in 1.0.9-2+deb12u1 – genutzt von php-fpm:9000 – aktiv ausgenutzt (KEV seit 2026-10-27)
+CVE-2026-33845 (CRITICAL) in libgnutls30 3.7.9-2+deb12u6 – behoben in 3.7.9-2+deb12u7 – genutzt von php-fpm:9000
 …
-libc-bin, libc6 2.36-9+deb12u13 – behoben in 2.36-9+deb12u14 – genutzt von php-fpm:9000 – 5 HIGH: CVE-2025-15281, CVE-2026-0861, …
+CVE-2026-109618 (CRITICAL KEV) in php 8.3.30 – behoben in 8.3.36 – genutzt von php-fpm:9000 – aktiv ausgenutzt (KEV seit 2026-10-26)
+…
+CVE-2022-29248 (HIGH) in guzzlehttp/guzzle 7.4.0 – behoben in 7.4.3 – genutzt von php-fpm:9000 (Docroot unbekannt)
 …
 
 === app-node ===
@@ -51,7 +53,7 @@ ERGEBNIS: FUNDE (Rückgabewert 1) – <rechner>
 - Von 1437 Befunden sind 65 **relevant**: php-fpm ist über nginx erreichbar (Priorität P1), die Lücken sind
   schwer bzw. aktiv ausgenutzt (`KEV`), und es gibt einen Fix.
 - Je Container nennt die Ausgabe Image, [Dienste](#ausgabe) mit dem Proxy davor und die
-  [Webadressen](#webadressen); relevante Funde stehen je Paket mit der Version, die alle behebt.
+  [Webadressen](#webadressen); darunter jeder relevante Fund mit Schweregrad und Fix-Version.
 - [Warnungen](#warnungen) wie „läuft als root“ ändern den Rückgabewert nicht, [gefährliche
   Einstellungen](#gefährliche-einstellungen-des-containers) wie ein eingebundener `docker.sock` schon.
 - Auf Wunsch je Container ein Bericht mit allen Befunden, Prozessen und Webserver-Konfiguration
@@ -328,7 +330,7 @@ CVE-2024-8926   php           2027-06-30  betrifft nur PHP-CGI unter Windows (ge
 CONF-SOCKET     monitoring    2027-03-31  liest nur den Status der Container, Socket-Proxy geplant
 ```
 
-- Paket wie in der Ausgabe (bei `libc6, libc-bin` je Paket eine Zeile oder `*`); bei `CONF-…` der Containername.
+- Paket wie in der Ausgabe bzw. der Spalte „Paket“ des Berichts; bei `CONF-…` der Containername.
 - Nach dem Ablaufdatum zählt der Fund wieder (mit Warnung). Ausgenommene Funde stehen im Bericht unter „Nicht
   gezählt“.
 - Eine fehlerhafte Zeile ergibt Rückgabewert 2, statt still etwas auszublenden.
@@ -350,9 +352,8 @@ Abschnitt ersetzt den früheren:
   erreichbar sind (`Port 9000: öffentlich über nginx:80 in app-proxy`); darunter die [Webadressen](#webadressen),
   bei einem Proxy die Ziele (`leitet weiter an: …`), bei einer Anwendung die aufgerufenen Container (`ruft auf: …`)
 - [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) (`CONF-…`)
-- relevante Funde, eine Zeile je Paket (OS-Pakete je Quellpaket, z. B. `libc6, libc-bin`): Version, die Version,
-  die alle Funde behebt, genutzt von, Anzahl je Schweregrad, Kennungen; `NEU:`, wenn ein Fund im letzten Lauf
-  noch nicht relevant war
+- relevante Funde, eine Zeile je Fund: Kennung, Schweregrad, Paket und Version, Fix-Version, genutzt von, aktiv
+  ausgenutzt (KEV); neue zuerst mit `NEU:`, wenn ein Fund im letzten Lauf noch nicht relevant war
 
 Dateien im Ausgabeverzeichnis, nur für den Aufrufer lesbar:
 

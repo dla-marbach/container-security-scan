@@ -32,7 +32,7 @@ Aufruf:
 
 Ergebnis: auf der Konsole Zeitpunkt, Stand der Daten, Host mit laufenden Containern, dann je Container ein
           Abschnitt "=== Name ===" mit Zusammenfassung, Image, Dienste mit Erreichbarkeit und Webadressen,
-          gefährliche Einstellungen und relevante Funde je Paket; im Ausgabeverzeichnis bekannt_<name>.json
+          gefährliche Einstellungen und relevante Funde; im Ausgabeverzeichnis bekannt_<name>.json
           (relevante Funde des letzten Laufs, für "NEU"), dazu auf Wunsch:
           scan_<name>_<zeit>.md        mit --bericht: Ergebnis, Dienste, Webadressen, Befunde nach Priorität, Anhang
           scan_<name>_<zeit>.cdx.json  mit --sbom: SBOM (CycloneDX 1.5); auch mit Trivy/Grype/Dependency-Track nutzbar
@@ -2165,7 +2165,7 @@ def split_target(target):
     m = re.match(r"^(?:([a-z0-9]+)://)?([^/]+)", target)
     if not m or target.startswith("unix:"):
         return "", ""
-    hostport = m.group(2)
+    hostport = m.group(2).rpartition("@")[2]        # ohne Zugangsdaten (http://benutzer:passwort@app:3000)
     host, _, port = hostport.rpartition(":") if re.search(r":\d+$", hostport) else (hostport, "", "")
     if host.startswith("[") and host.endswith("]"):      # http://[fd00::2]:8080
         host = host[1:-1]
@@ -2240,16 +2240,22 @@ def socket_prozesse(target, procs, web):
 
 
 def ziele_kurz(target, web):
-    """Backend-Ziel knapp für die Konsole: zugeordnet "Container:Port" (upstream aufgelöst; im selben Container wie
-    konfiguriert, z.B. 127.0.0.1:9000), sonst das Ziel ohne Schema mit Hinweis (Unix-Socket, Variable, extern)."""
-    ziele = backend_containers(target, web)
-    if ziele:
-        host = split_target(target)[0]
-        return ["%s:%s" % (host if ct == web["self"] else ct, port) if port != "*" else ct for ct, port in ziele]
-    if target.startswith("unix:"):
-        return [target]
-    ohne = re.sub(r"^[a-z0-9]+://", "", target).split("/")[0]
-    return [ohne + (" (nicht auswertbar)" if "$" in ohne else " (extern)")]
+    """Backend-Ziel knapp für die Konsole, upstream in seine Ziele aufgelöst, jedes einzeln: zugeordnet
+    "Container:Port" (im selben Container wie konfiguriert, z.B. 127.0.0.1:9000), sonst Unix-Socket bzw. Host und
+    Port mit Hinweis (Variable, extern) – nie Zugangsdaten aus der URL (das Log geht nach Rundeck und per Mail)."""
+    kurz = []
+    for t in endziele(target, web):
+        if t.startswith("unix:"):
+            kurz.append(t)
+            continue
+        host, port = split_target(t)
+        ziele = backend_containers(t, web)
+        if ziele:
+            kurz += ["%s:%s" % (host if ct == web["self"] else ct, p) if p != "*" else ct for ct, p in ziele]
+        else:
+            ohne = re.sub(r"^[a-z0-9]+://", "", t).split("/")[0].rpartition("@")[2]
+            kurz.append(ohne + (" (nicht auswertbar)" if "$" in ohne else " (extern)"))
+    return kurz
 
 
 def backend_containers(target, web, depth=0, nur_loopback=False):
@@ -3397,8 +3403,7 @@ def osv_scan(comps, osinfo, dbdirs):
                                 old["sev"] = sev if old["sev"] == "UNKNOWN" else old["sev"]
                             else:
                                 title = (rec.get("summary") or rec.get("details") or "").split("\n")[0]
-                                findings[(id(c), vid)] = f = {"comp": c, "id": vid, "sev": sev, "fix": fix,
-                                                              "title": title, "cmp": cmp}
+                                findings[(id(c), vid)] = f = {"comp": c, "id": vid, "sev": sev, "fix": fix, "title": title}
                                 # Distributionsdaten führen nur, was die Distribution betrifft; andere Quellen
                                 # (GitHub, Bitnami) auch Lücken, die nur unter Windows auftreten
                                 if fname not in OS_FILES and nur_windows(title):
@@ -3834,52 +3839,6 @@ def fund_text(r, fett=""):
         (" – %saktiv ausgenutzt%s (KEV seit %s)" % (fett, fett, r["kev"]) if r.get("kev") else "")
 
 
-def funde_je_paket(relevant, known):
-    """Relevante Funde für die Konsole, eine Zeile je Paket: OS-Pakete nach Quellpaket zusammengefasst (libc6 und
-    libc-bin haben dieselben Funde), sonst nach Name; je Zeile dieselben Nutzer. Die Fix-Version ist die höchste, die
-    alle Funde behebt. Reihenfolge: mit neuen Funden, mit aktiv ausgenutzten, nach Priorität und Schweregrad, sonst
-    wie die Funde."""
-    gruppen = OrderedDict()
-    for r in relevant:
-        x = r["comp"]
-        quelle = x.get("src") if x["typ"] == "os-paket" and x.get("src") else r["pkg"]
-        gruppen.setdefault((x["typ"], quelle, r["users"]), []).append(r)
-    zeilen = []
-    for gruppe in gruppen.values():
-        funde = OrderedDict()           # je Kennung einmal (dieselbe CVE in libc6 und libc-bin)
-        for r in sorted(gruppe, key=lambda r: (not r.get("kev"), SEV.index(r["sev"]), r["id"])):
-            funde.setdefault(r["id"], r)
-        pakete = OrderedDict((r["pkg"], r["ver"]) for r in gruppe)
-        versionen = set(pakete.values())
-        name = "%s %s" % (", ".join(pakete), versionen.pop()) if len(versionen) == 1 else \
-            ", ".join("%s %s" % pv for pv in pakete.items())
-        fixes = sorted({r["fix"] for r in gruppe if r["fix"]})
-        try:
-            fix = max(fixes, key=cmp_to_key(gruppe[0]["cmp"])) if fixes else ""
-        except (KeyError, TypeError):   # ohne Vergleichsfunktion: alle nennen
-            fix = " / ".join(fixes)
-        behoben = ("behoben in " + fix_text(gruppe[0]["ver"], fix)) if fix else "noch kein Fix"
-        ohne_fix = sum(1 for r in funde.values() if not r["fix"])
-        if fix and ohne_fix:
-            behoben += " (%d noch ohne Fix)" % ohne_fix
-        schwere = Counter(r["sev"] + ("*" if r.get("sev_quelle") else "") for r in funde.values())
-        kev = sum(1 for r in funde.values() if r.get("kev"))
-        neu = sum(1 for r in funde.values() if r["neu"]) if known is not None else 0
-        zusatz = ["%d aktiv ausgenutzt" % kev] if kev else []
-        if 0 < neu < len(funde):
-            zusatz.append("%d neu" % neu)
-        nutzer = gruppe[0]["users"]
-        text = "%s%s – %s – %s – %s%s: %s" % (
-            "NEU: " if neu else "", name, behoben,
-            "von keinem erkannten Prozess genutzt" if nutzer == "–" else "genutzt von " + nutzer,
-            ", ".join("%d %s" % (schwere[s], s) for s in sorted(schwere, key=lambda s: (SEV.index(s.rstrip("*")), s))),
-            " (%s)" % ", ".join(zusatz) if zusatz else "",
-            ", ".join(r["id"] + (" (KEV seit %s)" % r["kev"] if r.get("kev") else "") for r in funde.values()))
-        zeilen.append(((not neu, not kev, min(r["prio"] for r in gruppe), min(SEV.index(r["sev"]) for r in gruppe),
-                        len(zeilen)), text))
-    return [text for _, text in sorted(zeilen)]
-
-
 def dienste_konsole(services):
     """Zeilen je Dienst für die Konsole: Programm (Anwendung, Verzeichnis), Ports mit Erreichbarkeit (über welchen
     Proxy); darunter Webadressen (mit dem Weg, wenn er nicht schon oben steht), Ziele eines Proxys und Aufrufe."""
@@ -4266,8 +4225,8 @@ def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None, anlass=
         print(zeile)
     for k in sorted(konf_relevant, key=lambda k: not k["neu"]):
         print("%s%s" % ("NEU: " if k["neu"] and known is not None else "", konf_text(k)))
-    for zeile in funde_je_paket(relevant, known):
-        print(zeile)
+    for r in relevant:          # neue zuerst (write_report)
+        print("%s%s" % ("NEU: " if r["neu"] and known is not None else "", fund_text(r)))
     sys.stdout.flush()
     return code, backends_von(services, c.name), base, web["ziel_urls"]
 

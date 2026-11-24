@@ -808,6 +808,8 @@ class Backends(unittest.TestCase):
         self.assertEqual(scanner.split_target("https://[2001:DB8:0::31]:21451"), ("2001:db8::31", "21451"))
         self.assertEqual(scanner.split_target("http://0.0.0.0:53023"), ("127.0.0.1", "53023"))
         self.assertEqual(scanner.split_target("http://[::]:8080"), ("::1", "8080"))
+        # Zugangsdaten in der URL gehören nicht zum Host
+        self.assertEqual(scanner.split_target("ftp://admin:geheim@backend:21/"), ("backend", "21"))
 
     def test_lokale_ziele(self):
         # eigene Adressen des Hosts nur im Netzwerk des Hosts (dort gesetzt) wie Loopback
