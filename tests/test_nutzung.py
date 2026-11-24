@@ -272,6 +272,34 @@ class Dienste(unittest.TestCase):
         self.assertIn("Arbeitsverzeichnis: /app", s["description"])
         self.assertIn("Port 3000/tcp (alle) nicht veröffentlicht", s["description"])
 
+    def test_beschreibung_fuer_die_konsole(self):
+        # ohne Konfiguration (steht in den Webadressen) und unklare Weiterleitungen (Warnung), aus der
+        # Kommandozeile nur Dateien (keine Werte wie benutzer:passwort), alle Ziele
+        p = proc(1, "/usr/sbin/nginx", ["nginx", "-g", "admin:geheim", "/etc/nginx/nginx.conf"], ports={"80": "alle"})
+        ziele = ["http://ziel%d:80" % i for i in range(12)]
+        s = self.dienst(p, vhosts={"/usr/sbin/nginx": ["listen 80 server_name shop.example.org"]},
+                        backends={"/usr/sbin/nginx": ziele + ["http://$host"]}, published={"80": ["0.0.0.0:80"]})
+        self.assertIn("Anwendung: admin:geheim /etc/nginx/nginx.conf", s["description"])
+        self.assertIn("Konfiguration: listen 80", s["description"])
+        self.assertIn("Weiterleitungen nicht vollständig auswertbar", s["description"])
+        self.assertIn("Backend http://ziel11:80", s["description"])
+        k = s["konsole"]
+        self.assertEqual((k["zusatz"], k["erreichbar"]), ("/etc/nginx/nginx.conf", "Port 80: veröffentlicht als 0.0.0.0:80"))
+        self.assertEqual(k["ziele"][0], "ziel0:80 (extern)")
+        self.assertEqual(len(k["ziele"]), 13)
+        self.assertEqual(k["ziele"][-1], "$host (nicht auswertbar)")
+        self.assertNotIn("geheim", str(k))
+        # Ziele knapp: Container:Port (Dienstname wie im Container-Netz, upstream aufgelöst, doppelte einmal), im
+        # selben Container wie konfiguriert, Unix-Socket, Variable
+        w = {"containers": {"app": "proj-app-1", "php": "php"}, "upstreams": {"pool": ["php:9000", "app:3000"]}}
+        s = self.dienst(p, backends={"/usr/sbin/nginx": ["http://app:3000/api/", "fastcgi://pool", "127.0.0.1:9000",
+                                                         "unix:/run/php.sock", "http://$backend"]}, **w)
+        self.assertEqual(s["konsole"]["ziele"], ["proj-app-1:3000", "php:9000", "127.0.0.1:9000",
+                                                 "unix:/run/php.sock", "$backend (nicht auswertbar)"])
+        # Ports mit gleicher Erreichbarkeit zusammen, Anwendung im Arbeitsverzeichnis
+        node = proc(1, "/usr/local/bin/node", ["node", "server.js"], cwd="/app", ports={"3000": "alle", "3001": "alle"})
+        k = self.dienst(node)["konsole"]
+        self.assertEqual((k["zusatz"], k["erreichbar"]), ("server.js in /app", "Port 3000, 3001: nicht veröffentlicht"))
 
 class Prioritaet(unittest.TestCase):
     def test_stufen(self):
