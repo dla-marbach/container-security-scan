@@ -1037,37 +1037,70 @@ class BusyBoxHttpd(unittest.TestCase):
     """httpd von BusyBox (Image busybox, z.B. Datencontainer von Greenbone): kein Apache."""
     USAGE = "httpd: invalid option -- 'V'\nBusyBox v1.36.1 (2023-05-18 22:34:17 UTC) multi-call binary.\n"
 
-    def lesen(self, argv, conf="", antwort=None, cwd="/"):
+    def lesen(self, argv, cwd="/www", dateien=None, zustand=None, antwort=None):
+        """dateien: lesbare Konfiguration {Pfad: Inhalt}; zustand: DATEI_ZUSTAND_SH je Pfad (Standard 3: fehlt)."""
+        dateien, zustand = dateien or {}, zustand or {}
         c = mock.Mock(has_sh=True, info={"Config": {"Env": []}})
-        c.exec.return_value = antwort or (1, self.USAGE)
-        c.read_file.side_effect = lambda p: conf if p in ("/etc/httpd.conf", "/srv/httpd.conf") else ""
+        c.exec.side_effect = lambda cmd, **kw: (antwort or (1, self.USAGE)) if cmd[1:] == ["-V"] else \
+            (zustand.get(cmd[-1], 3), "")
+        c.read_file.side_effect = lambda pfad: dateien.get(pfad, "")
         w = scanner.web_leer()
         procs = {"1": proc(1, "/bin/httpd", argv, cwd=cwd, ports={"80": "alle"}, user="100:101")}
         with mock.patch.object(scanner, "parse_apache") as pa:
             scanner.webserver_lesen(c, procs, w)
-        return w, c, pa
+        self.c, self.pa = c, pa
+        return w
 
-    def test_kein_apache_docroot_aus_h(self):
-        w, c, pa = self.lesen(["httpd", "-f", "-p", "80", "-h", "/var/www"])
-        pa.assert_not_called()                     # kein -S/-M/-t, also nicht unvollständig
-        self.assertEqual(c.exec.call_args[0][0], ["/bin/httpd", "-V"])
-        self.assertEqual(c.exec.call_args[1]["user"], "100:101")     # Benutzer des Prozesses
-        self.assertEqual((w["docroots"]["/bin/httpd"], w["problems"], w["unlesbar"]), (["/var/www"], [], set()))
-        # zusammengefasste Optionen, Wert direkt angehängt; ohne -h das Arbeitsverzeichnis
-        self.assertEqual(self.lesen(["httpd", "-fvh/srv"])[0]["docroots"]["/bin/httpd"], ["/srv"])
-        self.assertEqual(self.lesen(["httpd", "-f"], cwd="/data")[0]["docroots"]["/bin/httpd"], ["/data"])
+    def test_kein_apache_docroot_ist_arbeitsverzeichnis(self):
+        w = self.lesen(["httpd", "-f", "-p", "80", "-h", "/www"])
+        self.pa.assert_not_called()                     # kein -S/-M/-t, also nicht unvollständig
+        self.assertEqual(self.c.exec.call_args_list[0][0][0], ["/bin/httpd", "-V"])
+        self.assertEqual(self.c.exec.call_args_list[0][1]["user"], "100:101")     # Benutzer des Prozesses
+        self.assertEqual((w["docroots"]["/bin/httpd"], w["problems"], w["unlesbar"]), (["/www"], [], set()))
+        # BusyBox wechselt beim Start in den Docroot: relatives -h (gestartet in /) und H: in der Konfiguration
+        # (überschreibt -h /www) stecken schon im Arbeitsverzeichnis
+        self.assertEqual(self.lesen(["httpd", "-fvh", "www"], cwd="/www")["docroots"]["/bin/httpd"], ["/www"])
+        self.assertEqual(self.lesen(["httpd", "-f", "-h", "/www"], cwd="/alt",
+                                    dateien={"/etc/httpd.conf": "H:/alt\n"})["docroots"]["/bin/httpd"], ["/alt"])
+        # Arbeitsverzeichnis nicht lesbar: absolutes -h, ein relatives nicht
+        self.assertEqual(self.lesen(["httpd", "-h/srv"], cwd="")["docroots"]["/bin/httpd"], ["/srv"])
+        self.assertEqual(self.lesen(["httpd", "-h", "www"], cwd="")["docroots"]["/bin/httpd"], [])
 
-    def test_weiterleitung_unvollstaendig(self):
-        w = self.lesen(["httpd", "-f", "-c", "/srv/httpd.conf"], conf="H:/www\nP:/api:http://app:8080/\n")[0]
+    def test_konfiguration(self):
+        # /etc/httpd.conf darf fehlen oder leer sein; ohne P: vollständig
+        for kw in ({}, {"zustand": {"/etc/httpd.conf": 4}}, {"dateien": {"/etc/httpd.conf": "H:/www\nA:*\n"}}):
+            self.assertEqual(self.lesen(["httpd", "-f"], **kw)["problems"], [], kw)
+        self.assertEqual(self.c.exec.call_count, 1)       # gelesen: kein Zustand nötig
+        # -c relativ zum Docroot (Arbeitsverzeichnis), P: unvollständig
+        w = self.lesen(["httpd", "-f", "-c", "x.conf"], dateien={"/www/x.conf": "P:/api:http://app:8080/\n"})
         self.assertEqual(w["unlesbar"], {"/bin/httpd"})
-        self.assertIn("leitet laut /srv/httpd.conf weiter (P:)", w["problems"][0])
+        self.assertIn("leitet laut /www/x.conf weiter (P:)", w["problems"][0])
+        self.assertIn("leitet laut /etc/httpd.conf weiter", self.lesen(
+            ["httpd"], dateien={"/etc/httpd.conf": "  P:/api:http://app:8080/\n"})["problems"][0])
+        # nicht lesbar (vorhanden, aber leer gelesen), -c fehlt, -c relativ ohne Arbeitsverzeichnis: unvollständig
+        self.assertIn("Konfiguration /etc/httpd.conf nicht lesbar",
+                      self.lesen(["httpd"], zustand={"/etc/httpd.conf": 0})["problems"][0])
+        self.assertIn("-c /srv/x.conf: Konfiguration fehlt", self.lesen(["httpd", "-c", "/srv/x.conf"])["problems"][0])
+        self.assertIn("nicht ermittelbar", self.lesen(["httpd", "-c", "x.conf"], cwd="")["problems"][0])
+        # Zustand mit festem Skript, Pfad als Argument
+        self.lesen(["httpd"], zustand={"/etc/httpd.conf": 4})
+        self.assertEqual(self.c.exec.call_args[0][0], ["sh", "-c", scanner.DATEI_ZUSTAND_SH, "sh", "/etc/httpd.conf"])
+
+    def test_datei_zustand_sh(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        for name, inhalt in (("leer", ""), ("voll", "P:/x:http://a/\n")):
+            with open(os.path.join(tmp, name), "w") as f:
+                f.write(inhalt)
+        for name, rc in (("fehlt", 3), ("leer", 4), ("voll", 0)):
+            self.assertEqual(subprocess.run(["sh", "-c", scanner.DATEI_ZUSTAND_SH, "sh", os.path.join(tmp, name)],
+                                            timeout=10).returncode, rc, name)
 
     def test_apache_wie_bisher(self):
-        _, _, pa = self.lesen(["httpd", "-DFOREGROUND"], antwort=(0, "Server version: Apache/2.4.71 (Unix)\n"))
-        pa.assert_called_once()
-        _, _, pa = self.lesen(["httpd", "-DFOREGROUND"], antwort=(1, ""))    # unbekannt: als Apache versuchen
-        pa.assert_called_once()
-
+        self.lesen(["httpd", "-DFOREGROUND"], antwort=(0, "Server version: Apache/2.4.71 (Unix)\n"))
+        self.pa.assert_called_once()
+        self.lesen(["httpd", "-DFOREGROUND"], antwort=(1, ""))    # unbekannt: als Apache versuchen
+        self.pa.assert_called_once()
 
 NGINX_SITES = """# configuration file /etc/nginx/nginx.conf:
 http {

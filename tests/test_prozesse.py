@@ -187,6 +187,14 @@ class Zeitlimit(unittest.TestCase):
         self.assertEqual(rc, 128 + 9)
         self.assertLess(time.time() - start, 5)
 
+    @unittest.skipUnless(os.path.isdir("/proc/self"), "Nachkommen werden über /proc ermittelt (Linux)")
+    def test_zeitlimit_beendet_nachkommen(self):
+        # Programm mit Kind (Wrapper): bei Ablauf beide beendet, sonst hielte das Kind die Ausgabe offen
+        start = time.time()
+        rc, _ = self.sh("sh", "-c", "sleep 20 & sleep 20 & wait", sekunden=1)
+        self.assertEqual(rc, 128 + 9)
+        self.assertLess(time.time() - start, 5)
+
     def test_probe_ueber_shell(self):
         c = mock.Mock(has_sh=True, spec=["has_sh", "exec"])
         c.exec.return_value = (0, "")

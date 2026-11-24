@@ -460,7 +460,7 @@ Bekannte Grenzen:
   (eher zu viel). Ziele, die nur in Konfigurationsdateien einer Anwendung stehen (z. B. Spring
   `application.yml`), fehlen, wenn gerade keine Verbindung besteht.
 - Das `httpd` von BusyBox gilt als Webserver ohne Weiterleitungen; stehen welche (`P:`) in seiner
-  Konfiguration, ist die Prüfung unvollständig.
+  Konfiguration (`-c` bzw. `/etc/httpd.conf`) oder ist sie nicht lesbar, ist die Prüfung unvollständig.
 - Apache: `.htaccess` wird nicht ausgewertet.
 - Webadressen: Eine weitergeleitete Adresse gilt für alle Websites am Port des Ziels (welche antwortet,
   entscheidet der Host-Header; im Zweifel eine Adresse zu viel). Über mehrere Stufen werden die Pfade

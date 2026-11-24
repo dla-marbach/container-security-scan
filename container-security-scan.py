@@ -445,7 +445,10 @@ def comp(typ, name, version, ort="", **extra):
 # BusyBox (auch Alpine) startet je Aufruf einen Wächter, der sofort an PID 1 fällt und dort als Zombie bleibt, wenn
 # PID 1 nicht aufräumt (node, sleep …) – bei jedem Lauf ein Dutzend mehr. Hier sind Programm und Wächter Kinder
 # dieser Shell, die beide einsammelt; der Wächter beendet sich auf TERM erst nach seinem laufenden sleep (die Falle
-# folgt dem Vordergrundbefehl) und hinterlässt so kein Kind. Ohne sleep: kein Zeitlimit im Container.
+# folgt dem Vordergrundbefehl) und hinterlässt so kein Kind. Bei Ablauf beendet er das Programm samt Nachkommen
+# (über PPid in /proc/*/status gesammelt, solange sie noch an ihm hängen; erst angehalten, dann beendet) – nur
+# diese, keine anderen Prozesse des Containers; ein Enkel hielte sonst die Ausgabe von docker exec offen. Ohne
+# sleep: kein Zeitlimit im Container.
 PROBE_SEKUNDEN = 50
 PROBE_SH = r"""t=$1
 shift
@@ -454,7 +457,19 @@ p=$!
 ( trap 'exit 0' TERM
   if sleep 0.01 2>/dev/null; then d=0.1 n=$((t * 10)); else d=1 n=$t; fi
   while [ $n -gt 0 ]; do sleep $d || exit 0; n=$((n - 1)); done
-  kill -9 $p 2>/dev/null ) &
+  alle=" $p " neu=" $p "
+  while [ "$neu" != " " ]; do
+    kill -STOP $neu 2>/dev/null
+    kinder=" "
+    for f in /proc/[0-9]*/status; do
+      while read -r k v; do
+        case $k in PPid:) case $neu in *" $v "*) q=${f#/proc/}; kinder="$kinder${q%/status} ";; esac; break;; esac
+      done < "$f"
+    done 2>/dev/null
+    neu=" "
+    for q in $kinder; do case $alle in *" $q "*) ;; *) neu="$neu$q " alle="$alle$q ";; esac; done
+  done
+  kill -9 $alle 2>/dev/null ) &
 w=$!
 wait $p
 r=$?
@@ -1932,18 +1947,28 @@ def container_index(infos, von=None):
 
 
 BUSYBOX_HTTPD_WERTE = "cdehmpru"     # Optionen von BusyBox-httpd mit Wert (-h DIR, -c DATEI, -p PORT …)
+# Zustand einer Datei, deren Inhalt passiv nicht zu lesen war: 3 fehlt, 4 leer, 0 vorhanden (also nicht lesbar)
+DATEI_ZUSTAND_SH = 'if [ ! -e "$1" ]; then exit 3; elif [ ! -s "$1" ]; then exit 4; fi'
 
 
 def busybox_httpd(c, exe, masters, web):
     """Ist dieses httpd das von BusyBox (im Image busybox ein harter Link, /proc/…/exe zeigt dann /bin/httpd)? Dann
-    ist es kein Apache und kennt -S, -M und -t nicht. Dokumentverzeichnis aus -h (sonst das Arbeitsverzeichnis);
-    Weiterleitungen (P: in der Konfiguration aus -c bzw. /etc/httpd.conf) wertet der Scan nicht aus: unvollständig.
-    Abfrage mit -V (BusyBox: Fehler und Name, Apache: Version), nie -v (startete bei BusyBox einen Webserver)."""
+    ist es kein Apache und kennt -S, -M und -t nicht. Abfrage mit -V (BusyBox: Fehler und Name, Apache: Version), nie
+    -v (startete bei BusyBox einen Webserver).
+    BusyBox wechselt beim Start in den wirksamen Docroot (-h, überschrieben von H: in der Konfiguration): er ist das
+    Arbeitsverzeichnis des Prozesses; nur wenn es nicht lesbar ist, ein absolutes -h. Weiterleitungen (P:) gelten nur
+    aus -c (relativ zum Docroot; muss vorhanden sein) bzw. /etc/httpd.conf (darf fehlen) – in der Ersatzdatei
+    httpd.conf im Docroot verwirft BusyBox sie. Der Scan wertet sie nicht aus: mit P: oder nicht lesbarer bzw.
+    nicht ermittelbarer Konfiguration unvollständig."""
     if posixpath.basename(exe) != "httpd" or not masters:
         return False
     rc, out = c.exec([exe, "-V"], stderr=True, user=server_user(masters[0]), timeout=60)
     if "BusyBox" not in out or "Apache/" in out:
         return False
+
+    def problem(text):
+        web["unlesbar"].add(exe)
+        web["problems"].append("%s (BusyBox) %s" % (exe, text))
     for p in masters:
         werte, argv, i = {}, p["argv"], 1
         while i < len(argv):
@@ -1958,13 +1983,25 @@ def busybox_httpd(c, exe, masters, web):
                             werte.setdefault(ch, argv[i])
                         break
             i += 1
-        web["docroots"][exe].append(posixpath.normpath(posixpath.join(p["cwd"] or "/", werte.get("h", "."))))
+        root = p["cwd"] or (werte["h"] if werte.get("h", "").startswith("/") else "")
+        if root:
+            web["docroots"][exe].append(posixpath.normpath(root))
+        if "c" in werte and not werte["c"].startswith("/") and not p["cwd"]:
+            problem("-c %s: Konfiguration nicht ermittelbar (Arbeitsverzeichnis nicht lesbar) – Weiterleitungen (P:) "
+                    "unbekannt" % werte["c"])
+            continue
         conf = posixpath.join(p["cwd"] or "/", werte.get("c", "/etc/httpd.conf"))
-        if any(re.match(r"\s*P:", l) for l in c.read_file(conf).splitlines()):
-            web["unlesbar"].add(exe)
-            web["problems"].append("%s (BusyBox) leitet laut %s weiter (P:) – Weiterleitungen nicht ausgewertet"
-                                   % (exe, conf))
-    web["raw"].append("--- %s: httpd von BusyBox (kein Apache), Docroot %s\n" % (exe, ", ".join(web["docroots"][exe])))
+        text = c.read_file(conf)
+        if not text:
+            zustand = c.exec(["sh", "-c", DATEI_ZUSTAND_SH, "sh", conf], timeout=60)[0]
+            if zustand == 3 and "c" in werte:
+                problem("-c %s: Konfiguration fehlt – Weiterleitungen (P:) unbekannt" % conf)
+            elif zustand not in (3, 4):
+                problem("Konfiguration %s nicht lesbar – Weiterleitungen (P:) unbekannt" % conf)
+        elif any(re.match(r"\s*P:", l) for l in text.splitlines()):
+            problem("leitet laut %s weiter (P:) – Weiterleitungen nicht ausgewertet" % conf)
+    web["raw"].append("--- %s: httpd von BusyBox (kein Apache), Docroot %s\n" % (
+        exe, ", ".join(web["docroots"][exe]) or "unbekannt"))
     return True
 
 
