@@ -88,87 +88,27 @@ import zlib
 from collections import Counter, OrderedDict, defaultdict
 from functools import cmp_to_key
 
+
+# ===========================================================================
+# Einstellungen: Version, Relevanz, Fristen für die Daten
+# ===========================================================================
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
 VERSION = "1.1.0"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
-# Gefährliche Einstellungen des Containers (-> Rückgabewert 1, Kennung CONF-… für die Ausnahmeliste): Mit ihnen
-# wird aus einer Lücke im Container root auf dem Host. Nur, was ein Dienst praktisch nie braucht (keine allgemeine
-# Härtung wie no-new-privileges, cap_drop, Limits).
-KONF_CAPS = ("ALL", "SYS_ADMIN", "SYS_MODULE", "SYS_RAWIO", "DAC_READ_SEARCH", "BPF")
-# Socket der Container-Laufzeit (auch schreibgeschützt eingebunden nutzbar) bzw. Verzeichnisse, die ihn enthalten
-# (auch die Host-Wurzel)
-KONF_SOCKET = re.compile(r"/|/(var/)?run(/(docker|containerd|podman))?|.*/(docker|containerd|podman)\.sock")
-# Host-Pfade, die beschreibbar eingebunden den Host übernehmen lassen. Einzelne Volumes unter
-# /var/lib/docker/volumes/<name> bleiben unberücksichtigt, das Verzeichnis aller Volumes nicht.
-KONF_HOST_PFAD = re.compile(r"/(etc|home|dev)|/(root|boot|bin|sbin|lib\w*|proc|sys)(/.*)?"
-                            r"|/usr(/(local(/(s?bin|lib\w*)(/.*)?)?|(s?bin|lib\w*)(/.*)?))?"
-                            r"|/etc/(passwd|shadow|group|sudoers(\.d)?|cron[\w.]*|systemd|ssh|docker)(/.*)?"
-                            r"|/home/[^/]+/\.ssh(/.*)?"
-                            r"|/var/lib/docker(?!/volumes/)(/.*)?")
-INKREMENT_MAX = 2000           # mehr geänderte Einträge -> Gesamtexport laden (schneller)
 DB_MAX_ALTER_TAGE = 3          # ältere Datenbank -> Prüfung unvollständig (Rückgabewert 2)
-OSV_BASE = "https://osv-vulnerabilities.storage.googleapis.com/"
-OSV_URL = OSV_BASE + "%s/all.zip"
-# Direkt von OSV (ohne Branch daten), Gesamtexporte rund 1,2 GB, davon Ubuntu ca. 800 MB. Bei Bedarf ergänzen: SUSE, openSUSE.
-OSV_ECOSYSTEMS = ["Debian", "Ubuntu", "Alpine", "npm", "PyPI", "Packagist", "Maven", "Go", "Bitnami"]
-# Laufzeiten und Server, die nicht aus einem OS-Paket stammen (offizielle Images bauen sie aus dem Quellcode),
-# werden über den Bitnami-Datensatz von OSV geprüft (z.B. PHP2Shell, Node2Shell).
-BITNAMI = {"php": "php", "php-fpm": "php", "node": "node", "python": "python", "java": "jre", "nginx": "nginx",
-           "apache-httpd": "apache", "mariadb": "mariadb", "postgresql": "postgresql"}
-SEV = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"]
-EOL_URL = "https://endoflife.date/api/v1/products/full/"
-EOL_TYPEN = {"npm": "npm", "js-lib": "npm", "composer": "composer", "pypi": "pypi", "maven": "maven"}
-# Laufzeiten/Server (Typ runtime/server) -> Produkt bei endoflife.date; nur geprüft, wenn nicht aus einem
-# OS-Paket (dort zählt der Support der Distribution, die Sicherheitskorrekturen zurückportiert)
-EOL_LAUFZEITEN = {"php": "php", "php-fpm": "php", "node": "nodejs", "python": "python", "nginx": "nginx",
-                  "apache-httpd": "apache-http-server", "mariadb": "mariadb", "mysql": "mysql", "postgresql": "postgresql"}
-# Paketkennungen, die bei endoflife.date fehlen
-EOL_ZUSATZ = {"symfony": ["pkg:composer/symfony/symfony", "pkg:composer/symfony/http-kernel"],
-              "cakephp": ["pkg:composer/cakephp/cakephp"], "twig": ["pkg:composer/twig/twig"],
-              "shopware": ["pkg:composer/shopware/core"], "craft-cms": ["pkg:composer/craftcms/cms"],
-              "contao": ["pkg:composer/contao/core-bundle"], "electron": ["pkg:npm/electron"],
-              "tomcat": ["pkg:maven/org.apache.tomcat/tomcat-catalina", "pkg:maven/org.apache.tomcat.embed/tomcat-embed-core"]}
+OS_DATEN_MAX_TAGE = 120        # jüngster Eintrag für das OS-Release älter -> vermutlich ohne Support (EOL)
 EOL_VORWARNUNG_TAGE = 90       # Supportende innerhalb dieser Frist: Hinweis vorab
 EOL_MAX_ALTER_TAGE = 30
-# Katalog aktiv ausgenutzter Schwachstellen (CISA Known Exploited Vulnerabilities, CC0)
-KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 KEV_MAX_ALTER_TAGE = 7
-CVE_ID = re.compile(r"CVE-\d{4}-\d{4,}")
-# Schweregrad für Einträge ohne eigene Bewertung (z.B. Go): dieselbe CVE in diesen Quellen nachschlagen
-# (Bitnami: Bewertung der Quelle, Alpine: CVSS aus der NVD). Distributions-Dringlichkeit zählt hier nicht.
-SCHWEREGRAD_QUELLEN = ("Bitnami", "Alpine")
-# Kernel-Pakete im Container (Header, Images): Container nutzen den Kernel des Hosts, deren CVEs betreffen
-# den Container nicht. Debian/Ubuntu führen alle Kernel-CVEs am Quellpaket "linux".
-KERNEL_QUELLE = re.compile(r"linux(-signed.*|-lts|-virt|-headers|-hwe.*|-(aws|azure|gcp|oracle|kvm|lowlatency).*)?$")
-KERNEL_PAKET = re.compile(r"(linux-(libc-dev|headers|image|modules|kbuild|source)|kernel-(default|devel|source|syms|"
-                          r"headers|preempt|rt|azure|64kb|macros))(\b|-|$)")
-# Titel, nach denen eine Schwachstelle nur unter Windows auftritt (Container laufen unter Linux). Groß
-# geschriebenes "Windows", damit z.B. "HTTP/2 initial windows size" nicht erfasst wird.
-NUR_WINDOWS = re.compile(r"\b(?:[Oo]n|[Uu]nder|[Ff]or|[Ii]n|[Aa]ffecting) (?:Microsoft )?Windows\b|\b[Oo]n windows\b"
-                         r"|\bWindows[- ](?:[Oo]nly|specific|platforms?|systems?|hosts?|servers?|installations?|"
-                         r"installers?|builds?|users?|absolute paths?|paths?|shares?)\b|\(Windows[,)]"
-                         r"|\bUNC paths?\b|\bNTLM\b")
-NICHT_NUR_WINDOWS = re.compile(r"\b(?:Linux|Unix|UNIX|POSIX|macOS|Mac OS|all platforms|other platforms|non-Windows)\b"
-                               r"|\bWindows (?:and|or)\b|\b(?:and|or) Windows\b")
 
 
+# ===========================================================================
+# Grundlagen
+# ===========================================================================
 class ScanError(Exception):
     """Fehler, nach dem kein verlässliches Ergebnis vorliegt (Rückgabewert 2)."""
-
-
-DOCKER_ENV = ["-e", "JAVA_TOOL_OPTIONS=", "-e", "JDK_JAVA_OPTIONS=", "-e", "_JAVA_OPTIONS=",
-              "-e", "NO_UPDATE_NOTIFIER=1", "-e", "NPM_CONFIG_UPDATE_NOTIFIER=false",
-              "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "NODE_OPTIONS=", "-e", "PYTHONPATH="]
-# Suchpfad für Befehle im Container (sh, find, tar, awk, rpm …). Nicht der PATH des Images: Enthält er ein
-# Verzeichnis, in das die Anwendung schreiben darf (z.B. /opt/venv/bin), könnte sie dort ein "sh" ablegen,
-# das der Scan dann als root ausführt. Nur für die Versionsabfrage von Namen ohne Pfad (als nobody) gilt
-# der PATH des Images.
-SAFE_PATH = "/usr/sbin:/usr/bin:/sbin:/bin"
-NOBODY = "65534:65534"
-# OSV-Kennungen (GHSA-…, DEBIAN-CVE-…, SUSE-SU-2024:1234-1 …) werden zu Dateinamen: kein "/" und kein ".." möglich
-OSV_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:+-]*")
 
 
 def log(msg):
@@ -194,230 +134,25 @@ def utcnow():
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 
-def eol_daten_erzeugen(path):
-    """EOL-Daten mit Paketkennungen aus dem vollständigen endoflife.date-API-Export erzeugen."""
-    with urllib.request.urlopen(EOL_URL, timeout=120) as response:
-        data = json.load(response)
-    if not isinstance(data.get("result"), list) or not data["result"] or data.get("total") != len(data["result"]):
-        raise ScanError("Ungültige oder unvollständige endoflife.date-Antwort")
-    products = []
-    for product in data["result"]:
-        identifiers = [x["id"] for x in product["identifiers"] if x.get("type") == "purl"
-                       and x.get("id", "").startswith(("pkg:npm/", "pkg:composer/", "pkg:pypi/", "pkg:maven/"))]
-        identifiers += EOL_ZUSATZ.get(product["name"], [])
-        if not identifiers and product["name"] not in EOL_LAUFZEITEN.values():
-            continue
-        cycles = []
-        for release in product["releases"]:
-            name, date, ended = release["name"], release["eolFrom"], release["isEol"]
-            if date is None and ended is None:
-                continue
-            if not isinstance(ended, bool) or (date is not None and
-                    (not isinstance(date, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date))):
-                raise ScanError("Ungültige EOL-Daten für " + product["name"])
-            if date:
-                try:
-                    datetime.datetime.strptime(date, "%Y-%m-%d")
-                except ValueError:
-                    raise ScanError("Ungültiges EOL-Datum für " + product["name"])
-            if re.fullmatch(r"\d+(?:\.\d+)*", name):
-                cycles.append({"cycle": name, "eol": date if date else ended})
-        if cycles:
-            products.append({"name": product["name"], "purls": sorted(set(identifiers)), "cycles": cycles})
-    if not products:
-        raise ScanError("Keine geeigneten endoflife.date-Produkte gefunden")
-    payload = {"geprueft": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "products": products}
-    with open(path + ".tmp", "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=1, sort_keys=True)
-        f.write("\n")
-    os.replace(path + ".tmp", path)
+def text(data):
+    return data.decode("utf-8-sig", "replace")
 
 
-def eol_laden(paths):
-    """EOL-Daten lesen und prüfen; bei mehreren Dateien (Repository, osv-db/) die jüngste."""
-    best, err = None, "keine Datei"
-    for path in paths:
-        try:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-            checked = datetime.datetime.strptime(data["geprueft"], "%Y-%m-%dT%H:%M:%SZ")
-            products = data["products"]
-            if not isinstance(products, list) or not products:
-                raise ValueError("keine Produkte")
-            for product in products:
-                if not isinstance(product["name"], str) or not isinstance(product["purls"], list) \
-                        or not isinstance(product["cycles"], list):
-                    raise ValueError("ungültiges Produkt")
-                for cycle in product["cycles"]:
-                    if not isinstance(cycle["cycle"], str) or not isinstance(cycle["eol"], (str, bool)):
-                        raise ValueError("ungültiger Versionszweig")
-                    if isinstance(cycle["eol"], str):
-                        datetime.datetime.strptime(cycle["eol"], "%Y-%m-%d")
-        except (OSError, ValueError, KeyError, TypeError) as e:
-            if not isinstance(e, FileNotFoundError) or err == "keine Datei":
-                err = str(e)
-            continue
-        if best is None or checked > best[0]:
-            best = (checked, products)
-    if best is None:
-        raise ValueError(err)
-    return best
-
-
-def eol_warnungen(comps, paths):
-    """Warnungen für Versionszweige ohne regulären Support (oder kurz davor): Pakete über ihre Kennung,
-    Laufzeiten/Server außerhalb von OS-Paketen über den Produktnamen. Ändert den Rückgabewert nicht."""
-    if isinstance(paths, str):
-        paths = [paths]
+def load_json(data):
     try:
-        checked, products = eol_laden(paths)
-    except ValueError as e:
-        return ["EOL-Daten fehlen oder sind ungültig (%s); Supportende nicht geprüft" % e]
-    by_purl, by_name = defaultdict(list), {}
-    for product in products:
-        by_name[product["name"]] = product
-        for purl in product["purls"]:
-            by_purl[urllib.parse.unquote(purl).lower()].append(product)
-    warnings = []
-    if (utcnow() - checked).days >= EOL_MAX_ALTER_TAGE:
-        warnings.append("EOL-Daten veraltet (Stand %s); git pull bzw. --db-aktualisieren ausführen"
-                        % checked.strftime("%Y-%m-%d"))
-    today = utcnow().date()
-    hits = OrderedDict()
-    for c in comps:
-        typ = EOL_TYPEN.get(c["typ"])
-        if typ:
-            name = c["name"].replace(":", "/", 1) if typ == "maven" else c["name"]
-            if typ == "pypi":
-                name = pypi_name(name)
-            candidates = by_purl.get(("pkg:%s/%s" % (typ, name)).lower(), [])
-        elif c["typ"] in ("runtime", "server") and c["name"] in EOL_LAUFZEITEN and (
-                not from_os_package(c) or any(h.startswith(FREMDQUELLE) for h in c["hinweise"])):
-            candidates = [by_name[EOL_LAUFZEITEN[c["name"]]]] if EOL_LAUFZEITEN[c["name"]] in by_name else []
-        else:
-            continue
-        version = c["version"].lstrip("v")
-        for product in candidates:
-            cycles = [r for r in product["cycles"] if re.fullmatch(r"\d+(?:\.\d+)*", r["cycle"])
-                      and (version == r["cycle"] or version.startswith(r["cycle"] + "."))]
-            if not cycles:
-                continue
-            cycle = max(cycles, key=lambda r: len(r["cycle"]))
-            end = cycle["eol"]
-            if end is False:
-                continue
-            if end is True:
-                days = -1
-            else:
-                days = (datetime.datetime.strptime(end, "%Y-%m-%d").date() - today).days
-            if days > EOL_VORWARNUNG_TAGE:
-                continue
-            key = (c["name"], c["version"], product["name"], cycle["cycle"], end if end is not True else "", days < 0)
-            # am Tag des Supportendes gilt der Zweig noch als unterstützt (days == 0 -> "bald")
-            hits.setdefault(key, []).append(c["ort"] or "?")
-    for (name, version, product, cycle, end, ended), places in hits.items():
-        places = list(OrderedDict.fromkeys(places))
-        where = ", ".join(places[:3]) + (" und %d weitere" % (len(places) - 3) if len(places) > 3 else "")
-        if ended:
-            warnings.append("Supportende: %s %s (%s %s, %s; %s)" % (
-                name, version, product, cycle, "seit " + end if end else "Datum unbekannt", where))
-        else:
-            warnings.append("Supportende bald: %s %s (%s %s, am %s; %s)" % (name, version, product, cycle, end, where))
-    return warnings
+        return json.loads(text(data))
+    except ValueError:
+        return None
 
 
-def kev_daten_erzeugen(path):
-    """Katalog aktiv ausgenutzter Schwachstellen (CISA KEV) laden und gekürzt speichern: CVE -> Aufnahmedatum."""
-    with urllib.request.urlopen(KEV_URL, timeout=120) as response:
-        data = json.load(response)
-    vulns = data.get("vulnerabilities")
-    if not isinstance(vulns, list) or not vulns or data.get("count") != len(vulns):
-        raise ScanError("Ungültige oder unvollständige Antwort des KEV-Katalogs")
-    cves = {}
-    for v in vulns:
-        cve, added = v.get("cveID"), v.get("dateAdded")
-        if not isinstance(cve, str) or not CVE_ID.fullmatch(cve) or not isinstance(added, str) \
-                or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", added):
-            raise ScanError("Ungültiger Eintrag im KEV-Katalog: %r" % (cve,))
-        cves[cve] = added
-    payload = {"geprueft": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "katalog": str(data.get("catalogVersion", "")),
-               "cves": cves}
-    with open(path + ".tmp", "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=1, sort_keys=True)
-        f.write("\n")
-    os.replace(path + ".tmp", path)
+def json_datei(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 
-def kev_laden(paths):
-    """KEV-Daten lesen und prüfen; bei mehreren Dateien die jüngste. Liefert (Prüfzeitpunkt, {CVE: Datum})."""
-    best, err = None, "keine Datei"
-    for path in paths:
-        try:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-            checked = datetime.datetime.strptime(data["geprueft"], "%Y-%m-%dT%H:%M:%SZ")
-            cves = data["cves"]
-            if not isinstance(cves, dict) or not cves or not all(
-                    isinstance(k, str) and CVE_ID.fullmatch(k) and isinstance(v, str) for k, v in cves.items()):
-                raise ValueError("ungültige Einträge")
-        except (OSError, ValueError, KeyError, TypeError) as e:
-            if not isinstance(e, FileNotFoundError) or err == "keine Datei":
-                err = str(e)
-            continue
-        if best is None or checked > best[0]:
-            best = (checked, cves)
-    if best is None:
-        raise ValueError(err)
-    return best
-
-
-def kev_markieren(findings, paths):
-    """Funde aus dem KEV-Katalog markieren (f["kev"] = Aufnahmedatum). Liefert Warnungen."""
-    try:
-        checked, cves = kev_laden(paths)
-    except ValueError as e:
-        return ["KEV-Daten fehlen oder sind ungültig (%s); aktiv ausgenutzte Lücken nicht gesondert gewertet" % e]
-    for f in findings:
-        if f["id"] in cves:
-            f["kev"] = cves[f["id"]]
-    if (utcnow() - checked).days >= KEV_MAX_ALTER_TAGE:
-        return ["KEV-Daten veraltet (Stand %s); git pull bzw. --db-aktualisieren ausführen" % checked.strftime("%Y-%m-%d")]
-    return []
-
-
-def ausnahmen_laden(path):
-    """Ausnahmeliste lesen. Je Zeile: <Kennung> <Paket oder *> <gültig bis JJJJ-MM-TT> <Begründung>.
-    Fehler -> ScanError (Rückgabewert 2): eine fehlerhafte Liste soll nichts stillschweigend ausblenden."""
-    try:
-        st = os.stat(path)
-        with open(path, encoding="utf-8") as f:
-            lines = f.read().splitlines()
-    except (OSError, UnicodeDecodeError) as e:
-        raise ScanError("Ausnahmeliste %s nicht lesbar: %s" % (path, e))
-    # wie sudoers: wer die Liste ändern kann, kann Funde ausblenden
-    if st.st_uid not in (0, os.geteuid()) or st.st_mode & 0o022:
-        raise ScanError("Ausnahmeliste %s darf nur ihr Eigentümer (root bzw. der aufrufende Benutzer) ändern können"
-                        % path)
-    result = []
-    for n, line in enumerate(lines, 1):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split(None, 3)
-        if len(parts) < 4 or not OSV_ID.fullmatch(parts[0]) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", parts[2]):
-            raise ScanError("Ausnahmeliste %s, Zeile %d: erwartet \"<Kennung> <Paket oder *> <JJJJ-MM-TT> "
-                            "<Begründung>\"" % (path, n))
-        try:
-            bis = datetime.datetime.strptime(parts[2], "%Y-%m-%d").date()
-        except ValueError:
-            raise ScanError("Ausnahmeliste %s, Zeile %d: ungültiges Datum %s" % (path, n, parts[2]))
-        result.append({"id": parts[0], "paket": parts[1], "bis": bis, "grund": parts[3], "zeile": n})
-    return result
-
-
-def nur_windows(title):
-    """Betrifft die Schwachstelle laut Titel nur Windows?"""
-    return bool(NUR_WINDOWS.search(title or "")) and not NICHT_NUR_WINDOWS.search(title or "")
+def datei_sha256(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
 
 
 def norm(path):
@@ -439,8 +174,20 @@ def comp(typ, name, version, ort="", **extra):
 
 
 # ===========================================================================
-# Zugriff auf den Container
+# 1. Zugriff auf den Container (und auf den Host für Proxys dort)
 # ===========================================================================
+DOCKER_ENV = ["-e", "JAVA_TOOL_OPTIONS=", "-e", "JDK_JAVA_OPTIONS=", "-e", "_JAVA_OPTIONS=",
+              "-e", "NO_UPDATE_NOTIFIER=1", "-e", "NPM_CONFIG_UPDATE_NOTIFIER=false",
+              "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "NODE_OPTIONS=", "-e", "PYTHONPATH="]
+
+# Suchpfad für Befehle im Container (sh, find, tar, awk, rpm …). Nicht der PATH des Images: Enthält er ein
+# Verzeichnis, in das die Anwendung schreiben darf (z.B. /opt/venv/bin), könnte sie dort ein "sh" ablegen,
+# das der Scan dann als root ausführt. Nur für die Versionsabfrage von Namen ohne Pfad (als nobody) gilt
+# der PATH des Images.
+SAFE_PATH = "/usr/sbin:/usr/bin:/sbin:/bin"
+NOBODY = "65534:65534"
+ROOT = "0:0"
+
 # Zeitlimit für Versionsabfragen im Container ($1 Sekunden, dann das Programm aus "$@"). Nicht über timeout: das von
 # BusyBox (auch Alpine) startet je Aufruf einen Wächter, der sofort an PID 1 fällt und dort als Zombie bleibt, wenn
 # PID 1 nicht aufräumt (node, sleep …) – bei jedem Lauf ein Dutzend mehr. Hier sind Programm und Wächter Kinder
@@ -450,6 +197,7 @@ def comp(typ, name, version, ort="", **extra):
 # diese, keine anderen Prozesse des Containers; ein Enkel hielte sonst die Ausgabe von docker exec offen. Ohne
 # sleep: kein Zeitlimit im Container.
 PROBE_SEKUNDEN = 50
+
 PROBE_SH = r"""t=$1
 shift
 "$@" &
@@ -534,8 +282,32 @@ class Container(object):
         return ""
 
 
+class Host(object):
+    """Gegenstück zu Container für die Konfiguration eines Proxys auf dem Host: Abfragen mit dem Benutzer des
+    Hauptprozesses (nie mehr), leerer Umgebung und festem Suchpfad."""
+    has_sh = True
+    info = {"Config": {"Env": []}}
+
+    def exec(self, cmd, input=None, binary=False, stderr=False, user=None, timeout=60, path=SAFE_PATH):
+        uid, _, gid = (user or NOBODY).partition(":")
+        if (uid, gid) == (str(os.geteuid()), str(os.getegid())):
+            pre = []
+        elif os.geteuid() == 0 and uid.isdigit() and gid.isdigit():
+            pre = ["setpriv", "--reuid=" + uid, "--regid=" + gid, "--clear-groups", "--"]
+        else:
+            return 126, ""
+        return run(pre + ["env", "-i", "PATH=" + path] + cmd, input, binary, stderr, timeout)
+
+    def read_file(self, path):
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                return f.read()
+        except OSError:
+            return ""
+
+
 # ===========================================================================
-# 1. Dateien holen: Paketdatenbanken und Paket-Metadaten (ein Durchgang)
+# 2. Dateien holen: Paketdatenbanken und Paket-Metadaten (ein Durchgang)
 # ===========================================================================
 WANTED = re.compile(r"""^/(etc/os-release|usr/lib/os-release|etc/alpine-release|etc/debian_version
                        |var/lib/dpkg/status|var/lib/dpkg/status\.d/[^/]+|var/lib/dpkg/info/[^/]+\.list
@@ -848,20 +620,6 @@ def _collect_files(c):
     return files, extra, "docker export und docker cp (%d Volumes)%s" % (len(c.mounts), grund), problems
 
 
-def text(data):
-    return data.decode("utf-8-sig", "replace")
-
-
-def json_datei(path):
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
-
-
-def datei_sha256(path):
-    with open(path, "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest()
-
-
 def os_release(files):
     raw = files.get("/etc/os-release") or files.get("/usr/lib/os-release") or b""
     info = dict(re.findall(r'^(\w+)="?([^"\n]*)"?$', text(raw), re.M))
@@ -875,7 +633,7 @@ def os_release(files):
 
 
 # ===========================================================================
-# 2. OS-Pakete (passiv aus den Paketdatenbanken, wie Trivy) und Dateizuordnung
+# 3. OS-Pakete (passiv aus den Paketdatenbanken, wie Trivy) und Dateizuordnung
 # ===========================================================================
 def paragraphs(data):
     """Debian-Kontrollformat: Absätze mit 'Feld: Wert'."""
@@ -981,15 +739,8 @@ def rpm_owners(c, paths):
 
 
 # ===========================================================================
-# 3. Anwendungspakete: npm, Composer, PyPI
+# 4. Anwendungspakete: npm, Composer, PyPI
 # ===========================================================================
-def load_json(data):
-    try:
-        return json.loads(text(data))
-    except ValueError:
-        return None
-
-
 def npm_packages(files):
     dev = set()   # Paketverzeichnisse, die in einer (.)package-lock.json als "dev" markiert sind
     for path, data in files.items():
@@ -1050,7 +801,7 @@ def pypi_packages(files):
 
 
 # ===========================================================================
-# 4. Laufende Prozesse: Programm, Arbeitsverzeichnis, Kommandozeile, geladene Dateien, Ports
+# 5. Laufende Prozesse: Programm, Arbeitsverzeichnis, Kommandozeile, geladene Dateien, Ports
 # ===========================================================================
 # Ausgabe je Zeile: P <pid> <exe> <cwd> <argv mit \037 getrennt> <uid:gid> <ppid> | M <pid> <datei>
 #                   N <pid> <uid:gid> <ppid> <Name>  (exe nicht lesbar: nur aus /proc/<pid>/status)
@@ -1219,9 +970,10 @@ def procs_auswerten(out):
 
 
 # ===========================================================================
-# 5. Laufzeiten direkt am Programm abfragen
+# 6. Laufzeiten direkt am Programm abfragen
 # ===========================================================================
 NODE_JS = 'console.log(JSON.stringify({exe: require("fs").realpathSync(process.execPath), versions: process.versions}))'
+
 PY_CODE = r"""
 import json, os, platform, sys
 r = {"exe": os.path.realpath(sys.executable), "version": platform.python_version(), "libs": {}}
@@ -1239,6 +991,7 @@ for mod, name, attr in (("sqlite3", "sqlite", "sqlite_version"), ("pyexpat", "ex
         pass
 sys.stdout.write(json.dumps(r))
 """
+
 PHP_CODE = r"""
 $r = array("exe" => realpath(PHP_BINARY) ?: PHP_BINARY, "version" => PHP_VERSION, "sapi" => PHP_SAPI, "ext" => array(), "libs" => array());
 foreach (get_loaded_extensions() as $e) { $v = phpversion($e); if ($v && strpos($v, PHP_VERSION) === false && $e !== "dom") $r["ext"][$e] = $v; }
@@ -1351,8 +1104,347 @@ def host_components():
 
 
 # ===========================================================================
-# 6. Webserver-Konfiguration, veröffentlichte Ports, andere Container
+# 7. Docker: laufende Container, Netze, Erreichbarkeit ohne Proxy
 # ===========================================================================
+# Tunnel-Agenten: leiten Verkehr aus dem Internet weiter, ohne selbst auf einem Port zu lauschen -> immer erreichbar
+TUNNEL = {"cloudflared", "frpc", "ngrok", "chisel"}
+LAN_TREIBER = ("macvlan", "ipvlan")     # Container mit eigener Adresse im LAN, ohne veröffentlichte Ports erreichbar
+
+
+def docker_lage():
+    """docker inspect aller laufenden Container und ihrer Netzwerke: ([Container], {Netzname: Netz}). Pausierte
+    (docker pause) gehören als Kontext dazu – ein laufender Container kann ihren Netzwerk-Namespace mitnutzen,
+    samt veröffentlichter Ports –, werden aber nicht geprüft (pausiert(), docker exec ist dort nicht möglich)."""
+    rc, ids = run(["docker", "ps", "-q"])
+    if rc != 0:
+        raise ScanError("docker nicht erreichbar (läuft dockerd? Rechte/Gruppe docker?)")
+    infos = inspect_liste(["docker", "inspect"], ids.split())
+    names = sorted({n for d in infos for n in netze_von(d)})
+    return infos, {n.get("Name"): n for n in inspect_liste(["docker", "network", "inspect"], names)}
+
+
+def pausiert(infos):
+    """Namen der pausierten Container (docker pause): nur Kontext, nicht geprüft."""
+    return {name_von(d) for d in infos if (d.get("State") or {}).get("Paused")}
+
+
+def gestoppte_container():
+    """Zahl der gestoppten Container (erstellt, beendet, tot) für den Kopf der Ausgabe; None, wenn docker sie nicht
+    liefert. Sie werden nicht geprüft."""
+    rc, ids = run(["docker", "ps", "-aq", "--filter", "status=created", "--filter", "status=exited",
+                   "--filter", "status=dead"])
+    return len(ids.split()) if rc == 0 else None
+
+
+def inspect_liste(cmd, refs):
+    """docker inspect mehrerer Objekte. Ist eines zwischenzeitlich entfernt (z.B. docker run --rm), liefert docker
+    die übrigen und Rückgabewert 1 – das ist kein Fehler; ohne gültige Ausgabe schon."""
+    if not refs:
+        return []
+    rc, out = run(cmd + refs)
+    try:
+        result = json.loads(out or "")
+    except ValueError:
+        result = None
+    if not isinstance(result, list):
+        raise ScanError("%s fehlgeschlagen" % " ".join(cmd))
+    return result
+
+
+def name_von(d):
+    return (d.get("Name") or "").lstrip("/")
+
+
+def netze_von(d):
+    return list(((d.get("NetworkSettings") or {}).get("Networks") or {}))
+
+
+def projekt_von(d):
+    return ((d.get("Config") or {}).get("Labels") or {}).get("com.docker.compose.project")
+
+
+def spender_von(d, infos):
+    """Container, dessen Netzwerk-Namespace d mitnutzt (network_mode: container:<id> bzw. service:<name>)."""
+    mode = (d.get("HostConfig") or {}).get("NetworkMode") or ""
+    ref = mode.split(":", 1)[1] if mode.startswith("container:") else ""
+    return next((x for x in infos if ref and (x.get("Id", "").startswith(ref) or name_von(x) == ref)), None) if ref else None
+
+
+def direkt_erreichbar(d, infos, netze):
+    """Wie ist Container d ohne Proxy von außerhalb des Docker-Hosts erreichbar (Intranet oder Internet – das ist
+    auf dem Server nicht unterscheidbar und wird gleich gewertet)? Bei gemeinsamem Netzwerk-Namespace gilt der
+    des Spenders. Liefert ({Port: ["IP:Port"]}, Host-Netzwerk, [LAN-Netze], Name des Spenders oder None)."""
+    spender = spender_von(d, infos)
+    d = spender or d
+    published = defaultdict(list)
+    for port, bindings in ((d.get("NetworkSettings") or {}).get("Ports") or {}).items():
+        for b in bindings or []:
+            ip = b.get("HostIp") or "0.0.0.0"
+            key = port.split("/")[0] if port.endswith("/tcp") else port
+            published[key].append("%s:%s%s" % (ip, b.get("HostPort"), " (nur lokal – vermutlich hinter "
+                                               "einem Reverse Proxy auf dem Host)" if ip in ("127.0.0.1", "::1") else ""))
+    lan = []
+    for n in netze_von(d):
+        net = netze.get(n) or {}
+        if net.get("Driver") in LAN_TREIBER:
+            lan.append("%s-Netz %s" % (net["Driver"], n))
+        for v in ("4", "6"):
+            mode = (net.get("Options") or {}).get("com.docker.network.bridge.gateway_mode_ipv" + v)
+            if mode in ("routed", "nat-unprotected"):
+                lan.append("Netz %s (IPv%s %s)" % (n, v, mode))
+    return published, (d.get("HostConfig") or {}).get("NetworkMode") == "host", lan, name_von(spender) if spender else None
+
+
+def ports_in_gruppe(names, user):
+    """Ports, auf denen ein lesbarer Prozess in einem dieser Container lauscht – erfasst wie bei deren eigenem
+    Scan, also genau die Ports, die dort bewertet werden."""
+    ports = set()
+    for name in names:
+        try:
+            procs = collect_procs(Container(name, user))[0]
+        except ScanError:
+            continue
+        ports.update(port for p in procs.values() for port in p["ports"])
+    return ports
+
+
+def netz_gruppe(d, infos):
+    """Andere Container im selben Netzwerk-Namespace wie d (Spender und alle, die ihn mitnutzen)."""
+    basis = (spender_von(d, infos) or d).get("Id")
+    return sorted({name_von(x) for x in infos if basis and basis in (x.get("Id"), (spender_von(x, infos) or {}).get("Id"))}
+                  - {name_von(d)})
+
+
+def im_host_netz(d, infos):
+    return ((spender_von(d, infos) or d).get("HostConfig") or {}).get("NetworkMode") == "host"
+
+
+def loopback_gruppe(d, infos):
+    """Andere Container, die dasselbe Loopback wie d nutzen und dort Ziele per 127.0.0.1/localhost erreichen:
+    im Host-Netzwerk alle Container im Host-Netzwerk (und der Host selbst), sonst die im selben
+    Netzwerk-Namespace."""
+    if im_host_netz(d, infos):
+        return sorted({name_von(x) for x in infos if im_host_netz(x, infos)} - {name_von(d)})
+    return netz_gruppe(d, infos)
+
+
+def nachbarn_von(d, infos):
+    """Container, die d über ein Docker-Netz direkt erreichen kann; im Host-Netzwerk alle mit einem Docker-Netz
+    (der Host erreicht sie über ihre IP)."""
+    basis = spender_von(d, infos) or d
+    host = (basis.get("HostConfig") or {}).get("NetworkMode") == "host"
+    eigene = set(netze_von(basis))
+    return sorted({name_von(x) for x in infos
+                   if (host and netze_von(spender_von(x, infos) or x)) or eigene & set(netze_von(spender_von(x, infos) or x))}
+                  - {name_von(d)})
+
+
+def label_ziele(proxy, infos):
+    """Ziele, die Traefik bzw. caddy-docker-proxy aus den Docker-Labels anderer Container bildet:
+    [(Container, Port)], Port "*" = Traefik wählt selbst (einziger freigegebener Port)."""
+    result = []
+    for d in infos:
+        labels = (d.get("Config") or {}).get("Labels") or {}
+        ports = []
+        if proxy == "traefik" and labels.get("traefik.enable") != "false" and any(k.startswith("traefik.") for k in labels):
+            for k, v in sorted(labels.items()):
+                m = re.match(r"traefik\.(http|tcp|udp)\.services\.[^.]+\.loadbalancer\.server\.port$", k)
+                if m and v.strip().isdigit():
+                    ports.append(v.strip() + ("/udp" if m.group(1) == "udp" else ""))
+            ports = ports or ["*"]
+        elif proxy == "caddy":
+            for k, v in sorted(labels.items()):
+                if re.match(r"caddy(_\d+)?\.(\d+_)?reverse_proxy$", k):
+                    for args in re.findall(r"\{\{\s*upstreams\b([^}]*)\}\}", v):
+                        num = [a for a in args.split() if a.isdigit()]
+                        ports.append(num[0] if num else "443" if "https" in args.split() else "80")
+        result += [(name_von(d), port) for port in OrderedDict.fromkeys(ports)]
+    return result
+
+
+def container_index(infos, von=None):
+    """Namen, Aliase und IPs aller laufenden Container -> Containername (für Backends wie http://app:3000,
+    app.netz oder 172.18.0.5). Gibt es einen Namen mehrfach (Compose-Dienst app in zwei Projekten), gilt aus
+    Sicht von von (inspect des Containers mit dem Proxy) zuerst ein Container in einem gemeinsamen Netz (nur dort
+    löst Dockers DNS den Namen auf), dann einer aus demselben Compose-Projekt; bei gemeinsamem
+    Netzwerk-Namespace zählen die Netze des Spenders."""
+    if von is not None:
+        netze = set(netze_von(spender_von(von, infos) or von))
+        projekt = projekt_von(von)
+
+        def vorrang(d):
+            gemeinsam = bool(netze & set(netze_von(spender_von(d, infos) or d)))
+            return (not gemeinsam, not (projekt and projekt_von(d) == projekt))
+        infos = sorted(infos, key=vorrang)     # stabil: sonst Reihenfolge von docker ps
+    index = {}
+    for d in infos:
+        name = name_von(d)
+        keys = [name, (d.get("Config") or {}).get("Hostname"),
+                ((d.get("Config") or {}).get("Labels") or {}).get("com.docker.compose.service")]
+        for netname, net in ((d.get("NetworkSettings") or {}).get("Networks") or {}).items():
+            names = [name] + (net.get("Aliases") or []) + (net.get("DNSNames") or [])
+            keys += [net.get("IPAddress"), net.get("GlobalIPv6Address")] + names + [k + "." + netname for k in names if k]
+        for k in keys:
+            if k:
+                index.setdefault(k, name)
+    return index
+
+
+# ===========================================================================
+# 8. Webserver-Konfiguration: nginx, Apache, BusyBox-httpd, stunnel
+# ===========================================================================
+def web_leer():
+    return {"docroots": defaultdict(list), "backends": defaultdict(list), "vhosts": defaultdict(list),
+            "upstreams": defaultdict(list), "modphp": set(), "raw": [], "published": defaultdict(list), "containers": {},
+            "via_proxy": {}, "problems": [], "unlesbar": set(), "label_ziele": {}, "host_network": False, "lan": [],
+            "spender": None, "nachbarn": [], "netz_gruppe": [], "loopback": [], "sites": [], "via_urls": {},
+            "ziel_urls": OrderedDict()}
+
+
+def collect_web(c, procs):
+    web = web_leer()
+    webserver_lesen(c, procs, web)
+    infos, netze = docker_lage()
+    web["published"], web["host_network"], web["lan"], web["spender"] = direkt_erreichbar(c.info, infos, netze)
+    web["nachbarn"] = nachbarn_von(c.info, infos)
+    # Container im selben Netzwerk-Namespace (network_mode: container:/service:): lauschen auf denselben Ports
+    web["netz_gruppe"] = netz_gruppe(c.info, infos)
+    web["loopback"] = loopback_gruppe(c.info, infos)
+    if web["host_network"]:
+        web["eigene_adressen"] = eigene_adressen()
+        web["loopback_ziele"] = loopback_ziele(loopback_ports(web), infos, name_von(c.info))
+    for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
+        web["label_ziele"][proxy] = label_ziele(proxy, infos)
+    web["containers"] = container_index(infos, c.info)
+    web["env"] = [tuple(e.split("=", 1)) for e in (c.info.get("Config") or {}).get("Env") or [] if "=" in e]
+    return web
+
+
+def webserver_lesen(c, procs, web):
+    """Konfiguration der laufenden nginx- und Apache-Server lesen (im Container bzw. auf dem Host)."""
+    for exe in sorted({p["exe"] for p in procs.values() if p["base"] in ("nginx", "apache2", "httpd")}):
+        masters = server_masters(procs, exe)
+        if posixpath.basename(exe) == "nginx":
+            # je Masterprozess: dessen -p/-c übernehmen (sonst liest nginx -T eine andere Konfiguration),
+            # mit dessen Benutzer
+            calls = OrderedDict()
+            for p in masters:
+                opts = OrderedDict()
+                for flag, value in re.findall(r"(?:^|\s)-([cp])\s*([^\s;]+)", " ".join(p["argv"])):
+                    opts.setdefault(flag, value)
+                args = [x for flag in ("p", "c") if flag in opts for x in ("-" + flag, opts[flag])]
+                calls.setdefault((server_user(p), tuple(args)), None)
+            for user, args in calls:
+                rc, conf = c.exec([exe] + list(args) + ["-T"], timeout=60, user=user)
+                quelle, fehlt = "-T", []
+                if rc != 0 or not conf.strip():
+                    # nginx vor 1.9.2 kennt -T nicht: dieselben Dateien selbst lesen
+                    (conf, fehlt), quelle = nginx_dateien(c, exe, dict(zip(args[::2], args[1::2])), user), "Dateien"
+                if not conf.strip():
+                    web["unlesbar"].add(exe)
+                    web["problems"].append("%s %s-T fehlgeschlagen und Konfigurationsdateien nicht lesbar: Konfiguration "
+                                           "(vHosts, Proxy-Backends) nicht lesbar" % (exe, " ".join(args) + " " if args else ""))
+                elif fehlt:
+                    web["unlesbar"].add(exe)
+                    web["problems"].append("%s %s-T fehlgeschlagen und Konfigurationsdateien nicht vollständig lesbar (%s): "
+                                           "Proxy-Backends unvollständig" % (exe, " ".join(args) + " " if args else "",
+                                                                             "; ".join(fehlt)))
+                web["raw"].append("--- %s %s (Auszug)\n" % (exe, quelle) + "\n".join(
+                    l for l in conf.splitlines() if re.match(r"# configuration file|\s*(server|listen|server_name|root|location|\w+_pass|upstream)[\s;{]", l)))
+                parse_nginx(conf, web, exe)
+        elif busybox_httpd(c, exe, masters, web):
+            continue
+        else:
+            # je Hauptprozess mit dessen Benutzer und dessen Optionen (-f, -C, -D …)
+            for user, optionen in OrderedDict.fromkeys((server_user(p), tuple(apache_optionen(p["argv"])))
+                                                       for p in masters):
+                parse_apache(c, exe, web, user, optionen)
+    for exe in sorted({p["exe"] for p in procs.values() if p["base"] in STUNNEL}):
+        stunnel_lesen(c, procs, web, exe)
+
+
+def server_masters(procs, exe):
+    """Hauptprozesse eines Webservers: Prozesse mit diesem Programm, deren Elternprozess ein anderes Programm ist
+    (nicht die Worker). Ihr Benutzer und ihre Optionen gelten für die Abfrage der Konfiguration."""
+    same = [p for p in procs.values() if p["exe"] == exe]
+    return [p for p in same if (procs.get(p.get("ppid", "")) or {}).get("exe") != exe] or same
+
+
+def server_user(p):
+    """Benutzer für die Abfrage der Webserver-Konfiguration: der des Hauptprozesses, nie mehr. Programm,
+    Optionen und Konfiguration bestimmt der Container; als root ausgeführt, könnte ein unprivilegierter Prozess
+    so root im Container werden (eigenes Programm namens nginx, load_module/LoadModule in der Konfiguration)."""
+    return p["user"] or NOBODY
+
+
+# Dateien zu Mustern (glob wie nginx include bzw. stunnel include) mit den Rechten des Aufrufers ausgeben, im
+# Format von 'nginx -T'. IFS leer: keine Worttrennung, nur Pfadnamen-Erweiterung. Fehlt eine Datei oder ist sie
+# nicht lesbar, folgt eine Zeile \037<Pfad> (ein Muster ohne Treffer erscheint dabei unverändert); Verzeichnisse
+# werden übergangen.
+KONFIG_DATEIEN_SH = r"""IFS=''
+for m in "$@"; do
+    for f in $m; do
+        [ -d "$f" ] && continue
+        if [ -f "$f" ] && [ -r "$f" ]; then
+            printf '# configuration file %s:\n' "$f"
+            cat "$f" || printf '\n\037%s\n' "$f"
+            printf '\n'
+        else
+            printf '\037%s\n' "$f"
+        fi
+    done
+done
+"""
+
+# Dasselbe als root, aber nur für Dateien, die niemand außer root anlegen, ändern oder umlenken kann: die Datei und
+# alle Verzeichnisse darüber gehören root, sind weder für die Gruppe noch für andere beschreibbar, und kein Teil des
+# Pfads ist ein symbolischer Link (sonst wie nicht lesbar). Für Dienste, die ihre Konfiguration als root lesen und
+# danach den Benutzer wechseln (stunnel mit setuid, /etc/stunnel nur für root).
+KONFIG_DATEIEN_NUR_ROOT_SH = r"""nur_root() {
+    p=$1
+    case $p in /*) ;; *) return 1 ;; esac
+    while :; do
+        [ -L "$p" ] && return 1
+        [ -n "$(find "$p" -maxdepth 0 -user 0 ! -perm -020 ! -perm -002 2>/dev/null)" ] || return 1
+        [ "$p" = / ] && return 0
+        p=${p%/*}
+        [ -n "$p" ] || p=/
+    done
+}
+""" + KONFIG_DATEIEN_SH.replace('[ -r "$f" ]; then', '[ -r "$f" ] && nur_root "$f"; then')
+
+
+def konfig_dateien(c, muster, user, includes, basis, runden=10, skript=KONFIG_DATEIEN_SH):
+    """Konfigurationsdateien zu den Mustern und ihre include-Dateien (includes: Text einer Datei ->
+    Muster, relativ zu basis) als Benutzer des Hauptprozesses lesen. Liefert (Text im Format von 'nginx -T',
+    [was fehlt]): nicht vorhandene oder nicht lesbare Dateien, fehlgeschlagene Abfragen, include-Ebenen über
+    runden. Ein Muster mit Platzhalter ohne Treffer fehlt nicht (wie in nginx und stunnel zulässig)."""
+    teile, gefragt, gelesen, fehlt = [], set(), set(), []
+    for _ in range(runden):
+        muster = [m for m in OrderedDict.fromkeys(muster) if m not in gefragt]
+        if not muster:
+            break
+        gefragt.update(muster)
+        rc, out = c.exec(["sh", "-s", "--"] + muster, input=skript, timeout=60, user=user)
+        if rc != 0:
+            fehlt.append("Abfrage fehlgeschlagen: " + ", ".join(muster))
+            break
+        fehlt += [f for f in re.findall(r"^\x1f(.*)$", out, re.M) if not (f in muster and re.search(r"[*?[]", f))]
+        neu = []
+        for m in re.finditer(r"^# configuration file (.+?):\n(.*?)(?=^# configuration file .+?:\n|^\x1f|\Z)", out,
+                             re.M | re.S):
+            if m.group(1) in gelesen:
+                continue
+            gelesen.add(m.group(1))
+            teile.append(m.group(0))
+            neu += [i if i.startswith("/") else posixpath.join(basis, i) for i in includes(m.group(2))]
+        muster = neu
+    else:
+        if [m for m in muster if m not in gefragt]:
+            fehlt.append("mehr als %d include-Ebenen" % runden)
+    return "".join(teile), fehlt
+
+
 # Variablen, die in nginx nur den Pfad bzw. das Schema eines Ziels bilden (proxy_pass http://app$request_uri)
 NGINX_PFAD_VARIABLEN = re.compile(r"\$\{?(?:request_uri|uri|document_uri|is_args|args|query_string|\d)\}?(?!\w)")
 
@@ -1470,18 +1562,19 @@ def parse_nginx(conf, web, exe):
                              "weiter": [(pfad, z) for pfad, t in v["weiter"] for z in nginx_ziele(t, variables)]})
 
 
-def server_masters(procs, exe):
-    """Hauptprozesse eines Webservers: Prozesse mit diesem Programm, deren Elternprozess ein anderes Programm ist
-    (nicht die Worker). Ihr Benutzer und ihre Optionen gelten für die Abfrage der Konfiguration."""
-    same = [p for p in procs.values() if p["exe"] == exe]
-    return [p for p in same if (procs.get(p.get("ppid", "")) or {}).get("exe") != exe] or same
+def nginx_includes(text):
+    text = re.sub(r"#[^\n]*", "", text)
+    return [m.strip("'\"") for m in re.findall(r"(?:^|(?<=[;{}]))\s*include\s+([^;{}]+?)\s*;", text)]
 
 
-def server_user(p):
-    """Benutzer für die Abfrage der Webserver-Konfiguration: der des Hauptprozesses, nie mehr. Programm,
-    Optionen und Konfiguration bestimmt der Container; als root ausgeführt, könnte ein unprivilegierter Prozess
-    so root im Container werden (eigenes Programm namens nginx, load_module/LoadModule in der Konfiguration)."""
-    return p["user"] or NOBODY
+def nginx_dateien(c, exe, opts, user):
+    """Ersatz für 'nginx -T' (erst ab nginx 1.9.2): Hauptdatei (-c, sonst --conf-path aus 'nginx -V', relativ zu
+    -p bzw. --prefix) und alle per include eingebundenen Dateien (relativ zum Verzeichnis der Hauptdatei) lesen."""
+    rc, v = c.exec([exe, "-V"], stderr=True, timeout=60, user=user)
+    prefix = opts.get("-p") or (re.findall(r"--prefix=(\S+)", v) or ["/usr/local/nginx/"])[0]
+    conf = opts.get("-c") or (re.findall(r"--conf-path=(\S+)", v) or ["conf/nginx.conf"])[0]
+    conf = conf if conf.startswith("/") else posixpath.join(prefix, conf)
+    return konfig_dateien(c, [conf], user, nginx_includes, posixpath.dirname(conf))
 
 
 def apache_optionen(argv):
@@ -1686,267 +1779,8 @@ def parse_apache(c, exe, web, user=NOBODY, optionen=()):
     web["sites"] += apache_sites(exe, s_out, bloecke, haupt)
 
 
-# Proxys und Weiterleitungen, deren Ziele das Skript nicht (vollständig) aus der Konfiguration liest. Ist einer
-# davon erreichbar, gelten alle Container in seinen Docker-Netzen als möglicherweise erreichbar (im Zweifel
-# erreichbar). Traefik und caddy-docker-proxy: Ziele aus Docker-Labels werden zusätzlich genau zugeordnet.
-PROXY_UNBEKANNT = {"traefik", "caddy", "haproxy", "envoy", "varnishd", "lighttpd", "h2o", "angie", "pound", "hitch",
-                   "socat", "sniproxy", "oauth2-proxy", "squid", "frps"}
-# Datenhaltung und Nachrichtenvermittlung: Anwendungen rufen sie auf, leiten aber keine Anfragen von außen
-# durch -> Aufrufe (Ziel-URL, offene Verbindung) machen sie nicht erreichbar. Java-Dienste über die Kommandozeile.
-DATENDIENST = re.compile(r"(mysqld|mariadbd|postgres|postmaster|redis-server|valkey-server|keydb-server|mongod|mongos|"
-                         r"memcached|beam\.smp|clickhouse(-server)?|influxd|etcd|cockroach|couchdb|arangod|rethinkdb|"
-                         r"meilisearch|typesense-server|qdrant|nats-server|mosquitto)$")
-JAVA_DATENDIENST = re.compile(r"org\.elasticsearch\.|org\.opensearch\.|-Dsolr\.|org\.apache\.solr\.|kafka\.Kafka\b|"
-                              r"org\.apache\.cassandra\.|org\.apache\.zookeeper\.|org\.apache\.activemq\.|org\.neo4j\.")
-# Kennzeichen der Gründe aus Aufrufen einer erreichbaren Anwendung (für DATENDIENST und die Rückfallregel)
-AUFRUF_GRUENDE = ("(Ziel-URL ", "(offene Verbindung)")
-ZIEL_URL = re.compile(r"\b(https?|wss?|grpcs?)://(?:[^@\s/'\"]*@)?([^\s/'\",;?#@]+)")
-
-
-def datendienst(p):
-    return bool(DATENDIENST.match(p["base"]) or (p["base"].startswith("java") and JAVA_DATENDIENST.search(" ".join(p["argv"]))))
-
-
-def aufruf_grund(reason):
-    return any(k in reason for k in AUFRUF_GRUENDE)
-
-
-def aufruf_ziele(ps, web, env):
-    """Ziele, die eine erreichbare Anwendung selbst aufruft (z.B. ein API-Gateway): HTTP/WebSocket/gRPC-URLs auf
-    andere Container in der Umgebung des Containers (env: [(Name, Wert)]) bzw. der Kommandozeile – mysql://,
-    redis:// u.ä. zählen nicht –, dazu bestehende TCP-Verbindungen zu Containern. [(Container, Port, Quelle)]"""
-    result = OrderedDict()
-    quellen = [("Ziel-URL in der Kommandozeile", " ".join(p["argv"])) for p in ps] + \
-        [("Ziel-URL %s" % k, v) for k, v in env]
-    for quelle, text in quellen:
-        for scheme, hostport in ZIEL_URL.findall(text):
-            host, port = split_target(scheme + "://" + hostport)
-            ct = web["containers"].get(host)
-            if ct and ct != web["self"]:
-                result.setdefault((ct, port), quelle)
-    for p in ps:
-        for addr, port in p.get("verbindungen", ()):
-            ct = web["containers"].get(addr)
-            if ct and ct != web["self"]:
-                result.setdefault((ct, port), "offene Verbindung")
-    return [(ct, port, quelle) for (ct, port), quelle in result.items()]
-
-
-# Tunnel-Agenten: leiten Verkehr aus dem Internet weiter, ohne selbst auf einem Port zu lauschen -> immer erreichbar
-TUNNEL = {"cloudflared", "frpc", "ngrok", "chisel"}
-LAN_TREIBER = ("macvlan", "ipvlan")     # Container mit eigener Adresse im LAN, ohne veröffentlichte Ports erreichbar
-# Kennzeichen im Grund eines Proxy-Ziels per 127.0.0.1/localhost in einem anderen Container, der dasselbe Loopback
-# nutzt (Host-Netzwerk, gemeinsamer Netzwerk-Namespace): erreicht auch Dienste, die nur auf Loopback lauschen
-LOOPBACK_GRUND = " (über Loopback)"
-
-
-def docker_lage():
-    """docker inspect aller laufenden Container und ihrer Netzwerke: ([Container], {Netzname: Netz}). Pausierte
-    (docker pause) gehören als Kontext dazu – ein laufender Container kann ihren Netzwerk-Namespace mitnutzen,
-    samt veröffentlichter Ports –, werden aber nicht geprüft (pausiert(), docker exec ist dort nicht möglich)."""
-    rc, ids = run(["docker", "ps", "-q"])
-    if rc != 0:
-        raise ScanError("docker nicht erreichbar (läuft dockerd? Rechte/Gruppe docker?)")
-    infos = inspect_liste(["docker", "inspect"], ids.split())
-    names = sorted({n for d in infos for n in netze_von(d)})
-    return infos, {n.get("Name"): n for n in inspect_liste(["docker", "network", "inspect"], names)}
-
-
-def pausiert(infos):
-    """Namen der pausierten Container (docker pause): nur Kontext, nicht geprüft."""
-    return {name_von(d) for d in infos if (d.get("State") or {}).get("Paused")}
-
-
-def gestoppte_container():
-    """Zahl der gestoppten Container (erstellt, beendet, tot) für den Kopf der Ausgabe; None, wenn docker sie nicht
-    liefert. Sie werden nicht geprüft."""
-    rc, ids = run(["docker", "ps", "-aq", "--filter", "status=created", "--filter", "status=exited",
-                   "--filter", "status=dead"])
-    return len(ids.split()) if rc == 0 else None
-
-
-def inspect_liste(cmd, refs):
-    """docker inspect mehrerer Objekte. Ist eines zwischenzeitlich entfernt (z.B. docker run --rm), liefert docker
-    die übrigen und Rückgabewert 1 – das ist kein Fehler; ohne gültige Ausgabe schon."""
-    if not refs:
-        return []
-    rc, out = run(cmd + refs)
-    try:
-        result = json.loads(out or "")
-    except ValueError:
-        result = None
-    if not isinstance(result, list):
-        raise ScanError("%s fehlgeschlagen" % " ".join(cmd))
-    return result
-
-
-def name_von(d):
-    return (d.get("Name") or "").lstrip("/")
-
-
-def netze_von(d):
-    return list(((d.get("NetworkSettings") or {}).get("Networks") or {}))
-
-
-def spender_von(d, infos):
-    """Container, dessen Netzwerk-Namespace d mitnutzt (network_mode: container:<id> bzw. service:<name>)."""
-    mode = (d.get("HostConfig") or {}).get("NetworkMode") or ""
-    ref = mode.split(":", 1)[1] if mode.startswith("container:") else ""
-    return next((x for x in infos if ref and (x.get("Id", "").startswith(ref) or name_von(x) == ref)), None) if ref else None
-
-
-def direkt_erreichbar(d, infos, netze):
-    """Wie ist Container d ohne Proxy von außerhalb des Docker-Hosts erreichbar (Intranet oder Internet – das ist
-    auf dem Server nicht unterscheidbar und wird gleich gewertet)? Bei gemeinsamem Netzwerk-Namespace gilt der
-    des Spenders. Liefert ({Port: ["IP:Port"]}, Host-Netzwerk, [LAN-Netze], Name des Spenders oder None)."""
-    spender = spender_von(d, infos)
-    d = spender or d
-    published = defaultdict(list)
-    for port, bindings in ((d.get("NetworkSettings") or {}).get("Ports") or {}).items():
-        for b in bindings or []:
-            ip = b.get("HostIp") or "0.0.0.0"
-            key = port.split("/")[0] if port.endswith("/tcp") else port
-            published[key].append("%s:%s%s" % (ip, b.get("HostPort"), " (nur lokal – vermutlich hinter "
-                                               "einem Reverse Proxy auf dem Host)" if ip in ("127.0.0.1", "::1") else ""))
-    lan = []
-    for n in netze_von(d):
-        net = netze.get(n) or {}
-        if net.get("Driver") in LAN_TREIBER:
-            lan.append("%s-Netz %s" % (net["Driver"], n))
-        for v in ("4", "6"):
-            mode = (net.get("Options") or {}).get("com.docker.network.bridge.gateway_mode_ipv" + v)
-            if mode in ("routed", "nat-unprotected"):
-                lan.append("Netz %s (IPv%s %s)" % (n, v, mode))
-    return published, (d.get("HostConfig") or {}).get("NetworkMode") == "host", lan, name_von(spender) if spender else None
-
-
-def ports_in_gruppe(names, user):
-    """Ports, auf denen ein lesbarer Prozess in einem dieser Container lauscht – erfasst wie bei deren eigenem
-    Scan, also genau die Ports, die dort bewertet werden."""
-    ports = set()
-    for name in names:
-        try:
-            procs = collect_procs(Container(name, user))[0]
-        except ScanError:
-            continue
-        ports.update(port for p in procs.values() for port in p["ports"])
-    return ports
-
-
-def netz_gruppe(d, infos):
-    """Andere Container im selben Netzwerk-Namespace wie d (Spender und alle, die ihn mitnutzen)."""
-    basis = (spender_von(d, infos) or d).get("Id")
-    return sorted({name_von(x) for x in infos if basis and basis in (x.get("Id"), (spender_von(x, infos) or {}).get("Id"))}
-                  - {name_von(d)})
-
-
-def im_host_netz(d, infos):
-    return ((spender_von(d, infos) or d).get("HostConfig") or {}).get("NetworkMode") == "host"
-
-
-def loopback_gruppe(d, infos):
-    """Andere Container, die dasselbe Loopback wie d nutzen und dort Ziele per 127.0.0.1/localhost erreichen:
-    im Host-Netzwerk alle Container im Host-Netzwerk (und der Host selbst), sonst die im selben
-    Netzwerk-Namespace."""
-    if im_host_netz(d, infos):
-        return sorted({name_von(x) for x in infos if im_host_netz(x, infos)} - {name_von(d)})
-    return netz_gruppe(d, infos)
-
-
-def nachbarn_von(d, infos):
-    """Container, die d über ein Docker-Netz direkt erreichen kann; im Host-Netzwerk alle mit einem Docker-Netz
-    (der Host erreicht sie über ihre IP)."""
-    basis = spender_von(d, infos) or d
-    host = (basis.get("HostConfig") or {}).get("NetworkMode") == "host"
-    eigene = set(netze_von(basis))
-    return sorted({name_von(x) for x in infos
-                   if (host and netze_von(spender_von(x, infos) or x)) or eigene & set(netze_von(spender_von(x, infos) or x))}
-                  - {name_von(d)})
-
-
-def label_ziele(proxy, infos):
-    """Ziele, die Traefik bzw. caddy-docker-proxy aus den Docker-Labels anderer Container bildet:
-    [(Container, Port)], Port "*" = Traefik wählt selbst (einziger freigegebener Port)."""
-    result = []
-    for d in infos:
-        labels = (d.get("Config") or {}).get("Labels") or {}
-        ports = []
-        if proxy == "traefik" and labels.get("traefik.enable") != "false" and any(k.startswith("traefik.") for k in labels):
-            for k, v in sorted(labels.items()):
-                m = re.match(r"traefik\.(http|tcp|udp)\.services\.[^.]+\.loadbalancer\.server\.port$", k)
-                if m and v.strip().isdigit():
-                    ports.append(v.strip() + ("/udp" if m.group(1) == "udp" else ""))
-            ports = ports or ["*"]
-        elif proxy == "caddy":
-            for k, v in sorted(labels.items()):
-                if re.match(r"caddy(_\d+)?\.(\d+_)?reverse_proxy$", k):
-                    for args in re.findall(r"\{\{\s*upstreams\b([^}]*)\}\}", v):
-                        num = [a for a in args.split() if a.isdigit()]
-                        ports.append(num[0] if num else "443" if "https" in args.split() else "80")
-        result += [(name_von(d), port) for port in OrderedDict.fromkeys(ports)]
-    return result
-
-
-def web_leer():
-    return {"docroots": defaultdict(list), "backends": defaultdict(list), "vhosts": defaultdict(list),
-            "upstreams": defaultdict(list), "modphp": set(), "raw": [], "published": defaultdict(list), "containers": {},
-            "via_proxy": {}, "problems": [], "unlesbar": set(), "label_ziele": {}, "host_network": False, "lan": [],
-            "spender": None, "nachbarn": [], "netz_gruppe": [], "loopback": [], "sites": [], "via_urls": {},
-            "ziel_urls": OrderedDict()}
-
-
-def collect_web(c, procs):
-    web = web_leer()
-    webserver_lesen(c, procs, web)
-    infos, netze = docker_lage()
-    web["published"], web["host_network"], web["lan"], web["spender"] = direkt_erreichbar(c.info, infos, netze)
-    web["nachbarn"] = nachbarn_von(c.info, infos)
-    # Container im selben Netzwerk-Namespace (network_mode: container:/service:): lauschen auf denselben Ports
-    web["netz_gruppe"] = netz_gruppe(c.info, infos)
-    web["loopback"] = loopback_gruppe(c.info, infos)
-    if web["host_network"]:
-        web["eigene_adressen"] = eigene_adressen()
-        web["loopback_ziele"] = loopback_ziele(loopback_ports(web), infos, name_von(c.info))
-    for proxy in sorted({p["base"] for p in procs.values()} & {"traefik", "caddy"}):
-        web["label_ziele"][proxy] = label_ziele(proxy, infos)
-    web["containers"] = container_index(infos, c.info)
-    web["env"] = [tuple(e.split("=", 1)) for e in (c.info.get("Config") or {}).get("Env") or [] if "=" in e]
-    return web
-
-
-def projekt_von(d):
-    return ((d.get("Config") or {}).get("Labels") or {}).get("com.docker.compose.project")
-
-
-def container_index(infos, von=None):
-    """Namen, Aliase und IPs aller laufenden Container -> Containername (für Backends wie http://app:3000,
-    app.netz oder 172.18.0.5). Gibt es einen Namen mehrfach (Compose-Dienst app in zwei Projekten), gilt aus
-    Sicht von von (inspect des Containers mit dem Proxy) zuerst ein Container in einem gemeinsamen Netz (nur dort
-    löst Dockers DNS den Namen auf), dann einer aus demselben Compose-Projekt; bei gemeinsamem
-    Netzwerk-Namespace zählen die Netze des Spenders."""
-    if von is not None:
-        netze = set(netze_von(spender_von(von, infos) or von))
-        projekt = projekt_von(von)
-
-        def vorrang(d):
-            gemeinsam = bool(netze & set(netze_von(spender_von(d, infos) or d)))
-            return (not gemeinsam, not (projekt and projekt_von(d) == projekt))
-        infos = sorted(infos, key=vorrang)     # stabil: sonst Reihenfolge von docker ps
-    index = {}
-    for d in infos:
-        name = name_von(d)
-        keys = [name, (d.get("Config") or {}).get("Hostname"),
-                ((d.get("Config") or {}).get("Labels") or {}).get("com.docker.compose.service")]
-        for netname, net in ((d.get("NetworkSettings") or {}).get("Networks") or {}).items():
-            names = [name] + (net.get("Aliases") or []) + (net.get("DNSNames") or [])
-            keys += [net.get("IPAddress"), net.get("GlobalIPv6Address")] + names + [k + "." + netname for k in names if k]
-        for k in keys:
-            if k:
-                index.setdefault(k, name)
-    return index
-
-
 BUSYBOX_HTTPD_WERTE = "cdehmpru"     # Optionen von BusyBox-httpd mit Wert (-h DIR, -c DATEI, -p PORT …)
+
 # Zustand einer Datei, deren Inhalt passiv nicht zu lesen war: 3 fehlt, 4 leer, 0 vorhanden (also nicht lesbar)
 DATEI_ZUSTAND_SH = 'if [ ! -e "$1" ]; then exit 3; elif [ ! -s "$1" ]; then exit 4; fi'
 
@@ -2003,134 +1837,6 @@ def busybox_httpd(c, exe, masters, web):
     web["raw"].append("--- %s: httpd von BusyBox (kein Apache), Docroot %s\n" % (
         exe, ", ".join(web["docroots"][exe]) or "unbekannt"))
     return True
-
-
-def webserver_lesen(c, procs, web):
-    """Konfiguration der laufenden nginx- und Apache-Server lesen (im Container bzw. auf dem Host)."""
-    for exe in sorted({p["exe"] for p in procs.values() if p["base"] in ("nginx", "apache2", "httpd")}):
-        masters = server_masters(procs, exe)
-        if posixpath.basename(exe) == "nginx":
-            # je Masterprozess: dessen -p/-c übernehmen (sonst liest nginx -T eine andere Konfiguration),
-            # mit dessen Benutzer
-            calls = OrderedDict()
-            for p in masters:
-                opts = OrderedDict()
-                for flag, value in re.findall(r"(?:^|\s)-([cp])\s*([^\s;]+)", " ".join(p["argv"])):
-                    opts.setdefault(flag, value)
-                args = [x for flag in ("p", "c") if flag in opts for x in ("-" + flag, opts[flag])]
-                calls.setdefault((server_user(p), tuple(args)), None)
-            for user, args in calls:
-                rc, conf = c.exec([exe] + list(args) + ["-T"], timeout=60, user=user)
-                quelle, fehlt = "-T", []
-                if rc != 0 or not conf.strip():
-                    # nginx vor 1.9.2 kennt -T nicht: dieselben Dateien selbst lesen
-                    (conf, fehlt), quelle = nginx_dateien(c, exe, dict(zip(args[::2], args[1::2])), user), "Dateien"
-                if not conf.strip():
-                    web["unlesbar"].add(exe)
-                    web["problems"].append("%s %s-T fehlgeschlagen und Konfigurationsdateien nicht lesbar: Konfiguration "
-                                           "(vHosts, Proxy-Backends) nicht lesbar" % (exe, " ".join(args) + " " if args else ""))
-                elif fehlt:
-                    web["unlesbar"].add(exe)
-                    web["problems"].append("%s %s-T fehlgeschlagen und Konfigurationsdateien nicht vollständig lesbar (%s): "
-                                           "Proxy-Backends unvollständig" % (exe, " ".join(args) + " " if args else "",
-                                                                             "; ".join(fehlt)))
-                web["raw"].append("--- %s %s (Auszug)\n" % (exe, quelle) + "\n".join(
-                    l for l in conf.splitlines() if re.match(r"# configuration file|\s*(server|listen|server_name|root|location|\w+_pass|upstream)[\s;{]", l)))
-                parse_nginx(conf, web, exe)
-        elif busybox_httpd(c, exe, masters, web):
-            continue
-        else:
-            # je Hauptprozess mit dessen Benutzer und dessen Optionen (-f, -C, -D …)
-            for user, optionen in OrderedDict.fromkeys((server_user(p), tuple(apache_optionen(p["argv"])))
-                                                       for p in masters):
-                parse_apache(c, exe, web, user, optionen)
-    for exe in sorted({p["exe"] for p in procs.values() if p["base"] in STUNNEL}):
-        stunnel_lesen(c, procs, web, exe)
-
-
-# Dateien zu Mustern (glob wie nginx include bzw. stunnel include) mit den Rechten des Aufrufers ausgeben, im
-# Format von 'nginx -T'. IFS leer: keine Worttrennung, nur Pfadnamen-Erweiterung. Fehlt eine Datei oder ist sie
-# nicht lesbar, folgt eine Zeile \037<Pfad> (ein Muster ohne Treffer erscheint dabei unverändert); Verzeichnisse
-# werden übergangen.
-KONFIG_DATEIEN_SH = r"""IFS=''
-for m in "$@"; do
-    for f in $m; do
-        [ -d "$f" ] && continue
-        if [ -f "$f" ] && [ -r "$f" ]; then
-            printf '# configuration file %s:\n' "$f"
-            cat "$f" || printf '\n\037%s\n' "$f"
-            printf '\n'
-        else
-            printf '\037%s\n' "$f"
-        fi
-    done
-done
-"""
-
-
-# Dasselbe als root, aber nur für Dateien, die niemand außer root anlegen, ändern oder umlenken kann: die Datei und
-# alle Verzeichnisse darüber gehören root, sind weder für die Gruppe noch für andere beschreibbar, und kein Teil des
-# Pfads ist ein symbolischer Link (sonst wie nicht lesbar). Für Dienste, die ihre Konfiguration als root lesen und
-# danach den Benutzer wechseln (stunnel mit setuid, /etc/stunnel nur für root).
-KONFIG_DATEIEN_NUR_ROOT_SH = r"""nur_root() {
-    p=$1
-    case $p in /*) ;; *) return 1 ;; esac
-    while :; do
-        [ -L "$p" ] && return 1
-        [ -n "$(find "$p" -maxdepth 0 -user 0 ! -perm -020 ! -perm -002 2>/dev/null)" ] || return 1
-        [ "$p" = / ] && return 0
-        p=${p%/*}
-        [ -n "$p" ] || p=/
-    done
-}
-""" + KONFIG_DATEIEN_SH.replace('[ -r "$f" ]; then', '[ -r "$f" ] && nur_root "$f"; then')
-ROOT = "0:0"
-
-
-def konfig_dateien(c, muster, user, includes, basis, runden=10, skript=KONFIG_DATEIEN_SH):
-    """Konfigurationsdateien zu den Mustern und ihre include-Dateien (includes: Text einer Datei ->
-    Muster, relativ zu basis) als Benutzer des Hauptprozesses lesen. Liefert (Text im Format von 'nginx -T',
-    [was fehlt]): nicht vorhandene oder nicht lesbare Dateien, fehlgeschlagene Abfragen, include-Ebenen über
-    runden. Ein Muster mit Platzhalter ohne Treffer fehlt nicht (wie in nginx und stunnel zulässig)."""
-    teile, gefragt, gelesen, fehlt = [], set(), set(), []
-    for _ in range(runden):
-        muster = [m for m in OrderedDict.fromkeys(muster) if m not in gefragt]
-        if not muster:
-            break
-        gefragt.update(muster)
-        rc, out = c.exec(["sh", "-s", "--"] + muster, input=skript, timeout=60, user=user)
-        if rc != 0:
-            fehlt.append("Abfrage fehlgeschlagen: " + ", ".join(muster))
-            break
-        fehlt += [f for f in re.findall(r"^\x1f(.*)$", out, re.M) if not (f in muster and re.search(r"[*?[]", f))]
-        neu = []
-        for m in re.finditer(r"^# configuration file (.+?):\n(.*?)(?=^# configuration file .+?:\n|^\x1f|\Z)", out,
-                             re.M | re.S):
-            if m.group(1) in gelesen:
-                continue
-            gelesen.add(m.group(1))
-            teile.append(m.group(0))
-            neu += [i if i.startswith("/") else posixpath.join(basis, i) for i in includes(m.group(2))]
-        muster = neu
-    else:
-        if [m for m in muster if m not in gefragt]:
-            fehlt.append("mehr als %d include-Ebenen" % runden)
-    return "".join(teile), fehlt
-
-
-def nginx_includes(text):
-    text = re.sub(r"#[^\n]*", "", text)
-    return [m.strip("'\"") for m in re.findall(r"(?:^|(?<=[;{}]))\s*include\s+([^;{}]+?)\s*;", text)]
-
-
-def nginx_dateien(c, exe, opts, user):
-    """Ersatz für 'nginx -T' (erst ab nginx 1.9.2): Hauptdatei (-c, sonst --conf-path aus 'nginx -V', relativ zu
-    -p bzw. --prefix) und alle per include eingebundenen Dateien (relativ zum Verzeichnis der Hauptdatei) lesen."""
-    rc, v = c.exec([exe, "-V"], stderr=True, timeout=60, user=user)
-    prefix = opts.get("-p") or (re.findall(r"--prefix=(\S+)", v) or ["/usr/local/nginx/"])[0]
-    conf = opts.get("-c") or (re.findall(r"--conf-path=(\S+)", v) or ["conf/nginx.conf"])[0]
-    conf = conf if conf.startswith("/") else posixpath.join(prefix, conf)
-    return konfig_dateien(c, [conf], user, nginx_includes, posixpath.dirname(conf))
 
 
 STUNNEL = {"stunnel", "stunnel4", "stunnel3"}
@@ -2223,44 +1929,9 @@ def parse_stunnel(conf, web, exe, hinweis=""):
     web["raw"].append("--- %s (Auszug%s)\n" % (exe, hinweis) + "\n".join(auszug))
 
 
-def resolve_backend(target, web, self_name, depth=0):
-    """Backend-Ziel (http://app:3000, fcgi://php:9000, upstream-Name) einem Container zuordnen."""
-    host = re.sub(r"^[a-z]+://", "", target).split("/")[0]
-    ziel = split_target(target)
-    if not target.startswith("unix:") and ziel in web.get("loopback_ziele", {}):
-        ziele = [x for x in web["loopback_ziele"][ziel] if x[0] != self_name]
-        return target + (" -> " + ", ".join("Container %s, Port %s" % x for x in ziele) if ziele else
-                         " (%s)" % ("Host" if self_name == "Host" else "Host bzw. gleicher Container"))
-    if target.startswith("unix:") or lokales_ziel(ziel[0], web):
-        mit = [] if target.startswith("unix:") else web.get("loopback", [])
-        return target + " (%s%s)" % ("Host" if self_name == "Host" else "gleicher Container",
-                                     "; Loopback gemeinsam mit " + ", ".join(mit) if mit else "")
-    host = re.sub(r":\d+$", "", host)
-    host = host[1:-1] if host.startswith("[") and host.endswith("]") else host
-    if host in web["upstreams"] and depth < 3:
-        return target + " = " + ", ".join(resolve_backend(t, web, self_name, depth + 1) for t in web["upstreams"][host])
-    if "$" in host:
-        return target + " (Variable, nicht auswertbar)"
-    if host in web["containers"]:
-        ct = web["containers"][host]
-        return target + (" (gleicher Container)" if ct == self_name else " -> Container " + ct)
-    return target + " (extern/unbekannt)"
-
-
 # ===========================================================================
-# 7. Zuordnen: welcher laufende Prozess nutzt welche Komponente
+# 9. Ziele von Weiterleitungen und Aufrufen: Container, Prozess im selben Container, Loopback
 # ===========================================================================
-def use(c, p):
-    lst, lab = (c["aktiv"], p["label"]) if p["ports"] or p["base"] in TUNNEL \
-        else (c["aktiv_ohne_port"], p["label"] + " (ohne Port)")
-    if lab not in lst:
-        lst.append(lab)
-    for front in p.get("frontends", ()):     # z.B. php-fpm hinter nginx im selben Container
-        lab = "%s (über %s)" % (front, p["base"])
-        if lab not in c["aktiv"]:
-            c["aktiv"].append(lab)
-
-
 STANDARDPORTS = {"https": "443", "wss": "443", "grpcs": "443", "ajp": "8009", "fcgi": "8000", "uwsgi": "3031",
                  "scgi": "4000"}
 
@@ -2345,6 +2016,23 @@ def socket_prozesse(target, procs, web):
     return [p for p in procs.values() if pfade & p.get("unix", set())] if pfade else []
 
 
+def backend_containers(target, web, depth=0, nur_loopback=False):
+    """[(Container, Port)] eines Backend-Ziels, upstream-Namen werden aufgelöst. Ein Ziel per 127.0.0.1/localhost
+    trifft auch die Container, die dasselbe Loopback nutzen (nur_loopback: nur diese)."""
+    host, port = split_target(target)
+    if host in web["upstreams"] and depth < 3:
+        return [x for t in web["upstreams"][host] for x in backend_containers(t, web, depth + 1, nur_loopback)]
+    if host in web["containers"]:
+        return [] if nur_loopback else [(web["containers"][host], port)]
+    if lokales_ziel(host, web):
+        if (host, port) in web.get("loopback_ziele", {}):   # zugeordnet: veröffentlichter Port bzw. Prozess
+            ziele = web["loopback_ziele"][(host, port)]
+            return [x for x in ziele if x[0] in web.get("loopback", [])] if nur_loopback else ziele
+        mit = [(ct, port) for ct in web.get("loopback", [])]
+        return mit if nur_loopback else [(web["self"], port)] + mit
+    return []
+
+
 def ziele_kurz(target, web):
     """Backend-Ziel knapp für die Konsole, upstream in seine Ziele aufgelöst, jedes einzeln: zugeordnet
     "Container:Port" (im selben Container wie konfiguriert, z.B. 127.0.0.1:9000), sonst Unix-Socket bzw. Host und
@@ -2364,21 +2052,28 @@ def ziele_kurz(target, web):
     return kurz
 
 
-def backend_containers(target, web, depth=0, nur_loopback=False):
-    """[(Container, Port)] eines Backend-Ziels, upstream-Namen werden aufgelöst. Ein Ziel per 127.0.0.1/localhost
-    trifft auch die Container, die dasselbe Loopback nutzen (nur_loopback: nur diese)."""
-    host, port = split_target(target)
+def resolve_backend(target, web, self_name, depth=0):
+    """Backend-Ziel (http://app:3000, fcgi://php:9000, upstream-Name) einem Container zuordnen."""
+    host = re.sub(r"^[a-z]+://", "", target).split("/")[0]
+    ziel = split_target(target)
+    if not target.startswith("unix:") and ziel in web.get("loopback_ziele", {}):
+        ziele = [x for x in web["loopback_ziele"][ziel] if x[0] != self_name]
+        return target + (" -> " + ", ".join("Container %s, Port %s" % x for x in ziele) if ziele else
+                         " (%s)" % ("Host" if self_name == "Host" else "Host bzw. gleicher Container"))
+    if target.startswith("unix:") or lokales_ziel(ziel[0], web):
+        mit = [] if target.startswith("unix:") else web.get("loopback", [])
+        return target + " (%s%s)" % ("Host" if self_name == "Host" else "gleicher Container",
+                                     "; Loopback gemeinsam mit " + ", ".join(mit) if mit else "")
+    host = re.sub(r":\d+$", "", host)
+    host = host[1:-1] if host.startswith("[") and host.endswith("]") else host
     if host in web["upstreams"] and depth < 3:
-        return [x for t in web["upstreams"][host] for x in backend_containers(t, web, depth + 1, nur_loopback)]
+        return target + " = " + ", ".join(resolve_backend(t, web, self_name, depth + 1) for t in web["upstreams"][host])
+    if "$" in host:
+        return target + " (Variable, nicht auswertbar)"
     if host in web["containers"]:
-        return [] if nur_loopback else [(web["containers"][host], port)]
-    if lokales_ziel(host, web):
-        if (host, port) in web.get("loopback_ziele", {}):   # zugeordnet: veröffentlichter Port bzw. Prozess
-            ziele = web["loopback_ziele"][(host, port)]
-            return [x for x in ziele if x[0] in web.get("loopback", [])] if nur_loopback else ziele
-        mit = [(ct, port) for ct in web.get("loopback", [])]
-        return mit if nur_loopback else [(web["self"], port)] + mit
-    return []
+        ct = web["containers"][host]
+        return target + (" (gleicher Container)" if ct == self_name else " -> Container " + ct)
+    return target + " (extern/unbekannt)"
 
 
 def loopback_ports(web):
@@ -2486,6 +2181,75 @@ def socket_besitzer(ziele, infos, proc="/proc"):
     unbekannt = {z for inode, zs in gesucht.items() if inode not in gefunden for z in zs}
     ergebnis.update((z, list(b)) for z, b in besitzer.items() if len(b) == 1 and z not in unbekannt)
     return ergebnis
+
+
+# Kennzeichen der Gründe aus Aufrufen einer erreichbaren Anwendung (für DATENDIENST und die Rückfallregel)
+AUFRUF_GRUENDE = ("(Ziel-URL ", "(offene Verbindung)")
+ZIEL_URL = re.compile(r"\b(https?|wss?|grpcs?)://(?:[^@\s/'\"]*@)?([^\s/'\",;?#@]+)")
+
+
+def aufruf_grund(reason):
+    return any(k in reason for k in AUFRUF_GRUENDE)
+
+
+def aufruf_ziele(ps, web, env):
+    """Ziele, die eine erreichbare Anwendung selbst aufruft (z.B. ein API-Gateway): HTTP/WebSocket/gRPC-URLs auf
+    andere Container in der Umgebung des Containers (env: [(Name, Wert)]) bzw. der Kommandozeile – mysql://,
+    redis:// u.ä. zählen nicht –, dazu bestehende TCP-Verbindungen zu Containern. [(Container, Port, Quelle)]"""
+    result = OrderedDict()
+    quellen = [("Ziel-URL in der Kommandozeile", " ".join(p["argv"])) for p in ps] + \
+        [("Ziel-URL %s" % k, v) for k, v in env]
+    for quelle, text in quellen:
+        for scheme, hostport in ZIEL_URL.findall(text):
+            host, port = split_target(scheme + "://" + hostport)
+            ct = web["containers"].get(host)
+            if ct and ct != web["self"]:
+                result.setdefault((ct, port), quelle)
+    for p in ps:
+        for addr, port in p.get("verbindungen", ()):
+            ct = web["containers"].get(addr)
+            if ct and ct != web["self"]:
+                result.setdefault((ct, port), "offene Verbindung")
+    return [(ct, port, quelle) for (ct, port), quelle in result.items()]
+
+
+# ===========================================================================
+# 10. Nutzung und Erreichbarkeit: welcher Prozess nutzt welche Komponente, welcher Dienst ist erreichbar
+# ===========================================================================
+# Proxys und Weiterleitungen, deren Ziele das Skript nicht (vollständig) aus der Konfiguration liest. Ist einer
+# davon erreichbar, gelten alle Container in seinen Docker-Netzen als möglicherweise erreichbar (im Zweifel
+# erreichbar). Traefik und caddy-docker-proxy: Ziele aus Docker-Labels werden zusätzlich genau zugeordnet.
+PROXY_UNBEKANNT = {"traefik", "caddy", "haproxy", "envoy", "varnishd", "lighttpd", "h2o", "angie", "pound", "hitch",
+                   "socat", "sniproxy", "oauth2-proxy", "squid", "frps"}
+
+# Datenhaltung und Nachrichtenvermittlung: Anwendungen rufen sie auf, leiten aber keine Anfragen von außen
+# durch -> Aufrufe (Ziel-URL, offene Verbindung) machen sie nicht erreichbar. Java-Dienste über die Kommandozeile.
+DATENDIENST = re.compile(r"(mysqld|mariadbd|postgres|postmaster|redis-server|valkey-server|keydb-server|mongod|mongos|"
+                         r"memcached|beam\.smp|clickhouse(-server)?|influxd|etcd|cockroach|couchdb|arangod|rethinkdb|"
+                         r"meilisearch|typesense-server|qdrant|nats-server|mosquitto)$")
+
+JAVA_DATENDIENST = re.compile(r"org\.elasticsearch\.|org\.opensearch\.|-Dsolr\.|org\.apache\.solr\.|kafka\.Kafka\b|"
+                              r"org\.apache\.cassandra\.|org\.apache\.zookeeper\.|org\.apache\.activemq\.|org\.neo4j\.")
+
+
+def datendienst(p):
+    return bool(DATENDIENST.match(p["base"]) or (p["base"].startswith("java") and JAVA_DATENDIENST.search(" ".join(p["argv"]))))
+
+
+# Kennzeichen im Grund eines Proxy-Ziels per 127.0.0.1/localhost in einem anderen Container, der dasselbe Loopback
+# nutzt (Host-Netzwerk, gemeinsamer Netzwerk-Namespace): erreicht auch Dienste, die nur auf Loopback lauschen
+LOOPBACK_GRUND = " (über Loopback)"
+
+
+def use(c, p):
+    lst, lab = (c["aktiv"], p["label"]) if p["ports"] or p["base"] in TUNNEL \
+        else (c["aktiv_ohne_port"], p["label"] + " (ohne Port)")
+    if lab not in lst:
+        lst.append(lab)
+    for front in p.get("frontends", ()):     # z.B. php-fpm hinter nginx im selben Container
+        lab = "%s (über %s)" % (front, p["base"])
+        if lab not in c["aktiv"]:
+            c["aktiv"].append(lab)
 
 
 def npm_root(d):
@@ -2766,7 +2530,7 @@ def port_erreichbar(p, port, addr, web):
 
 
 # ===========================================================================
-# 7a. Webadressen: unter welchen Adressen ein Dienst Anfragen bekommt (nur zur Information, ohne Einfluss auf
+# 11. Webadressen: unter welchen Adressen ein Dienst Anfragen bekommt (nur zur Information, ohne Einfluss auf
 # Priorität und Rückgabewert)
 # ===========================================================================
 def site_urls(site, web):
@@ -2940,138 +2704,7 @@ def urls_zufuegen(urls, ziel_urls, gruppen):
 
 
 # ===========================================================================
-# 8. CycloneDX 1.5
-# ===========================================================================
-PURL_SAFE = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.-_~")
-CPE = {"node": "nodejs:node.js", "php": "php:php", "python": "python:python", "nginx": "f5:nginx",
-       "apache-httpd": "apache:http_server", "openssl": "openssl:openssl", "curl": "haxx:curl",
-       "libxml2": "xmlsoft:libxml2", "sqlite": "sqlite:sqlite", "expat": "libexpat_project:libexpat",
-       "zlib": "zlib:zlib", "nghttp2": "nghttp2:nghttp2", "undici": "nodejs:undici", "ares": "c-ares:c-ares",
-       "llhttp": "llhttp:llhttp", "runc": "linuxfoundation:runc", "containerd": "linuxfoundation:containerd",
-       "docker-engine": "docker:docker", "java": "oracle:openjdk", "mariadb": "mariadb:mariadb",
-       "mysql": "oracle:mysql", "postgresql": "postgresql:postgresql"}
-
-
-def penc(s):
-    return "".join(ch if ch in PURL_SAFE else "".join("%%%02X" % b for b in ch.encode("utf-8")) for ch in s)
-
-
-def split_name(name):   # "@scope/name" bzw. "vendor/name" -> "%40scope/name"
-    return "/".join(penc(x) for x in name.split("/", 1))
-
-
-def cdx_component(i, c, osinfo):
-    props = []
-
-    def prop(name, value):
-        if value:
-            props.append({"name": name, "value": value})
-
-    entry = OrderedDict([("bom-ref", "c%d" % i), ("type", "library"), ("name", c["name"]), ("version", c["version"])])
-    t = c["typ"]
-    if t == "os-paket":
-        osid = osinfo["id"]
-        ptype = "deb" if osid in ("debian", "ubuntu") else "apk" if osid == "alpine" else "rpm"
-        ns = "opensuse" if osid.startswith("opensuse") else "suse" if osid.startswith("sle") else osid
-        version, quals = c["version"], [("arch", c.get("arch", ""))]
-        m = re.match(r"(\d+):(.*)", version)
-        if m:
-            quals.append(("epoch", m.group(1)))
-            version = m.group(2)
-        if c.get("src") and c["src"] != c["name"]:
-            quals.append(("upstream", c["src"]))
-        quals.append(("distro", "%s-%s" % (osid, osinfo["version"])))
-        entry["purl"] = "pkg:%s/%s/%s@%s?%s" % (ptype, penc(ns), penc(c["name"]), penc(version),
-                                                "&".join("%s=%s" % (k, penc(v)) for k, v in quals if v))
-        # Quellpaket so, wie Trivy es auswertet (Debian/Alpine/SUSE führen CVEs je Quellpaket)
-        sv, se, sr = c.get("srcver") or c["version"], "", ""
-        if ptype != "apk":
-            m = re.match(r"(\d+):(.*)", sv)
-            if m:
-                se, sv = m.groups()
-            if "-" in sv:
-                sv, sr = sv.rsplit("-", 1)
-        for k, v in (("SrcName", c.get("src") or c["name"]), ("SrcVersion", sv), ("SrcRelease", sr), ("SrcEpoch", se)):
-            prop("aquasecurity:trivy:" + k, v)
-        c["hinweise"] = ["arch=" + c.get("arch", "")] + (["src=" + c["src"]] if c.get("src") != c["name"] else []) + c["hinweise"]
-    elif t == "npm":
-        entry["purl"] = "pkg:npm/%s@%s" % (split_name(c["name"]), penc(c["version"]))
-    elif t == "composer":
-        entry["purl"] = "pkg:composer/%s@%s" % (split_name(c["name"]), penc(c["version"]))
-    elif t == "js-lib" and c["version"] != "unbekannt":
-        entry["purl"] = "pkg:npm/%s@%s" % (split_name(c["name"]), penc(c["version"]))
-    elif t == "maven" and not c.get("maven_key"):
-        g, a = c["name"].split(":", 1)
-        entry["purl"] = "pkg:maven/%s/%s@%s" % (penc(g), penc(a), penc(c["version"]))
-    elif t == "go":
-        entry["purl"] = "pkg:golang/%s@%s" % ("/".join(penc(x) for x in c["name"].split("/")), penc(c["version"]))
-    elif t in ("js-lib", "maven"):
-        pass   # ohne eindeutige Paket-URL
-    elif t == "pypi":
-        entry["purl"] = "pkg:pypi/%s@%s" % (penc(re.sub(r"[-_.]+", "-", c["name"].lower())), penc(c["version"]))
-    elif t == "host" and c["name"] == "linux-kernel":
-        entry["type"] = "platform"
-    else:
-        entry["purl"] = "pkg:generic/%s%s@%s" % ("php-ext-" if t == "php-ext" else "", penc(c["name"]), penc(c["version"]))
-        if t in ("runtime", "server"):
-            entry["type"] = "application"
-        if c["name"] in CPE and t != "php-ext":
-            entry["cpe"] = "cpe:2.3:a:%s:%s:*:*:*:*:*:*:*" % (CPE[c["name"]], c["version"].lstrip("v"))
-    if c.get("dev"):
-        entry["scope"] = "optional"
-        c["hinweise"].append("dev")
-    prop("container-security-scan:typ", t)
-    prop("container-security-scan:fundort", c["ort"])
-    prop("container-security-scan:hinweis", "; ".join(h for h in c["hinweise"] if h))
-    prop("container-security-scan:aktiv", aktiv(c))
-    entry["properties"] = props
-    return entry
-
-
-def aktiv(c, limit=4):
-    labels = c["aktiv"] or c["aktiv_ohne_port"]
-    return ";".join(labels if len(labels) <= limit else labels[:3] + ["… (+%d)" % (len(labels) - 3)])
-
-
-def write_cdx(path, c, osinfo, comps, services):
-    img = c.info["Image"]
-    rc, out = run(["docker", "image", "inspect", img])
-    digests = (json.loads(out)[0].get("RepoDigests") or []) if rc == 0 else []
-    components = [OrderedDict([("bom-ref", "os"), ("type", "operating-system"), ("name", osinfo["id"]),
-                               ("version", osinfo["version"]), ("description", osinfo["pretty"])])]
-    components += [cdx_component(i, x, osinfo) for i, x in enumerate(comps, 1)]
-    bom = OrderedDict([
-        ("bomFormat", "CycloneDX"), ("specVersion", "1.5"), ("serialNumber", "urn:uuid:%s" % uuid.uuid4()), ("version", 1),
-        ("metadata", {
-            "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "tools": {"components": [{"type": "application", "name": "container-security-scan.py", "version": VERSION}]},
-            "component": {"bom-ref": "container", "type": "container", "name": c.info["Config"]["Image"], "version": img,
-                          "properties": [{"name": "container-security-scan:container-name", "value": c.name},
-                                         {"name": "container-security-scan:container-id", "value": c.id}] +
-                                        [{"name": "container-security-scan:repo-digest", "value": d} for d in digests]}}),
-        ("components", components),
-        ("services", [OrderedDict([("bom-ref", "dienst:" + s["label"]), ("name", s["name"])] +
-                                  ([("version", s["version"])] if s["version"] else []) +
-                                  ([("endpoints", list(OrderedDict.fromkeys(
-                                      s["endpoints"] + [e["url"].split(" ")[0] for e in s.get("webadressen", [])])))]
-                                   if s["endpoints"] or s.get("webadressen") else []) +
-                                  [("description", s["description"]),
-                                   ("properties", [{"name": "container-security-scan:aktiv", "value": s["label"]},
-                                                   {"name": "container-security-scan:programm", "value": s["exe"]}])])
-                      for s in services]),
-        ("dependencies", [{"ref": "container", "dependsOn": ["os"]},
-                          {"ref": "os", "dependsOn": [x["bom-ref"] for x in components[1:]
-                                                      if x.get("purl", "").startswith(("pkg:deb", "pkg:apk", "pkg:rpm"))]}]),
-    ])
-    if not services:
-        del bom["services"]
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(bom, f, ensure_ascii=False, indent=1)
-
-
-
-# ===========================================================================
-# Versionsvergleiche je Ökosystem (Rückgabe <0, 0, >0) und Schweregrad
+# 12. Versionsvergleiche je Ökosystem (Rückgabe <0, 0, >0)
 # ===========================================================================
 def _sign(x):
     return (x > 0) - (x < 0)
@@ -3263,9 +2896,18 @@ def cmp_php(a, b):
     return 0
 
 
+# Versionsvergleich je Ökosystem wie beim Abgleich (osv_target)
+OSV_CMP = {"Debian": cmp_dpkg, "Ubuntu": cmp_dpkg, "Alpine": cmp_apk, "SUSE": cmp_rpm, "openSUSE": cmp_rpm,
+           "npm": cmp_semver, "PyPI": cmp_pep440, "Packagist": cmp_php, "Maven": cmp_maven, "Go": cmp_semver,
+           "Bitnami": cmp_semver}
+
+
 # ===========================================================================
-# Schweregrad
+# 13. Schweregrad und betroffene Versionen eines OSV-Eintrags
 # ===========================================================================
+SEV = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"]
+
+
 def cvss3_severity(vector):
     """Basiswert nach CVSS 3.x berechnen und als Stufe liefern."""
     m = dict(x.split(":") for x in vector.split("/")[1:] if ":" in x)
@@ -3324,7 +2966,6 @@ def osv_severity(rec, affected):
     return "UNKNOWN"
 
 
-
 def _event_key(cmp):
     """Sortierschlüssel für OSV-Ereignisse; "0" (introduced) ist die kleinste Version."""
     def compare(x, y):
@@ -3368,10 +3009,266 @@ def affected_by(version, affected, cmp, distribution=False):
     return hit, ", ".join(sorted(set(fixes), key=cmp_to_key(cmp))[:1])
 
 
+# ===========================================================================
+# 14. OSV-Daten: laden, kürzen (Branch daten), lesen
+# ===========================================================================
+OSV_BASE = "https://osv-vulnerabilities.storage.googleapis.com/"
+OSV_URL = OSV_BASE + "%s/all.zip"
+
+# Direkt von OSV (ohne Branch daten), Gesamtexporte rund 1,2 GB, davon Ubuntu ca. 800 MB. Bei Bedarf ergänzen: SUSE, openSUSE.
+OSV_ECOSYSTEMS = ["Debian", "Ubuntu", "Alpine", "npm", "PyPI", "Packagist", "Maven", "Go", "Bitnami"]
+INKREMENT_MAX = 2000           # mehr geänderte Einträge -> Gesamtexport laden (schneller)
+
+# OSV-Kennungen (GHSA-…, DEBIAN-CVE-…, SUSE-SU-2024:1234-1 …) werden zu Dateinamen: kein "/" und kein ".." möglich
+OSV_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:+-]*")
+DATEN_BRANCH = "daten"         # Branch mit den Daten (ohne Code), siehe README "Installation und Betrieb"
+DATEN_OEKOSYSTEME = ["Debian", "Ubuntu", "Alpine", "npm", "PyPI", "Packagist", "Maven", "Go", "Bitnami"]
+DATEN_TEILE = {"Debian": 8, "Ubuntu": 8, "npm": 8, "PyPI": 2}     # Dateien je Ökosystem (jede deutlich < 50 MB)
+
+
+def db_state(dbdir):
+    """Je Ökosystem: "stand" = Zeitstempel des neuesten Eintrags (für das inkrementelle Update),
+    "geprueft" = Zeitpunkt der letzten erfolgreichen Aktualisierung (für die Altersprüfung). Datei stand.json."""
+    try:
+        raw = json_datei(os.path.join(dbdir, "stand.json"))
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in raw.items() if not k.startswith("_") and isinstance(v, dict)}
+
+
+def daten_stand(dbdirs):
+    """Ältester Zeitpunkt der letzten erfolgreichen Aktualisierung über alle Ökosysteme der Datenverzeichnisse
+    (für den Kopf der Ausgabe; die Altersprüfung je Container nutzt die Ökosysteme, die er braucht), sonst None."""
+    stand = [v["geprueft"][:19] for d in dbdirs for v in db_state(d).values() if v.get("geprueft")]
+    try:
+        return datetime.datetime.strptime(min(stand), "%Y-%m-%dT%H:%M:%S") if stand else None
+    except ValueError:
+        return None
+
+
+def db_source(dbdirs, fname):
+    """Erstes Datenverzeichnis, das dieses Ökosystem enthält."""
+    for d in dbdirs:
+        if os.path.isdir(os.path.join(d, fname)) or os.path.exists(os.path.join(d, fname + ".zip")):
+            return d
+    return None
+
+
+def osv_update(dbdir, ecosystems, full=False):
+    """OSV-Datenbank aktualisieren. Erstmals (oder mit --voll) den Gesamtexport je Ökosystem laden,
+    danach nur die seit dem letzten Stand geänderten Einträge (Änderungsliste modified_id.csv, neueste zuerst)."""
+    os.makedirs(dbdir, exist_ok=True)
+    state = db_state(dbdir)
+
+    def save():
+        with open(os.path.join(dbdir, "stand.json.tmp"), "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=1)
+        os.replace(os.path.join(dbdir, "stand.json.tmp"), os.path.join(dbdir, "stand.json"))
+
+    for eco in ecosystems:
+        target, overlay = os.path.join(dbdir, eco + ".zip"), os.path.join(dbdir, eco + ".neu")
+        known = state.get(eco, {}).get("stand", "")
+        complete = full or not known or not os.path.exists(target)      # Gesamtexport nötig?
+        changed = []
+        with urllib.request.urlopen(OSV_BASE + eco + "/modified_id.csv", timeout=300) as r:
+            for line in r:
+                ts, _, vid = line.decode("utf-8", "replace").strip().partition(",")
+                if not complete and ts[:19] < known[:19]:
+                    break                                   # ab hier bereits bekannt
+                if not OSV_ID.fullmatch(vid):               # wird Dateiname in <eco>.neu/: kein Pfad
+                    raise ScanError("Ungültige Kennung in %s/modified_id.csv: %r" % (eco, vid[:100]))
+                changed.append((ts, vid))
+                if complete or len(changed) > INKREMENT_MAX:
+                    break
+        complete = complete or len(changed) > INKREMENT_MAX or (
+            os.path.isdir(overlay) and len(os.listdir(overlay)) + len(changed) > 5 * INKREMENT_MAX)
+        if complete:
+            log("Lade %s ..." % (OSV_URL % eco))
+            with urllib.request.urlopen(OSV_URL % eco, timeout=300) as r, open(target + ".tmp", "wb") as f:
+                while True:
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+            if zipfile.ZipFile(target + ".tmp").testzip() is not None:
+                raise ScanError("Download von %s beschädigt" % eco)
+            os.replace(target + ".tmp", target)
+            for n in os.listdir(overlay) if os.path.isdir(overlay) else []:
+                os.remove(os.path.join(overlay, n))
+            log("  %s: Gesamtexport, %d MB" % (eco, os.path.getsize(target) >> 20))
+        elif changed:
+            os.makedirs(overlay, exist_ok=True)
+
+            def fetch(vid):
+                url = OSV_BASE + eco + "/" + urllib.request.quote(vid, safe="") + ".json"
+                try:
+                    with urllib.request.urlopen(url, timeout=60) as r:
+                        data = r.read()
+                except urllib.error.HTTPError as e:
+                    e.close()        # enthält die offene Antwort
+                    if e.code != 404:
+                        raise
+                    data = json.dumps({"id": vid, "withdrawn": "entfernt"}).encode()   # verdeckt den alten Eintrag
+                with open(os.path.join(overlay, vid + ".json.tmp"), "wb") as f:
+                    f.write(data)
+                os.replace(os.path.join(overlay, vid + ".json.tmp"), os.path.join(overlay, vid + ".json"))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
+                list(pool.map(fetch, sorted({vid for _, vid in changed})))
+            log("  %s: %d geänderte Einträge" % (eco, len(changed)))
+        else:
+            log("  %s: aktuell" % eco)
+        state[eco] = {"stand": changed[0][0] if changed else known,
+                      "geprueft": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}
+        save()
+
+
+def _in_ranges(version, ranges, ecosystem):
+    """Deckt schon ein Bereich die explizit genannte Version ab? (Dann ist sie für den Abgleich entbehrlich.)
+    Ohne bekannten Vergleich oder bei einem Vergleichsfehler: nein, die Version bleibt erhalten."""
+    cmp = OSV_CMP.get(ecosystem.split(":")[0])
+    if not cmp:
+        return False
+    try:
+        return affected_by(version, {"ranges": ranges}, cmp)[0]
+    except Exception:
+        return False
+
+
+def osv_compact(rec, eco=None):
+    """Nur die Felder eines OSV-Eintrags, die der Abgleich braucht; None, wenn er nie abgeglichen wird.
+    Ubuntu (entpackt rund 8 GB): ohne USN-Sammelmeldungen (osv_scan überspringt sie), ohne Ubuntu Pro, FIPS,
+    Realtime u.ä. (Abgleich nur gegen "Ubuntu:<VERSION_ID>…") und ohne Kernel-Quellpakete (KERNEL_QUELLE, werden
+    im Container nicht geprüft) – die Ergebnisse bleiben dieselben wie mit dem vollständigen Export."""
+    if eco == "Ubuntu" and rec["id"].startswith("USN-"):
+        return None
+    out = {k: rec[k] for k in ("id", "aliases", "upstream", "published", "withdrawn") if rec.get(k)}
+    summary = rec.get("summary") or (rec.get("details") or "").split("\n")[0]
+    if summary:
+        out["summary"] = summary[:200]
+    if rec.get("severity"):
+        out["severity"] = rec["severity"]
+    if (rec.get("database_specific") or {}).get("severity"):
+        out["database_specific"] = {"severity": rec["database_specific"]["severity"]}
+    out["affected"] = []
+    for a in rec.get("affected") or []:
+        x = {"package": {k: v for k, v in (a.get("package") or {}).items() if k in ("name", "ecosystem")}}
+        if eco == "Ubuntu" and (not re.match(r"Ubuntu:\d", x["package"].get("ecosystem", ""))
+                                or KERNEL_QUELLE.match(x["package"].get("name", ""))):
+            continue
+        ranges = [r for r in a.get("ranges") or [] if r.get("type") in ("ECOSYSTEM", "SEMVER")]
+        if ranges:
+            x["ranges"] = ranges
+        versions = [v for v in a.get("versions") or [] if not (ranges and _in_ranges(v, ranges, x["package"].get("ecosystem", "")))]
+        if versions:
+            x["versions"] = versions
+        # nur die Debian-Dringlichkeit; "binaries" (Ubuntu: rund 80 % der Daten) trägt zum Abgleich nichts bei:
+        # Debian/Ubuntu werden über das Quellpaket abgeglichen, Ubuntu führt dort zudem Objekte statt Namen
+        es = {k: v for k, v in (a.get("ecosystem_specific") or {}).items() if k == "urgency"}
+        if es:
+            x["ecosystem_specific"] = es
+        if (a.get("database_specific") or {}).get("severity"):
+            x["database_specific"] = {"severity": a["database_specific"]["severity"]}
+        if a.get("severity"):
+            x["severity"] = a["severity"]
+        out["affected"].append(x)
+    if eco == "Ubuntu" and not out["affected"]:
+        return None
+    return out
+
+
+def daten_erzeugen(target, ecosystems=DATEN_OEKOSYSTEME):
+    """Gekürzte, deterministisch sortierte Daten für das Git-Repository schreiben (tägliche GitHub Action)."""
+    tmp = tempfile.mkdtemp()
+    try:
+        osv_update(tmp, ecosystems, full=True)
+        state = {"_format": "osv-kompakt-1"}
+        old = os.path.join(target, "stand.json")
+        if os.path.exists(old):
+            state.update(json_datei(old))
+        for eco in ecosystems:
+            n = DATEN_TEILE.get(eco, 1)
+            parts = [[] for _ in range(n)]
+            with zipfile.ZipFile(os.path.join(tmp, eco + ".zip")) as z:
+                for info in z.infolist():
+                    rec = osv_compact(json.loads(z.read(info).decode("utf-8")), eco)
+                    if rec is None:
+                        continue
+                    line = json.dumps(rec, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                    parts[zlib.crc32(rec["id"].encode()) % n].append((rec["id"], line))
+            d = os.path.join(target, eco)
+            os.makedirs(d, exist_ok=True)
+            for f in os.listdir(d):
+                if f.endswith(".jsonl"):
+                    os.remove(os.path.join(d, f))
+            for i, lines in enumerate(parts):
+                with open(os.path.join(d, "%02d.jsonl" % i), "w", encoding="utf-8") as f:
+                    f.write("".join(l + "\n" for _, l in sorted(lines)))
+            state[eco] = db_state(tmp)[eco]
+            log("  %s: %d Einträge in %d Datei(en)" % (eco, sum(len(x) for x in parts), n))
+        with open(old, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=1, sort_keys=True)
+            f.write("\n")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def osv_records(dbdir, fname):
+    """Alle Einträge eines Ökosystems: gekürzte Daten (<eco>/*.jsonl, aus dem Git-Repository) oder
+    Gesamtexport (<eco>.zip), überlagert von nachgeladenen Änderungen (<eco>.neu/)."""
+    if os.path.isdir(os.path.join(dbdir, fname)):
+        for n in sorted(os.listdir(os.path.join(dbdir, fname))):
+            if n.endswith(".jsonl"):
+                with open(os.path.join(dbdir, fname, n), "rb") as f:
+                    for line in f:
+                        if line.strip():
+                            yield line
+        return
+    overlay = os.path.join(dbdir, fname + ".neu")
+    newer = set(os.listdir(overlay)) if os.path.isdir(overlay) else set()
+    with zipfile.ZipFile(os.path.join(dbdir, fname + ".zip")) as z:
+        for info in z.infolist():
+            if info.filename not in newer:
+                yield z.read(info)
+    for n in newer:
+        if n.endswith(".json"):
+            with open(os.path.join(overlay, n), "rb") as f:
+                yield f.read()
+
 
 # ===========================================================================
-# 9. Schwachstellen: Abgleich mit der lokalen OSV-Datenbank
+# 15. Schwachstellen: Abgleich mit den OSV-Daten
 # ===========================================================================
+# Laufzeiten und Server, die nicht aus einem OS-Paket stammen (offizielle Images bauen sie aus dem Quellcode),
+# werden über den Bitnami-Datensatz von OSV geprüft (z.B. PHP2Shell, Node2Shell).
+BITNAMI = {"php": "php", "php-fpm": "php", "node": "node", "python": "python", "java": "jre", "nginx": "nginx",
+           "apache-httpd": "apache", "mariadb": "mariadb", "postgresql": "postgresql"}
+
+# Kernel-Pakete im Container (Header, Images): Container nutzen den Kernel des Hosts, deren CVEs betreffen
+# den Container nicht. Debian/Ubuntu führen alle Kernel-CVEs am Quellpaket "linux".
+KERNEL_QUELLE = re.compile(r"linux(-signed.*|-lts|-virt|-headers|-hwe.*|-(aws|azure|gcp|oracle|kvm|lowlatency).*)?$")
+
+KERNEL_PAKET = re.compile(r"(linux-(libc-dev|headers|image|modules|kbuild|source)|kernel-(default|devel|source|syms|"
+                          r"headers|preempt|rt|azure|64kb|macros))(\b|-|$)")
+
+
+def kernel_paket(c):
+    """Kernel-Paket (Header, Image, Module) im Container?"""
+    return c["typ"] == "os-paket" and bool(KERNEL_QUELLE.match(c.get("src") or "") or KERNEL_PAKET.match(c["name"]))
+
+
+def from_os_package(c):
+    return any(h.startswith("aus OS-Paket") for h in c["hinweise"])
+
+
+def pypi_name(n):
+    return re.sub(r"[-_.]+", "-", n.lower())
+
+
+def maven_wild(names, fname):
+    """Maven: zusätzlich "*:<artifactId>" für JARs, deren Maven-Gruppe unbekannt ist."""
+    return names | {"*:" + n.rsplit(":", 1)[-1] for n in names} if fname == "Maven" else names
+
+
 def osv_target(c, osinfo):
     """(OSV-Datei, Ökosystem-Prüfung, Paketnamen, Version, Vergleichsfunktion) einer Komponente oder None."""
     t, name, version = c["typ"], c["name"], c["version"]
@@ -3419,40 +3316,35 @@ def osv_target(c, osinfo):
     return None
 
 
-def from_os_package(c):
-    return any(h.startswith("aus OS-Paket") for h in c["hinweise"])
-
-
-def kernel_paket(c):
-    """Kernel-Paket (Header, Image, Module) im Container?"""
-    return c["typ"] == "os-paket" and bool(KERNEL_QUELLE.match(c.get("src") or "") or KERNEL_PAKET.match(c["name"]))
-
-
-def pypi_name(n):
-    return re.sub(r"[-_.]+", "-", n.lower())
-
-
-def maven_wild(names, fname):
-    """Maven: zusätzlich "*:<artifactId>" für JARs, deren Maven-Gruppe unbekannt ist."""
-    return names | {"*:" + n.rsplit(":", 1)[-1] for n in names} if fname == "Maven" else names
-
-
 OS_FILES = ("Debian", "Ubuntu", "Alpine", "SUSE", "openSUSE")
+
 # Typische Versionskennungen von Paketquellen der Hersteller (nginx.org, NodeSource, Sury-PHP, mariadb.org,
 # PostgreSQL-Repo): deren Pakete decken die Sicherheitsdaten der Distribution nicht ab
 THIRD_PARTY = re.compile(r"nodesource|maria~|\+0~|pgdg|~(bookworm|bullseye|buster|trixie|jammy|noble|focal)\b")
+
 THIRD_PARTY_MAINT = re.compile(r"NGINX Packaging|nginx-packaging@|NodeSource|MariaDB (Developers|Foundation)|@mariadb\.(org|com)"
                                r"|PostgreSQL on Debian and Ubuntu|apt\.postgresql\.org", re.I)
 FREMDQUELLE = "Paket fehlt in den Sicherheitsdaten der Distribution (Fremdquelle?)"
-OS_DATEN_MAX_TAGE = 120        # jüngster Eintrag für das OS-Release älter -> vermutlich ohne Support (EOL)
+
+# Titel, nach denen eine Schwachstelle nur unter Windows auftritt (Container laufen unter Linux). Groß
+# geschriebenes "Windows", damit z.B. "HTTP/2 initial windows size" nicht erfasst wird.
+NUR_WINDOWS = re.compile(r"\b(?:[Oo]n|[Uu]nder|[Ff]or|[Ii]n|[Aa]ffecting) (?:Microsoft )?Windows\b|\b[Oo]n windows\b"
+                         r"|\bWindows[- ](?:[Oo]nly|specific|platforms?|systems?|hosts?|servers?|installations?|"
+                         r"installers?|builds?|users?|absolute paths?|paths?|shares?)\b|\(Windows[,)]"
+                         r"|\bUNC paths?\b|\bNTLM\b")
+
+NICHT_NUR_WINDOWS = re.compile(r"\b(?:Linux|Unix|UNIX|POSIX|macOS|Mac OS|all platforms|other platforms|non-Windows)\b"
+                               r"|\bWindows (?:and|or)\b|\b(?:and|or) Windows\b")
 
 
-def db_source(dbdirs, fname):
-    """Erstes Datenverzeichnis, das dieses Ökosystem enthält."""
-    for d in dbdirs:
-        if os.path.isdir(os.path.join(d, fname)) or os.path.exists(os.path.join(d, fname + ".zip")):
-            return d
-    return None
+def nur_windows(title):
+    """Betrifft die Schwachstelle laut Titel nur Windows?"""
+    return bool(NUR_WINDOWS.search(title or "")) and not NICHT_NUR_WINDOWS.search(title or "")
+
+
+# Schweregrad für Einträge ohne eigene Bewertung (z.B. Go): dieselbe CVE in diesen Quellen nachschlagen
+# (Bitnami: Bewertung der Quelle, Alpine: CVSS aus der NVD). Distributions-Dringlichkeit zählt hier nicht.
+SCHWEREGRAD_QUELLEN = ("Bitnami", "Alpine")
 
 
 def osv_scan(comps, osinfo, dbdirs):
@@ -3583,221 +3475,242 @@ def schweregrad_index(dbdirs):
     return index
 
 
-def daten_stand(dbdirs):
-    """Ältester Zeitpunkt der letzten erfolgreichen Aktualisierung über alle Ökosysteme der Datenverzeichnisse
-    (für den Kopf der Ausgabe; die Altersprüfung je Container nutzt die Ökosysteme, die er braucht), sonst None."""
-    stand = [v["geprueft"][:19] for d in dbdirs for v in db_state(d).values() if v.get("geprueft")]
-    try:
-        return datetime.datetime.strptime(min(stand), "%Y-%m-%dT%H:%M:%S") if stand else None
-    except ValueError:
-        return None
+# ===========================================================================
+# 16. Supportende (endoflife.date) und aktiv ausgenutzte Lücken (CISA KEV)
+# ===========================================================================
+EOL_URL = "https://endoflife.date/api/v1/products/full/"
+EOL_TYPEN = {"npm": "npm", "js-lib": "npm", "composer": "composer", "pypi": "pypi", "maven": "maven"}
+
+# Laufzeiten/Server (Typ runtime/server) -> Produkt bei endoflife.date; nur geprüft, wenn nicht aus einem
+# OS-Paket (dort zählt der Support der Distribution, die Sicherheitskorrekturen zurückportiert)
+EOL_LAUFZEITEN = {"php": "php", "php-fpm": "php", "node": "nodejs", "python": "python", "nginx": "nginx",
+                  "apache-httpd": "apache-http-server", "mariadb": "mariadb", "mysql": "mysql", "postgresql": "postgresql"}
+
+# Paketkennungen, die bei endoflife.date fehlen
+EOL_ZUSATZ = {"symfony": ["pkg:composer/symfony/symfony", "pkg:composer/symfony/http-kernel"],
+              "cakephp": ["pkg:composer/cakephp/cakephp"], "twig": ["pkg:composer/twig/twig"],
+              "shopware": ["pkg:composer/shopware/core"], "craft-cms": ["pkg:composer/craftcms/cms"],
+              "contao": ["pkg:composer/contao/core-bundle"], "electron": ["pkg:npm/electron"],
+              "tomcat": ["pkg:maven/org.apache.tomcat/tomcat-catalina", "pkg:maven/org.apache.tomcat.embed/tomcat-embed-core"]}
 
 
-def db_state(dbdir):
-    """Je Ökosystem: "stand" = Zeitstempel des neuesten Eintrags (für das inkrementelle Update),
-    "geprueft" = Zeitpunkt der letzten erfolgreichen Aktualisierung (für die Altersprüfung). Datei stand.json."""
-    try:
-        raw = json_datei(os.path.join(dbdir, "stand.json"))
-    except (OSError, ValueError):
-        return {}
-    return {k: v for k, v in raw.items() if not k.startswith("_") and isinstance(v, dict)}
-
-
-def osv_update(dbdir, ecosystems, full=False):
-    """OSV-Datenbank aktualisieren. Erstmals (oder mit --voll) den Gesamtexport je Ökosystem laden,
-    danach nur die seit dem letzten Stand geänderten Einträge (Änderungsliste modified_id.csv, neueste zuerst)."""
-    os.makedirs(dbdir, exist_ok=True)
-    state = db_state(dbdir)
-
-    def save():
-        with open(os.path.join(dbdir, "stand.json.tmp"), "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=1)
-        os.replace(os.path.join(dbdir, "stand.json.tmp"), os.path.join(dbdir, "stand.json"))
-
-    for eco in ecosystems:
-        target, overlay = os.path.join(dbdir, eco + ".zip"), os.path.join(dbdir, eco + ".neu")
-        known = state.get(eco, {}).get("stand", "")
-        complete = full or not known or not os.path.exists(target)      # Gesamtexport nötig?
-        changed = []
-        with urllib.request.urlopen(OSV_BASE + eco + "/modified_id.csv", timeout=300) as r:
-            for line in r:
-                ts, _, vid = line.decode("utf-8", "replace").strip().partition(",")
-                if not complete and ts[:19] < known[:19]:
-                    break                                   # ab hier bereits bekannt
-                if not OSV_ID.fullmatch(vid):               # wird Dateiname in <eco>.neu/: kein Pfad
-                    raise ScanError("Ungültige Kennung in %s/modified_id.csv: %r" % (eco, vid[:100]))
-                changed.append((ts, vid))
-                if complete or len(changed) > INKREMENT_MAX:
-                    break
-        complete = complete or len(changed) > INKREMENT_MAX or (
-            os.path.isdir(overlay) and len(os.listdir(overlay)) + len(changed) > 5 * INKREMENT_MAX)
-        if complete:
-            log("Lade %s ..." % (OSV_URL % eco))
-            with urllib.request.urlopen(OSV_URL % eco, timeout=300) as r, open(target + ".tmp", "wb") as f:
-                while True:
-                    chunk = r.read(1 << 20)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-            if zipfile.ZipFile(target + ".tmp").testzip() is not None:
-                raise ScanError("Download von %s beschädigt" % eco)
-            os.replace(target + ".tmp", target)
-            for n in os.listdir(overlay) if os.path.isdir(overlay) else []:
-                os.remove(os.path.join(overlay, n))
-            log("  %s: Gesamtexport, %d MB" % (eco, os.path.getsize(target) >> 20))
-        elif changed:
-            os.makedirs(overlay, exist_ok=True)
-
-            def fetch(vid):
-                url = OSV_BASE + eco + "/" + urllib.request.quote(vid, safe="") + ".json"
-                try:
-                    with urllib.request.urlopen(url, timeout=60) as r:
-                        data = r.read()
-                except urllib.error.HTTPError as e:
-                    e.close()        # enthält die offene Antwort
-                    if e.code != 404:
-                        raise
-                    data = json.dumps({"id": vid, "withdrawn": "entfernt"}).encode()   # verdeckt den alten Eintrag
-                with open(os.path.join(overlay, vid + ".json.tmp"), "wb") as f:
-                    f.write(data)
-                os.replace(os.path.join(overlay, vid + ".json.tmp"), os.path.join(overlay, vid + ".json"))
-            with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
-                list(pool.map(fetch, sorted({vid for _, vid in changed})))
-            log("  %s: %d geänderte Einträge" % (eco, len(changed)))
-        else:
-            log("  %s: aktuell" % eco)
-        state[eco] = {"stand": changed[0][0] if changed else known,
-                      "geprueft": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}
-        save()
-
-
-DATEN_BRANCH = "daten"         # Branch mit den Daten (ohne Code), siehe README "Installation und Betrieb"
-DATEN_OEKOSYSTEME = ["Debian", "Ubuntu", "Alpine", "npm", "PyPI", "Packagist", "Maven", "Go", "Bitnami"]
-DATEN_TEILE = {"Debian": 8, "Ubuntu": 8, "npm": 8, "PyPI": 2}     # Dateien je Ökosystem (jede deutlich < 50 MB)
-
-
-# Versionsvergleich je Ökosystem wie beim Abgleich (osv_target)
-OSV_CMP = {"Debian": cmp_dpkg, "Ubuntu": cmp_dpkg, "Alpine": cmp_apk, "SUSE": cmp_rpm, "openSUSE": cmp_rpm,
-           "npm": cmp_semver, "PyPI": cmp_pep440, "Packagist": cmp_php, "Maven": cmp_maven, "Go": cmp_semver,
-           "Bitnami": cmp_semver}
-
-
-def _in_ranges(version, ranges, ecosystem):
-    """Deckt schon ein Bereich die explizit genannte Version ab? (Dann ist sie für den Abgleich entbehrlich.)
-    Ohne bekannten Vergleich oder bei einem Vergleichsfehler: nein, die Version bleibt erhalten."""
-    cmp = OSV_CMP.get(ecosystem.split(":")[0])
-    if not cmp:
-        return False
-    try:
-        return affected_by(version, {"ranges": ranges}, cmp)[0]
-    except Exception:
-        return False
-
-
-def osv_compact(rec, eco=None):
-    """Nur die Felder eines OSV-Eintrags, die der Abgleich braucht; None, wenn er nie abgeglichen wird.
-    Ubuntu (entpackt rund 8 GB): ohne USN-Sammelmeldungen (osv_scan überspringt sie), ohne Ubuntu Pro, FIPS,
-    Realtime u.ä. (Abgleich nur gegen "Ubuntu:<VERSION_ID>…") und ohne Kernel-Quellpakete (KERNEL_QUELLE, werden
-    im Container nicht geprüft) – die Ergebnisse bleiben dieselben wie mit dem vollständigen Export."""
-    if eco == "Ubuntu" and rec["id"].startswith("USN-"):
-        return None
-    out = {k: rec[k] for k in ("id", "aliases", "upstream", "published", "withdrawn") if rec.get(k)}
-    summary = rec.get("summary") or (rec.get("details") or "").split("\n")[0]
-    if summary:
-        out["summary"] = summary[:200]
-    if rec.get("severity"):
-        out["severity"] = rec["severity"]
-    if (rec.get("database_specific") or {}).get("severity"):
-        out["database_specific"] = {"severity": rec["database_specific"]["severity"]}
-    out["affected"] = []
-    for a in rec.get("affected") or []:
-        x = {"package": {k: v for k, v in (a.get("package") or {}).items() if k in ("name", "ecosystem")}}
-        if eco == "Ubuntu" and (not re.match(r"Ubuntu:\d", x["package"].get("ecosystem", ""))
-                                or KERNEL_QUELLE.match(x["package"].get("name", ""))):
+def eol_daten_erzeugen(path):
+    """EOL-Daten mit Paketkennungen aus dem vollständigen endoflife.date-API-Export erzeugen."""
+    with urllib.request.urlopen(EOL_URL, timeout=120) as response:
+        data = json.load(response)
+    if not isinstance(data.get("result"), list) or not data["result"] or data.get("total") != len(data["result"]):
+        raise ScanError("Ungültige oder unvollständige endoflife.date-Antwort")
+    products = []
+    for product in data["result"]:
+        identifiers = [x["id"] for x in product["identifiers"] if x.get("type") == "purl"
+                       and x.get("id", "").startswith(("pkg:npm/", "pkg:composer/", "pkg:pypi/", "pkg:maven/"))]
+        identifiers += EOL_ZUSATZ.get(product["name"], [])
+        if not identifiers and product["name"] not in EOL_LAUFZEITEN.values():
             continue
-        ranges = [r for r in a.get("ranges") or [] if r.get("type") in ("ECOSYSTEM", "SEMVER")]
-        if ranges:
-            x["ranges"] = ranges
-        versions = [v for v in a.get("versions") or [] if not (ranges and _in_ranges(v, ranges, x["package"].get("ecosystem", "")))]
-        if versions:
-            x["versions"] = versions
-        # nur die Debian-Dringlichkeit; "binaries" (Ubuntu: rund 80 % der Daten) trägt zum Abgleich nichts bei:
-        # Debian/Ubuntu werden über das Quellpaket abgeglichen, Ubuntu führt dort zudem Objekte statt Namen
-        es = {k: v for k, v in (a.get("ecosystem_specific") or {}).items() if k == "urgency"}
-        if es:
-            x["ecosystem_specific"] = es
-        if (a.get("database_specific") or {}).get("severity"):
-            x["database_specific"] = {"severity": a["database_specific"]["severity"]}
-        if a.get("severity"):
-            x["severity"] = a["severity"]
-        out["affected"].append(x)
-    if eco == "Ubuntu" and not out["affected"]:
-        return None
-    return out
+        cycles = []
+        for release in product["releases"]:
+            name, date, ended = release["name"], release["eolFrom"], release["isEol"]
+            if date is None and ended is None:
+                continue
+            if not isinstance(ended, bool) or (date is not None and
+                    (not isinstance(date, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date))):
+                raise ScanError("Ungültige EOL-Daten für " + product["name"])
+            if date:
+                try:
+                    datetime.datetime.strptime(date, "%Y-%m-%d")
+                except ValueError:
+                    raise ScanError("Ungültiges EOL-Datum für " + product["name"])
+            if re.fullmatch(r"\d+(?:\.\d+)*", name):
+                cycles.append({"cycle": name, "eol": date if date else ended})
+        if cycles:
+            products.append({"name": product["name"], "purls": sorted(set(identifiers)), "cycles": cycles})
+    if not products:
+        raise ScanError("Keine geeigneten endoflife.date-Produkte gefunden")
+    payload = {"geprueft": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "products": products}
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=1, sort_keys=True)
+        f.write("\n")
+    os.replace(path + ".tmp", path)
 
 
-def daten_erzeugen(target, ecosystems=DATEN_OEKOSYSTEME):
-    """Gekürzte, deterministisch sortierte Daten für das Git-Repository schreiben (tägliche GitHub Action)."""
-    tmp = tempfile.mkdtemp()
+def eol_laden(paths):
+    """EOL-Daten lesen und prüfen; bei mehreren Dateien (Repository, osv-db/) die jüngste."""
+    best, err = None, "keine Datei"
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            checked = datetime.datetime.strptime(data["geprueft"], "%Y-%m-%dT%H:%M:%SZ")
+            products = data["products"]
+            if not isinstance(products, list) or not products:
+                raise ValueError("keine Produkte")
+            for product in products:
+                if not isinstance(product["name"], str) or not isinstance(product["purls"], list) \
+                        or not isinstance(product["cycles"], list):
+                    raise ValueError("ungültiges Produkt")
+                for cycle in product["cycles"]:
+                    if not isinstance(cycle["cycle"], str) or not isinstance(cycle["eol"], (str, bool)):
+                        raise ValueError("ungültiger Versionszweig")
+                    if isinstance(cycle["eol"], str):
+                        datetime.datetime.strptime(cycle["eol"], "%Y-%m-%d")
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            if not isinstance(e, FileNotFoundError) or err == "keine Datei":
+                err = str(e)
+            continue
+        if best is None or checked > best[0]:
+            best = (checked, products)
+    if best is None:
+        raise ValueError(err)
+    return best
+
+
+def eol_warnungen(comps, paths):
+    """Warnungen für Versionszweige ohne regulären Support (oder kurz davor): Pakete über ihre Kennung,
+    Laufzeiten/Server außerhalb von OS-Paketen über den Produktnamen. Ändert den Rückgabewert nicht."""
+    if isinstance(paths, str):
+        paths = [paths]
     try:
-        osv_update(tmp, ecosystems, full=True)
-        state = {"_format": "osv-kompakt-1"}
-        old = os.path.join(target, "stand.json")
-        if os.path.exists(old):
-            state.update(json_datei(old))
-        for eco in ecosystems:
-            n = DATEN_TEILE.get(eco, 1)
-            parts = [[] for _ in range(n)]
-            with zipfile.ZipFile(os.path.join(tmp, eco + ".zip")) as z:
-                for info in z.infolist():
-                    rec = osv_compact(json.loads(z.read(info).decode("utf-8")), eco)
-                    if rec is None:
-                        continue
-                    line = json.dumps(rec, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-                    parts[zlib.crc32(rec["id"].encode()) % n].append((rec["id"], line))
-            d = os.path.join(target, eco)
-            os.makedirs(d, exist_ok=True)
-            for f in os.listdir(d):
-                if f.endswith(".jsonl"):
-                    os.remove(os.path.join(d, f))
-            for i, lines in enumerate(parts):
-                with open(os.path.join(d, "%02d.jsonl" % i), "w", encoding="utf-8") as f:
-                    f.write("".join(l + "\n" for _, l in sorted(lines)))
-            state[eco] = db_state(tmp)[eco]
-            log("  %s: %d Einträge in %d Datei(en)" % (eco, sum(len(x) for x in parts), n))
-        with open(old, "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=1, sort_keys=True)
-            f.write("\n")
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        checked, products = eol_laden(paths)
+    except ValueError as e:
+        return ["EOL-Daten fehlen oder sind ungültig (%s); Supportende nicht geprüft" % e]
+    by_purl, by_name = defaultdict(list), {}
+    for product in products:
+        by_name[product["name"]] = product
+        for purl in product["purls"]:
+            by_purl[urllib.parse.unquote(purl).lower()].append(product)
+    warnings = []
+    if (utcnow() - checked).days >= EOL_MAX_ALTER_TAGE:
+        warnings.append("EOL-Daten veraltet (Stand %s); git pull bzw. --db-aktualisieren ausführen"
+                        % checked.strftime("%Y-%m-%d"))
+    today = utcnow().date()
+    hits = OrderedDict()
+    for c in comps:
+        typ = EOL_TYPEN.get(c["typ"])
+        if typ:
+            name = c["name"].replace(":", "/", 1) if typ == "maven" else c["name"]
+            if typ == "pypi":
+                name = pypi_name(name)
+            candidates = by_purl.get(("pkg:%s/%s" % (typ, name)).lower(), [])
+        elif c["typ"] in ("runtime", "server") and c["name"] in EOL_LAUFZEITEN and (
+                not from_os_package(c) or any(h.startswith(FREMDQUELLE) for h in c["hinweise"])):
+            candidates = [by_name[EOL_LAUFZEITEN[c["name"]]]] if EOL_LAUFZEITEN[c["name"]] in by_name else []
+        else:
+            continue
+        version = c["version"].lstrip("v")
+        for product in candidates:
+            cycles = [r for r in product["cycles"] if re.fullmatch(r"\d+(?:\.\d+)*", r["cycle"])
+                      and (version == r["cycle"] or version.startswith(r["cycle"] + "."))]
+            if not cycles:
+                continue
+            cycle = max(cycles, key=lambda r: len(r["cycle"]))
+            end = cycle["eol"]
+            if end is False:
+                continue
+            if end is True:
+                days = -1
+            else:
+                days = (datetime.datetime.strptime(end, "%Y-%m-%d").date() - today).days
+            if days > EOL_VORWARNUNG_TAGE:
+                continue
+            key = (c["name"], c["version"], product["name"], cycle["cycle"], end if end is not True else "", days < 0)
+            # am Tag des Supportendes gilt der Zweig noch als unterstützt (days == 0 -> "bald")
+            hits.setdefault(key, []).append(c["ort"] or "?")
+    for (name, version, product, cycle, end, ended), places in hits.items():
+        places = list(OrderedDict.fromkeys(places))
+        where = ", ".join(places[:3]) + (" und %d weitere" % (len(places) - 3) if len(places) > 3 else "")
+        if ended:
+            warnings.append("Supportende: %s %s (%s %s, %s; %s)" % (
+                name, version, product, cycle, "seit " + end if end else "Datum unbekannt", where))
+        else:
+            warnings.append("Supportende bald: %s %s (%s %s, am %s; %s)" % (name, version, product, cycle, end, where))
+    return warnings
 
 
-def osv_records(dbdir, fname):
-    """Alle Einträge eines Ökosystems: gekürzte Daten (<eco>/*.jsonl, aus dem Git-Repository) oder
-    Gesamtexport (<eco>.zip), überlagert von nachgeladenen Änderungen (<eco>.neu/)."""
-    if os.path.isdir(os.path.join(dbdir, fname)):
-        for n in sorted(os.listdir(os.path.join(dbdir, fname))):
-            if n.endswith(".jsonl"):
-                with open(os.path.join(dbdir, fname, n), "rb") as f:
-                    for line in f:
-                        if line.strip():
-                            yield line
-        return
-    overlay = os.path.join(dbdir, fname + ".neu")
-    newer = set(os.listdir(overlay)) if os.path.isdir(overlay) else set()
-    with zipfile.ZipFile(os.path.join(dbdir, fname + ".zip")) as z:
-        for info in z.infolist():
-            if info.filename not in newer:
-                yield z.read(info)
-    for n in newer:
-        if n.endswith(".json"):
-            with open(os.path.join(overlay, n), "rb") as f:
-                yield f.read()
+# Katalog aktiv ausgenutzter Schwachstellen (CISA Known Exploited Vulnerabilities, CC0)
+KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+CVE_ID = re.compile(r"CVE-\d{4}-\d{4,}")
+
+
+def kev_daten_erzeugen(path):
+    """Katalog aktiv ausgenutzter Schwachstellen (CISA KEV) laden und gekürzt speichern: CVE -> Aufnahmedatum."""
+    with urllib.request.urlopen(KEV_URL, timeout=120) as response:
+        data = json.load(response)
+    vulns = data.get("vulnerabilities")
+    if not isinstance(vulns, list) or not vulns or data.get("count") != len(vulns):
+        raise ScanError("Ungültige oder unvollständige Antwort des KEV-Katalogs")
+    cves = {}
+    for v in vulns:
+        cve, added = v.get("cveID"), v.get("dateAdded")
+        if not isinstance(cve, str) or not CVE_ID.fullmatch(cve) or not isinstance(added, str) \
+                or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", added):
+            raise ScanError("Ungültiger Eintrag im KEV-Katalog: %r" % (cve,))
+        cves[cve] = added
+    payload = {"geprueft": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), "katalog": str(data.get("catalogVersion", "")),
+               "cves": cves}
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=1, sort_keys=True)
+        f.write("\n")
+    os.replace(path + ".tmp", path)
+
+
+def kev_laden(paths):
+    """KEV-Daten lesen und prüfen; bei mehreren Dateien die jüngste. Liefert (Prüfzeitpunkt, {CVE: Datum})."""
+    best, err = None, "keine Datei"
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            checked = datetime.datetime.strptime(data["geprueft"], "%Y-%m-%dT%H:%M:%SZ")
+            cves = data["cves"]
+            if not isinstance(cves, dict) or not cves or not all(
+                    isinstance(k, str) and CVE_ID.fullmatch(k) and isinstance(v, str) for k, v in cves.items()):
+                raise ValueError("ungültige Einträge")
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            if not isinstance(e, FileNotFoundError) or err == "keine Datei":
+                err = str(e)
+            continue
+        if best is None or checked > best[0]:
+            best = (checked, cves)
+    if best is None:
+        raise ValueError(err)
+    return best
+
+
+def kev_markieren(findings, paths):
+    """Funde aus dem KEV-Katalog markieren (f["kev"] = Aufnahmedatum). Liefert Warnungen."""
+    try:
+        checked, cves = kev_laden(paths)
+    except ValueError as e:
+        return ["KEV-Daten fehlen oder sind ungültig (%s); aktiv ausgenutzte Lücken nicht gesondert gewertet" % e]
+    for f in findings:
+        if f["id"] in cves:
+            f["kev"] = cves[f["id"]]
+    if (utcnow() - checked).days >= KEV_MAX_ALTER_TAGE:
+        return ["KEV-Daten veraltet (Stand %s); git pull bzw. --db-aktualisieren ausführen" % checked.strftime("%Y-%m-%d")]
+    return []
 
 
 # ===========================================================================
-# 9a. Gefährliche Einstellungen des Containers
+# 17. Bewertung: gefährliche Einstellungen, Dienste als root, offene Datendienste, Ausnahmen, Priorität
 # ===========================================================================
+# Gefährliche Einstellungen des Containers (-> Rückgabewert 1, Kennung CONF-… für die Ausnahmeliste): Mit ihnen
+# wird aus einer Lücke im Container root auf dem Host. Nur, was ein Dienst praktisch nie braucht (keine allgemeine
+# Härtung wie no-new-privileges, cap_drop, Limits).
+KONF_CAPS = ("ALL", "SYS_ADMIN", "SYS_MODULE", "SYS_RAWIO", "DAC_READ_SEARCH", "BPF")
+
+# Socket der Container-Laufzeit (auch schreibgeschützt eingebunden nutzbar) bzw. Verzeichnisse, die ihn enthalten
+# (auch die Host-Wurzel)
+KONF_SOCKET = re.compile(r"/|/(var/)?run(/(docker|containerd|podman))?|.*/(docker|containerd|podman)\.sock")
+
+# Host-Pfade, die beschreibbar eingebunden den Host übernehmen lassen. Einzelne Volumes unter
+# /var/lib/docker/volumes/<name> bleiben unberücksichtigt, das Verzeichnis aller Volumes nicht.
+KONF_HOST_PFAD = re.compile(r"/(etc|home|dev)|/(root|boot|bin|sbin|lib\w*|proc|sys)(/.*)?"
+                            r"|/usr(/(local(/(s?bin|lib\w*)(/.*)?)?|(s?bin|lib\w*)(/.*)?))?"
+                            r"|/etc/(passwd|shadow|group|sudoers(\.d)?|cron[\w.]*|systemd|ssh|docker)(/.*)?"
+                            r"|/home/[^/]+/\.ssh(/.*)?"
+                            r"|/var/lib/docker(?!/volumes/)(/.*)?")
+
+
 def konfiguration_pruefen(c):
     """Gefährliche Einstellungen aus docker inspect. Je Fund Kennung CONF-… (für die Ausnahmeliste, als Paket
     gilt der Containername) und Text."""
@@ -3893,29 +3806,34 @@ def offene_datendienste(procs, web):
             "binden" % (label, ", ".join(wege)) for label, wege in found.items()]
 
 
-def konf_text(k, fett=""):
-    return "%s%s%s: %s" % (fett, k["id"], fett, k["text"])
-
-
-# ===========================================================================
-# 10. Bericht (Markdown)
-# ===========================================================================
-def fix_text(ver, fix):
-    if not fix:
-        return ""
-    a, b = re.match(r"(\d+:)?(\d+)", ver), re.match(r"(\d+:)?(\d+)", fix)
-    return fix + (" (anderer Versionszweig: Upgrade nötig)" if a and b and a.group(2) != b.group(2) else "")
-
-
-def priority(c, published):
-    if c.get("dev"):
-        return 4
-    labels = {a.split(" (")[0] for a in c["aktiv"]}
-    return 1 if labels & published else 2 if labels else 3 if c["aktiv_ohne_port"] else 4
-
-
-def md(s):
-    return str(s).replace("|", "/").replace("\n", " ")
+def ausnahmen_laden(path):
+    """Ausnahmeliste lesen. Je Zeile: <Kennung> <Paket oder *> <gültig bis JJJJ-MM-TT> <Begründung>.
+    Fehler -> ScanError (Rückgabewert 2): eine fehlerhafte Liste soll nichts stillschweigend ausblenden."""
+    try:
+        st = os.stat(path)
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except (OSError, UnicodeDecodeError) as e:
+        raise ScanError("Ausnahmeliste %s nicht lesbar: %s" % (path, e))
+    # wie sudoers: wer die Liste ändern kann, kann Funde ausblenden
+    if st.st_uid not in (0, os.geteuid()) or st.st_mode & 0o022:
+        raise ScanError("Ausnahmeliste %s darf nur ihr Eigentümer (root bzw. der aufrufende Benutzer) ändern können"
+                        % path)
+    result = []
+    for n, line in enumerate(lines, 1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(None, 3)
+        if len(parts) < 4 or not OSV_ID.fullmatch(parts[0]) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", parts[2]):
+            raise ScanError("Ausnahmeliste %s, Zeile %d: erwartet \"<Kennung> <Paket oder *> <JJJJ-MM-TT> "
+                            "<Begründung>\"" % (path, n))
+        try:
+            bis = datetime.datetime.strptime(parts[2], "%Y-%m-%d").date()
+        except ValueError:
+            raise ScanError("Ausnahmeliste %s, Zeile %d: ungültiges Datum %s" % (path, n, parts[2]))
+        result.append({"id": parts[0], "paket": parts[1], "bis": bis, "grund": parts[3], "zeile": n})
+    return result
 
 
 def ausnahmen_anwenden(rows, ausnahmen, warnings):
@@ -3933,6 +3851,18 @@ def ausnahmen_anwenden(rows, ausnahmen, warnings):
             r["ausgenommen"] = "Ausnahme bis %s: %s" % (a["bis"].isoformat(), a["grund"])
 
 
+def priority(c, published):
+    if c.get("dev"):
+        return 4
+    labels = {a.split(" (")[0] for a in c["aktiv"]}
+    return 1 if labels & published else 2 if labels else 3 if c["aktiv_ohne_port"] else 4
+
+
+def ist_relevant(r, nur_behebbare):
+    return not r.get("ausgenommen") and ((r["prio"], r["sev"]) in RELEVANT or bool(r.get("kev"))) \
+        and bool(r["fix"] or not nur_behebbare)
+
+
 def ohne_schweregrad(rows, nur_behebbare):
     """P1-Funde ohne Schweregrad: nicht gezählt, aber eigens ausgewiesen (Bericht und Konsole) – ohne Ausnahmen und
     ohne KEV (schon relevant), mit --nur-behebbare nur mit Fix."""
@@ -3940,9 +3870,18 @@ def ohne_schweregrad(rows, nur_behebbare):
             and not r.get("kev") and bool(r["fix"] or not nur_behebbare)]
 
 
-def ist_relevant(r, nur_behebbare):
-    return not r.get("ausgenommen") and ((r["prio"], r["sev"]) in RELEVANT or bool(r.get("kev"))) \
-        and bool(r["fix"] or not nur_behebbare)
+# ===========================================================================
+# 18. Ausgabe: Konsole und Bericht (Markdown)
+# ===========================================================================
+def md(s):
+    return str(s).replace("|", "/").replace("\n", " ")
+
+
+def fix_text(ver, fix):
+    if not fix:
+        return ""
+    a, b = re.match(r"(\d+:)?(\d+)", ver), re.match(r"(\d+:)?(\d+)", fix)
+    return fix + (" (anderer Versionszweig: Upgrade nötig)" if a and b and a.group(2) != b.group(2) else "")
 
 
 def schwere_text(r):
@@ -3955,6 +3894,10 @@ def fund_text(r, fett=""):
         (("behoben in " + fix_text(r["ver"], r["fix"])) if r["fix"] else "noch kein Fix") + \
         (" – genutzt von %s" % r["users"] if r["users"] not in ("", "–") else " – von keinem erkannten Prozess genutzt") + \
         (" – %saktiv ausgenutzt%s (KEV seit %s)" % (fett, fett, r["kev"]) if r.get("kev") else "")
+
+
+def konf_text(k, fett=""):
+    return "%s%s%s: %s" % (fett, k["id"], fett, k["text"])
 
 
 def dienste_konsole(services):
@@ -4144,6 +4087,139 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, findings, db
     return rows, relevant
 
 
+# ===========================================================================
+# 19. SBOM (CycloneDX 1.5)
+# ===========================================================================
+PURL_SAFE = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.-_~")
+
+CPE = {"node": "nodejs:node.js", "php": "php:php", "python": "python:python", "nginx": "f5:nginx",
+       "apache-httpd": "apache:http_server", "openssl": "openssl:openssl", "curl": "haxx:curl",
+       "libxml2": "xmlsoft:libxml2", "sqlite": "sqlite:sqlite", "expat": "libexpat_project:libexpat",
+       "zlib": "zlib:zlib", "nghttp2": "nghttp2:nghttp2", "undici": "nodejs:undici", "ares": "c-ares:c-ares",
+       "llhttp": "llhttp:llhttp", "runc": "linuxfoundation:runc", "containerd": "linuxfoundation:containerd",
+       "docker-engine": "docker:docker", "java": "oracle:openjdk", "mariadb": "mariadb:mariadb",
+       "mysql": "oracle:mysql", "postgresql": "postgresql:postgresql"}
+
+
+def penc(s):
+    return "".join(ch if ch in PURL_SAFE else "".join("%%%02X" % b for b in ch.encode("utf-8")) for ch in s)
+
+
+def split_name(name):   # "@scope/name" bzw. "vendor/name" -> "%40scope/name"
+    return "/".join(penc(x) for x in name.split("/", 1))
+
+
+def cdx_component(i, c, osinfo):
+    props = []
+
+    def prop(name, value):
+        if value:
+            props.append({"name": name, "value": value})
+
+    entry = OrderedDict([("bom-ref", "c%d" % i), ("type", "library"), ("name", c["name"]), ("version", c["version"])])
+    t = c["typ"]
+    if t == "os-paket":
+        osid = osinfo["id"]
+        ptype = "deb" if osid in ("debian", "ubuntu") else "apk" if osid == "alpine" else "rpm"
+        ns = "opensuse" if osid.startswith("opensuse") else "suse" if osid.startswith("sle") else osid
+        version, quals = c["version"], [("arch", c.get("arch", ""))]
+        m = re.match(r"(\d+):(.*)", version)
+        if m:
+            quals.append(("epoch", m.group(1)))
+            version = m.group(2)
+        if c.get("src") and c["src"] != c["name"]:
+            quals.append(("upstream", c["src"]))
+        quals.append(("distro", "%s-%s" % (osid, osinfo["version"])))
+        entry["purl"] = "pkg:%s/%s/%s@%s?%s" % (ptype, penc(ns), penc(c["name"]), penc(version),
+                                                "&".join("%s=%s" % (k, penc(v)) for k, v in quals if v))
+        # Quellpaket so, wie Trivy es auswertet (Debian/Alpine/SUSE führen CVEs je Quellpaket)
+        sv, se, sr = c.get("srcver") or c["version"], "", ""
+        if ptype != "apk":
+            m = re.match(r"(\d+):(.*)", sv)
+            if m:
+                se, sv = m.groups()
+            if "-" in sv:
+                sv, sr = sv.rsplit("-", 1)
+        for k, v in (("SrcName", c.get("src") or c["name"]), ("SrcVersion", sv), ("SrcRelease", sr), ("SrcEpoch", se)):
+            prop("aquasecurity:trivy:" + k, v)
+        c["hinweise"] = ["arch=" + c.get("arch", "")] + (["src=" + c["src"]] if c.get("src") != c["name"] else []) + c["hinweise"]
+    elif t == "npm":
+        entry["purl"] = "pkg:npm/%s@%s" % (split_name(c["name"]), penc(c["version"]))
+    elif t == "composer":
+        entry["purl"] = "pkg:composer/%s@%s" % (split_name(c["name"]), penc(c["version"]))
+    elif t == "js-lib" and c["version"] != "unbekannt":
+        entry["purl"] = "pkg:npm/%s@%s" % (split_name(c["name"]), penc(c["version"]))
+    elif t == "maven" and not c.get("maven_key"):
+        g, a = c["name"].split(":", 1)
+        entry["purl"] = "pkg:maven/%s/%s@%s" % (penc(g), penc(a), penc(c["version"]))
+    elif t == "go":
+        entry["purl"] = "pkg:golang/%s@%s" % ("/".join(penc(x) for x in c["name"].split("/")), penc(c["version"]))
+    elif t in ("js-lib", "maven"):
+        pass   # ohne eindeutige Paket-URL
+    elif t == "pypi":
+        entry["purl"] = "pkg:pypi/%s@%s" % (penc(re.sub(r"[-_.]+", "-", c["name"].lower())), penc(c["version"]))
+    elif t == "host" and c["name"] == "linux-kernel":
+        entry["type"] = "platform"
+    else:
+        entry["purl"] = "pkg:generic/%s%s@%s" % ("php-ext-" if t == "php-ext" else "", penc(c["name"]), penc(c["version"]))
+        if t in ("runtime", "server"):
+            entry["type"] = "application"
+        if c["name"] in CPE and t != "php-ext":
+            entry["cpe"] = "cpe:2.3:a:%s:%s:*:*:*:*:*:*:*" % (CPE[c["name"]], c["version"].lstrip("v"))
+    if c.get("dev"):
+        entry["scope"] = "optional"
+        c["hinweise"].append("dev")
+    prop("container-security-scan:typ", t)
+    prop("container-security-scan:fundort", c["ort"])
+    prop("container-security-scan:hinweis", "; ".join(h for h in c["hinweise"] if h))
+    prop("container-security-scan:aktiv", aktiv(c))
+    entry["properties"] = props
+    return entry
+
+
+def aktiv(c, limit=4):
+    labels = c["aktiv"] or c["aktiv_ohne_port"]
+    return ";".join(labels if len(labels) <= limit else labels[:3] + ["… (+%d)" % (len(labels) - 3)])
+
+
+def write_cdx(path, c, osinfo, comps, services):
+    img = c.info["Image"]
+    rc, out = run(["docker", "image", "inspect", img])
+    digests = (json.loads(out)[0].get("RepoDigests") or []) if rc == 0 else []
+    components = [OrderedDict([("bom-ref", "os"), ("type", "operating-system"), ("name", osinfo["id"]),
+                               ("version", osinfo["version"]), ("description", osinfo["pretty"])])]
+    components += [cdx_component(i, x, osinfo) for i, x in enumerate(comps, 1)]
+    bom = OrderedDict([
+        ("bomFormat", "CycloneDX"), ("specVersion", "1.5"), ("serialNumber", "urn:uuid:%s" % uuid.uuid4()), ("version", 1),
+        ("metadata", {
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "tools": {"components": [{"type": "application", "name": "container-security-scan.py", "version": VERSION}]},
+            "component": {"bom-ref": "container", "type": "container", "name": c.info["Config"]["Image"], "version": img,
+                          "properties": [{"name": "container-security-scan:container-name", "value": c.name},
+                                         {"name": "container-security-scan:container-id", "value": c.id}] +
+                                        [{"name": "container-security-scan:repo-digest", "value": d} for d in digests]}}),
+        ("components", components),
+        ("services", [OrderedDict([("bom-ref", "dienst:" + s["label"]), ("name", s["name"])] +
+                                  ([("version", s["version"])] if s["version"] else []) +
+                                  ([("endpoints", list(OrderedDict.fromkeys(
+                                      s["endpoints"] + [e["url"].split(" ")[0] for e in s.get("webadressen", [])])))]
+                                   if s["endpoints"] or s.get("webadressen") else []) +
+                                  [("description", s["description"]),
+                                   ("properties", [{"name": "container-security-scan:aktiv", "value": s["label"]},
+                                                   {"name": "container-security-scan:programm", "value": s["exe"]}])])
+                      for s in services]),
+        ("dependencies", [{"ref": "container", "dependsOn": ["os"]},
+                          {"ref": "os", "dependsOn": [x["bom-ref"] for x in components[1:]
+                                                      if x.get("purl", "").startswith(("pkg:deb", "pkg:apk", "pkg:rpm"))]}]),
+    ])
+    if not services:
+        del bom["services"]
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(bom, f, ensure_ascii=False, indent=1)
+
+
+# ===========================================================================
+# 20. Einen Container prüfen
 # ===========================================================================
 def dienste_ermitteln(a, comps, procs, owners, web, fremd, how_procs):
     """Dienste eines Containers mit Erreichbarkeit, Webadressen und öffentlichen Backends in anderen Containern
@@ -4373,49 +4449,10 @@ def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None, anlass=
     return code, backends_von(services, c.name), base, web["ziel_urls"]
 
 
-def container_liste(infos, netze):
-    """Laufende Container: (direkt erreichbare, übrige, {Container: [andere im selben Netzwerk-Namespace]}).
-    Direkt erreichbar: veröffentlichte Ports, Host-Netzwerk, LAN-Netz (macvlan/ipvlan, geroutet) – auch über
-    einen Container, dessen Netzwerk-Namespace mitgenutzt wird; vorgezogen auch Tunnel-Agenten (nach Image bzw.
-    Befehl), damit ihre Ziele schon mit ihrer Erreichbarkeit geprüft werden."""
-    public, rest = [], []
-    for d in sorted(infos, key=name_von):
-        published, host, lan, _ = direkt_erreichbar(d, infos, netze)
-        cfg = d.get("Config") or {}
-        befehl = " ".join([cfg.get("Image") or ""] + list(cfg.get("Entrypoint") or []) + list(cfg.get("Cmd") or []))
-        tunnel = any(re.search(r"\b%s\b" % t, befehl) for t in TUNNEL)
-        (public if published or host or lan or tunnel else rest).append(name_von(d))
-    return public, rest, {name_von(d): netz_gruppe(d, infos) for d in infos}
-
-
 # ===========================================================================
-# Reverse Proxys und Tunnel direkt auf dem Host
+# 21. Reverse Proxys und Tunnel direkt auf dem Host
 # ===========================================================================
 HOST_PROXYS = {"nginx", "apache2", "httpd"} | STUNNEL | PROXY_UNBEKANNT | TUNNEL
-
-
-class Host(object):
-    """Gegenstück zu Container für die Konfiguration eines Proxys auf dem Host: Abfragen mit dem Benutzer des
-    Hauptprozesses (nie mehr), leerer Umgebung und festem Suchpfad."""
-    has_sh = True
-    info = {"Config": {"Env": []}}
-
-    def exec(self, cmd, input=None, binary=False, stderr=False, user=None, timeout=60, path=SAFE_PATH):
-        uid, _, gid = (user or NOBODY).partition(":")
-        if (uid, gid) == (str(os.geteuid()), str(os.getegid())):
-            pre = []
-        elif os.geteuid() == 0 and uid.isdigit() and gid.isdigit():
-            pre = ["setpriv", "--reuid=" + uid, "--regid=" + gid, "--clear-groups", "--"]
-        else:
-            return 126, ""
-        return run(pre + ["env", "-i", "PATH=" + path] + cmd, input, binary, stderr, timeout)
-
-    def read_file(self, path):
-        try:
-            with open(path, encoding="utf-8", errors="replace") as f:
-                return f.read()
-        except OSError:
-            return ""
 
 
 def host_proxy_pids(infos, proc="/proc"):
@@ -4482,6 +4519,26 @@ def host_proxys(infos):
     return ziele, services, warnings, web["problems"], web["ziel_urls"]
 
 
+def host_ausgeben(services, warnings, problems):
+    """Ergebnis der Proxys auf dem Host auf der Konsole; Rückgabewert 2 bei unvollständiger Prüfung, sonst 0."""
+    for warn in warnings:
+        print("Host: WARNUNG: %s" % warn)
+    for svc in services:
+        ziele = OrderedDict()
+        for ct, port, _ in svc["backends"]:
+            ziele.setdefault(ct, []).append("alle Ports" if port == "*" else port)
+        print("Host: %s – %s" % (svc["label"], ("erreichbar; Ziele in Containern: " + ", ".join(
+            "%s (%s)" % (ct, ", ".join(p)) for ct, p in ziele.items()) if ziele else "erreichbar; keine Ziele in Containern")
+            if svc["exposed"] else "nicht von außen erreichbar (nur Loopback)"))
+    if problems:
+        print("Host: UNVOLLSTÄNDIG: " + "; ".join(problems))
+    sys.stdout.flush()
+    return 2 if problems else 0
+
+
+# ===========================================================================
+# 22. Gesamtlauf: Kopf, Reihenfolge der Container, Kommandozeile
+# ===========================================================================
 def dauer_text(sekunden):
     """Dauer kurz wie bei docker ps: Minuten, bis 48 Stunden Stunden, sonst Tage."""
     if sekunden < 3600:
@@ -4514,25 +4571,23 @@ def host_kopf(infos, gestoppt=None):
     return zeilen
 
 
-def host_ausgeben(services, warnings, problems):
-    """Ergebnis der Proxys auf dem Host auf der Konsole; Rückgabewert 2 bei unvollständiger Prüfung, sonst 0."""
-    for warn in warnings:
-        print("Host: WARNUNG: %s" % warn)
-    for svc in services:
-        ziele = OrderedDict()
-        for ct, port, _ in svc["backends"]:
-            ziele.setdefault(ct, []).append("alle Ports" if port == "*" else port)
-        print("Host: %s – %s" % (svc["label"], ("erreichbar; Ziele in Containern: " + ", ".join(
-            "%s (%s)" % (ct, ", ".join(p)) for ct, p in ziele.items()) if ziele else "erreichbar; keine Ziele in Containern")
-            if svc["exposed"] else "nicht von außen erreichbar (nur Loopback)"))
-    if problems:
-        print("Host: UNVOLLSTÄNDIG: " + "; ".join(problems))
-    sys.stdout.flush()
-    return 2 if problems else 0
-
-
 GESAMT_TEXT = {0: "OK", 1: "RELEVANTE FUNDE (Schwachstellen bzw. gefährliche Einstellungen)",
                2: "mindestens eine Prüfung UNVOLLSTÄNDIG"}
+
+
+def container_liste(infos, netze):
+    """Laufende Container: (direkt erreichbare, übrige, {Container: [andere im selben Netzwerk-Namespace]}).
+    Direkt erreichbar: veröffentlichte Ports, Host-Netzwerk, LAN-Netz (macvlan/ipvlan, geroutet) – auch über
+    einen Container, dessen Netzwerk-Namespace mitgenutzt wird; vorgezogen auch Tunnel-Agenten (nach Image bzw.
+    Befehl), damit ihre Ziele schon mit ihrer Erreichbarkeit geprüft werden."""
+    public, rest = [], []
+    for d in sorted(infos, key=name_von):
+        published, host, lan, _ = direkt_erreichbar(d, infos, netze)
+        cfg = d.get("Config") or {}
+        befehl = " ".join([cfg.get("Image") or ""] + list(cfg.get("Entrypoint") or []) + list(cfg.get("Cmd") or []))
+        tunnel = any(re.search(r"\b%s\b" % t, befehl) for t in TUNNEL)
+        (public if published or host or lan or tunnel else rest).append(name_von(d))
+    return public, rest, {name_von(d): netz_gruppe(d, infos) for d in infos}
 
 
 def container_auswahl(infos, muster):
