@@ -480,6 +480,20 @@ class Gesamtlauf(unittest.TestCase):
         self.lauf(via={"8080": ["nginx:80 in proxy"]})
         self.assertIn("WARNUNG: Prozess zu Port 8080 nicht ermittelbar", self.konsole)
 
+    def test_an_loopback_veroeffentlicht(self):
+        # nginx nur an 127.0.0.1:8080 veröffentlicht, kein Proxy auf dem Host davor: P2, HIGH nicht relevant
+        self.a.loopback_zweifel = ""
+        code, _, base = self.lauf(published={"80": ["127.0.0.1:8080"]})
+        self.assertEqual(code, 0)
+        self.assertIn("Dienst nginx, Port 80: veröffentlicht als 127.0.0.1:8080 (nur lokal, kein Proxy auf dem Host "
+                      "davor erkannt)", self.konsole)
+        # Prozesse des Hosts nicht vollständig lesbar: im Zweifel erreichbar (P1)
+        self.a.loopback_zweifel = scanner.HOST_NICHT_LESBAR
+        code, _, base = self.lauf(published={"80": ["127.0.0.1:8080"]})
+        self.assertEqual(code, 1)
+        self.assertIn("veröffentlicht als 127.0.0.1:8080 (nur lokal, im Zweifel erreichbar: Prozesse auf dem Host "
+                      "nicht vollständig lesbar)", self.konsole)
+
     def test_loopback_ziel(self):
         # nginx auf dem Host vor 127.0.0.1:7777, Container im Host-Netzwerk lauscht dort nur auf Loopback: P1
         code, _, base = self.lauf(ports={"7777": "localhost"}, published={}, host_network=True,

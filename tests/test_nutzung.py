@@ -184,6 +184,50 @@ class Dienste(unittest.TestCase):
             self.assertIn("lauscht nur auf Loopback – von außen nicht erreichbar (obwohl veröffentlicht als "
                           "0.0.0.0:8080)", s["description"])
 
+    def test_an_loopback_veroeffentlicht(self):
+        # 127.0.0.1:7778 ohne Proxy davor (Prozesse des Hosts lesbar): wie ein interner Port
+        p = proc(1, "/usr/local/bin/node", ports={"7778": "alle"})
+        for pub in (["127.0.0.1:7778"], ["::1:7778"], ["127.0.0.1:7778", "::1:7778"]):
+            s = self.dienst(p, published={"7778": pub}, loopback_zweifel="")
+            self.assertFalse(s["exposed"], pub)
+            self.assertEqual(s["konsole"]["erreichbar"], "Port 7778: veröffentlicht als %s (nur lokal, kein Proxy "
+                                                         "auf dem Host davor erkannt)" % ", ".join(pub))
+            self.assertEqual(s["endpoints"], ["tcp://" + e for e in pub])
+        # nginx auf dem Host steuert den Port über Loopback an: erreichbar
+        s = self.dienst(p, published={"7778": ["127.0.0.1:7778"]}, loopback_zweifel="",
+                        via_proxy={"7778": ["nginx:443 auf dem Host"]})
+        self.assertTrue(s["exposed"])
+        self.assertEqual(s["konsole"]["erreichbar"], "Port 7778: veröffentlicht als 127.0.0.1:7778 (nur lokal), "
+                                                     "öffentlich über nginx:443 auf dem Host")
+        # Proxy auf dem Host nicht vollständig auswertbar: möglicherweise erreichbar (alle Container mit Docker-Netz)
+        s = self.dienst(p, published={"7778": ["127.0.0.1:7778"]}, loopback_zweifel="",
+                        via_proxy={"*": ["cloudflared auf dem Host"]})
+        self.assertTrue(s["exposed"])
+        self.assertIn("veröffentlicht als 127.0.0.1:7778 (nur lokal), möglicherweise öffentlich über cloudflared auf "
+                      "dem Host", s["konsole"]["erreichbar"])
+        # Prozesse des Hosts nicht vollständig lesbar bzw. nicht ermittelt: im Zweifel erreichbar
+        for zweifel in (scanner.HOST_NICHT_LESBAR, None):
+            kw = {} if zweifel is None else {"loopback_zweifel": zweifel}
+            s = self.dienst(p, published={"7778": ["127.0.0.1:7778"]}, **kw)
+            self.assertTrue(s["exposed"], zweifel)
+            self.assertEqual(s["konsole"]["erreichbar"], "Port 7778: veröffentlicht als 127.0.0.1:7778 (nur lokal, im "
+                             "Zweifel erreichbar: %s)" % (zweifel or scanner.LOOPBACK_UNGEPRUEFT))
+        # auch an eine andere Adresse veröffentlicht: erreichbar
+        for pub in (["0.0.0.0:7778"], ["0.0.0.0:7778", "127.0.0.1:7779"], ["192.168.1.5:7778"]):
+            s = self.dienst(p, published={"7778": pub}, loopback_zweifel="")
+            self.assertTrue(s["exposed"], pub)
+            self.assertEqual(s["konsole"]["erreichbar"], "Port 7778: veröffentlicht als " + ", ".join(pub))
+        # über den Netzwerk-Namespace eines anderen Containers
+        s = self.dienst(p, published={"7778": ["127.0.0.1:7778"]}, loopback_zweifel="", spender="vpn")
+        self.assertEqual(s["konsole"]["erreichbar"], "Port 7778: veröffentlicht als 127.0.0.1:7778 (über Container vpn, "
+                                                     "nur lokal, kein Proxy auf dem Host davor erkannt)")
+        # Datenbank, nur aufgerufen von einer Anwendung: bleibt nicht erreichbar
+        db = proc(1, "/usr/lib/postgresql/17/bin/postgres", ports={"5432": "alle"})
+        s = self.dienst(db, published={"5432": ["127.0.0.1:5432"]}, loopback_zweifel="",
+                        via_proxy={"5432": ["node:3000 (offene Verbindung) in app"]})
+        self.assertFalse(s["exposed"])
+        self.assertIn("(nur lokal, kein Proxy auf dem Host davor erkannt)", s["konsole"]["erreichbar"])
+
     def test_lan_netz_und_spender(self):
         p = proc(1, "/usr/local/bin/node", ports={"3000": "alle"})
         s = self.dienst(p, lan=["macvlan-Netz mv"])

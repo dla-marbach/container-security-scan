@@ -95,8 +95,9 @@ flowchart TD
 
 ### Einrichten
 
-Voraussetzungen: Linux mit Docker, Python ≥ 3.6, `git`, `curl`; optional `rpm` (nur für RPM-Container ohne
-eigenes `rpm`).
+Voraussetzungen: Linux mit Docker ≥ 28.3.3 (an `127.0.0.1` veröffentlichte Ports ohne Proxy davor gelten als
+nicht erreichbar, siehe [Erreichbarkeit](#erreichbarkeit)), Python ≥ 3.6, `git`, `curl`; optional `rpm` (nur für
+RPM-Container ohne eigenes `rpm`).
 
 Das [Installscript](installation/installieren.sh) aus dem
 [aktuellen Release](https://github.com/dla-marbach/container-security-scan/releases/latest) holen, lesen und
@@ -251,8 +252,8 @@ Kernel-Pakete werden nicht geprüft (Container nutzen den Kernel des Hosts).
 unterscheiden und zählen gleich; eine Testumgebung mit derselben Konfiguration liefert dieselben Funde.
 Grundsatz: **im Zweifel erreichbar.** Erkannt werden:
 
-- veröffentlichte Ports (auch an `127.0.0.1`), Host-Netzwerk, eigene Adresse im LAN (macvlan, ipvlan, geroutet),
-  gemeinsamer Netzwerk-Namespace (`network_mode: container:…`)
+- veröffentlichte Ports (an `127.0.0.1` bzw. `::1` nur mit einem Proxy auf dem Host davor, siehe unten), Host-Netzwerk,
+  eigene Adresse im LAN (macvlan, ipvlan, geroutet), gemeinsamer Netzwerk-Namespace (`network_mode: container:…`)
 - Backends eines erreichbaren nginx oder Apache – im Container oder direkt auf dem Host, auch über mehrere Stufen
   (`proxy_pass`, `fastcgi_pass`, `upstream`, `ProxyPass`, `SetHandler proxy:`, `RewriteRule … [P]`, Variablen aus
   `set`/`map`), Ziel per Container-Name, IP, `127.0.0.1` (auch `0.0.0.0`) oder Unix-Socket (der Prozess im selben
@@ -273,6 +274,14 @@ Ein Dienst, der nur auf Loopback lauscht, ist nur über einen Proxy mit demselbe
 Ein Proxy **direkt auf dem Host** (nginx, Apache, stunnel, Tunnel-Agent außerhalb von Docker) gilt als erreichbar, wenn er
 nicht nur auf Loopback lauscht; eine Firewall des Hosts wird nicht ausgewertet. Seine Ziele erscheinen auf der
 Konsole als `Host: …`. Die Prozesse des Hosts liest der Scan nur als root vollständig, sonst warnt er.
+
+Ein Port, der nur an `127.0.0.1` bzw. `::1` veröffentlicht ist, ist nur erreichbar, wenn ein solcher Proxy (oder einer in
+einem Container im Host-Netzwerk) ihn ansteuert; sonst zählt er wie ein interner Port (P2, „kein Proxy auf dem Host
+davor erkannt“). Im Zweifel erreichbar bleibt er, wenn die Prozesse des Hosts nicht vollständig lesbar sind oder ein
+Proxy auf dem Host nicht vollständig auswertbar ist. Das setzt Docker ≥ 28.3.3 voraus: Bis 27.x waren solche Ports
+aus demselben Netzsegment erreichbar ([moby/moby#45610](https://github.com/moby/moby/issues/45610), behoben in
+28.0), 28.2.0 bis 28.3.2 nach einem Neuladen von firewalld wieder
+([CVE-2025-54388](https://github.com/moby/moby/security/advisories/GHSA-x4rx-4gw3-53p4)).
 
 ### Webadressen
 

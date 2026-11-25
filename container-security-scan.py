@@ -1264,8 +1264,7 @@ def direkt_erreichbar(d, infos, netze):
         for b in bindings or []:
             ip = b.get("HostIp") or "0.0.0.0"
             key = port.split("/")[0] if port.endswith("/tcp") else port
-            published[key].append("%s:%s%s" % (ip, b.get("HostPort"), " (nur lokal – vermutlich hinter "
-                                               "einem Reverse Proxy auf dem Host)" if ip in ("127.0.0.1", "::1") else ""))
+            published[key].append("%s:%s" % (ip, b.get("HostPort")))
     lan = []
     for n in netze_von(d):
         net = netze.get(n) or {}
@@ -1276,6 +1275,17 @@ def direkt_erreichbar(d, infos, netze):
             if mode in ("routed", "nat-unprotected"):
                 lan.append("Netz %s (IPv%s %s)" % (n, v, mode))
     return published, host_netzwerk(d), lan, name_von(spender) if spender else None
+
+
+def loopback_veroeffentlicht(eintraege):
+    """Port nur an Loopback des Hosts veröffentlicht (127.0.0.1, ::1; Einträge "IP:Port" aus direkt_erreichbar)?
+    Erreichbar ist er dann nur über einen Proxy auf dem Host (Docker ab 28.3.3, README: Voraussetzungen) – außer
+    loopback_zweifel spricht dagegen."""
+    return bool(eintraege) and all(loopback_adresse(e.split(" ")[0].rpartition(":")[0]) for e in eintraege)
+
+
+# Standard für loopback_zweifel, solange der Ablauf ihn nicht ermittelt hat: im Zweifel erreichbar
+LOOPBACK_UNGEPRUEFT = "nicht geprüft"
 
 
 def ports_in_gruppe(names, user):
@@ -1387,13 +1397,14 @@ def web_leer():
       label_ziele {Proxy: [(Container, Port)]} (Traefik, Caddy), env [(Name, Wert)]; im Host-Netzwerk zusätzlich
       eigene_adressen {IP} und loopback_ziele {(Host, Port): [(Container, Port)]};
     vom Ablauf: self (Name des Containers bzw. "Host"), via_proxy {Port oder "*": [Grund]} (erreichbar über Proxys
-      davor), via_urls {Port: [Webadresse]} (deren Webadressen), venvs {Pfad} (Python-venvs);
+      davor), via_urls {Port: [Webadresse]} (deren Webadressen), venvs {Pfad} (Python-venvs), loopback_zweifel
+      (warum nur an Loopback veröffentlichte Ports trotzdem als erreichbar gelten, "" = nur mit Proxy davor);
     Ergebnis von webadressen: ziel_urls {(Container, Port): [Webadresse]} für Ziele in anderen Containern."""
     return {"docroots": defaultdict(list), "backends": defaultdict(list), "vhosts": defaultdict(list),
             "upstreams": defaultdict(list), "modphp": set(), "raw": [], "published": defaultdict(list), "containers": {},
             "via_proxy": {}, "problems": [], "unlesbar": set(), "label_ziele": {}, "host_network": False, "lan": [],
             "spender": None, "nachbarn": [], "netz_gruppe": [], "loopback": [], "sites": [], "via_urls": {},
-            "ziel_urls": OrderedDict()}
+            "ziel_urls": OrderedDict(), "loopback_zweifel": LOOPBACK_UNGEPRUEFT}
 
 
 def collect_web(c, procs):
@@ -1416,11 +1427,13 @@ def collect_web(c, procs):
     return web
 
 
-def web_kontext(c, procs, via_proxy=None, via_urls=None, venvs=()):
+def web_kontext(c, procs, via_proxy=None, via_urls=None, venvs=(), loopback_zweifel=None):
     """collect_web, ergänzt um den Namen und, was der Ablauf beisteuert: Erreichbarkeit und Webadressen über
-    Proxys davor (via_proxy, via_urls, siehe durchlauf) und die Python-venvs im Container."""
+    Proxys davor (via_proxy, via_urls, siehe durchlauf), die Python-venvs im Container und loopback_zweifel (None:
+    nicht ermittelt, im Zweifel erreichbar)."""
     web = collect_web(c, procs)
-    web.update(self=c.name, via_proxy=via_proxy or {}, via_urls=via_urls or {}, venvs=set(venvs))
+    web.update(self=c.name, via_proxy=via_proxy or {}, via_urls=via_urls or {}, venvs=set(venvs),
+               loopback_zweifel=LOOPBACK_UNGEPRUEFT if loopback_zweifel is None else loopback_zweifel)
     return web
 
 
@@ -2659,18 +2672,29 @@ def port_erreichbar(p, port, addr, web):
                 " (Weiterleitungen dort nicht vollständig auswertbar)", True
         return "lauscht nur auf Loopback – von außen nicht erreichbar" + (
             " (obwohl veröffentlicht als %s)" % ", ".join(web["published"][port]) if web["published"].get(port) else ""), False
-    if web["published"].get(port):
-        return "veröffentlicht als " + ", ".join(web["published"][port]) + (
-            " (über Container %s)" % web["spender"] if web.get("spender") else ""), True
+    # nur an Loopback des Hosts veröffentlicht: erreichbar nur über einen Proxy auf dem Host (bzw. im
+    # Host-Netzwerk), außer loopback_zweifel (Prozesse des Hosts nicht lesbar)
+    pub = web["published"].get(port, [])
+    zweifel = web.get("loopback_zweifel", LOOPBACK_UNGEPRUEFT)
+    lokal = loopback_veroeffentlicht(pub)
+
+    def veroeffentlicht(zusatz=""):
+        teile = (["über Container " + web["spender"]] if web.get("spender") else []) + ([zusatz] if zusatz else [])
+        return "veröffentlicht als " + ", ".join(pub) + (" (%s)" % ", ".join(teile) if teile else "")
+    if pub and (not lokal or zweifel):
+        return veroeffentlicht("nur lokal, im Zweifel erreichbar: " + zweifel if lokal else ""), True
     if web["host_network"] and not nur_lokal(addr):
         return "direkt im Host-Netzwerk erreichbar", True
     if web.get("lan") and not nur_lokal(addr):
         return "direkt erreichbar im " + ", ".join(web["lan"]), True
+    vor = veroeffentlicht("nur lokal") + ", " if pub else ""
     if via:
-        return "öffentlich über " + ", ".join(via), True
+        return vor + "öffentlich über " + ", ".join(via), True
     if web["via_proxy"].get("*") and not nur_lokal(addr):
-        return "möglicherweise öffentlich über " + ", ".join(web["via_proxy"]["*"]) + \
+        return vor + "möglicherweise öffentlich über " + ", ".join(web["via_proxy"]["*"]) + \
             " (Weiterleitungen dort nicht vollständig auswertbar)", True
+    if pub:
+        return veroeffentlicht("nur lokal, kein Proxy auf dem Host davor erkannt"), False
     if web["via_proxy"].get(port):
         return "nicht veröffentlicht; aufgerufen von " + ", ".join(web["via_proxy"][port]) + \
             " (Datenbank/Cache/Message Broker: dadurch nicht erreichbar)", False
@@ -4439,7 +4463,7 @@ def erreichbarkeit_pruefen(name, a, via_proxy=None, via_urls=None):
     None."""
     c = Container(name, a.user)
     procs, how_procs, fremd = collect_procs(c)
-    web = web_kontext(c, procs, via_proxy, via_urls)
+    web = web_kontext(c, procs, via_proxy, via_urls, loopback_zweifel=getattr(a, "loopback_zweifel", None))
     services, _ = dienste_ermitteln(a, [], procs, {}, web, fremd, how_procs)
     return None, backends_von(services, c.name), None, web["ziel_urls"]
 
@@ -4536,7 +4560,8 @@ def scan_container(name, a, via_proxy=None, via_urls=None, anlass=None):
     sys.stdout.flush()
     c = Container(name, a.user)
     files, osinfo, pkgs, owners, procs, fremd, comps, how, problems = inventar_erfassen(c)
-    web = web_kontext(c, procs, via_proxy, via_urls, {posixpath.dirname(f) for f in files if f.endswith("/pyvenv.cfg")})
+    web = web_kontext(c, procs, via_proxy, via_urls, {posixpath.dirname(f) for f in files if f.endswith("/pyvenv.cfg")},
+                      getattr(a, "loopback_zweifel", None))
     problems.extend(web["problems"])
 
     # Erreichbarkeit, Warnungen und gefährliche Einstellungen
@@ -4585,6 +4610,7 @@ def scan_container(name, a, via_proxy=None, via_urls=None, anlass=None):
 # 21. Reverse Proxys und Tunnel direkt auf dem Host
 # ===========================================================================
 HOST_PROXYS = {"nginx", "apache2", "httpd"} | STUNNEL | PROXY_UNBEKANNT | TUNNEL
+HOST_NICHT_LESBAR = "Prozesse auf dem Host nicht vollständig lesbar"
 
 
 def host_proxy_pids(infos, proc="/proc"):
@@ -4623,12 +4649,17 @@ def host_proxys(infos):
     Weiterleitungen machen alle Container mit Docker-Netz möglicherweise erreichbar (der Host erreicht sie über
     ihre IP)."""
     pids, gesperrt = host_proxy_pids(infos)
-    warnings = ["Prozesse auf dem Host nicht vollständig lesbar (%d; Skript nicht als root?) – Reverse Proxys auf "
-                "dem Host ggf. nicht erkannt" % gesperrt] if gesperrt else []
+    warnings = [HOST_NICHT_LESBAR + " (%d; Skript nicht als root?) – Reverse Proxys auf dem Host ggf. nicht "
+                "erkannt" % gesperrt] if gesperrt else []
     if not pids:
         return [], [], warnings, [], {}
     rc, out = run(["sh", "-s", "--"] + pids, input=PROC_SH)
     procs, _ = procs_auswerten(out)
+    if not procs:
+        # Abfrage fehlgeschlagen (bzw. kein Proxy-Prozess lesbar): Proxys nicht ausgewertet, im Zweifel unvollständig;
+        # beginnt mit HOST_NICHT_LESBAR, damit main() an Loopback veröffentlichte Ports als erreichbar behält
+        return [], [], warnings, [HOST_NICHT_LESBAR + ": Abfrage der Proxys auf dem Host über /proc fehlgeschlagen "
+                                  "(Rückgabewert %d) – Reverse Proxys auf dem Host nicht ausgewertet" % rc], {}
     web = web_leer()
     web.update(self="Host", host_network=True, containers=container_index(infos), eigene_adressen=eigene_adressen(),
                nachbarn=sorted(name_von(d) for d in infos if netze_von(netz_basis(d, infos))),
@@ -4713,7 +4744,8 @@ GESAMT_TEXT = {0: "OK", 1: "RELEVANTE FUNDE (Schwachstellen bzw. gefährliche Ei
 
 def container_liste(infos, netze):
     """Laufende Container: (direkt erreichbare, übrige, {Container: [andere im selben Netzwerk-Namespace]}).
-    Direkt erreichbar: veröffentlichte Ports, Host-Netzwerk, LAN-Netz (macvlan/ipvlan, geroutet) – auch über
+    Direkt erreichbar: veröffentlichte Ports (auch nur an Loopback: ob ein Proxy davor steht, zeigt erst der
+    Durchlauf), Host-Netzwerk, LAN-Netz (macvlan/ipvlan, geroutet) – auch über
     einen Container, dessen Netzwerk-Namespace mitgenutzt wird; vorgezogen auch Tunnel-Agenten (nach Image bzw.
     Befehl), damit ihre Ziele schon mit ihrer Erreichbarkeit geprüft werden."""
     public, rest = [], []
@@ -4993,6 +5025,11 @@ def main():
         pause = pausiert(infos)         # Kontext für die Erreichbarkeit, nicht prüfen
         public, rest = [n for n in public if n not in pause], [n for n in rest if n not in pause]
         ziele, services, warnings, problems, ziel_urls = host_proxys(infos)
+        # nur an Loopback veröffentlichte Ports: ohne lesbare Prozesse des Hosts (Warnung) bzw. bei fehlgeschlagener
+        # Abfrage der Proxys (Problem) bliebe ein Proxy davor unerkannt; nicht auswertbare Proxys auf dem Host machen
+        # die Container ohnehin möglicherweise erreichbar
+        a.loopback_zweifel = HOST_NICHT_LESBAR if any(m.startswith(HOST_NICHT_LESBAR) for m in warnings + problems) \
+            else ""
     except ScanError as e:
         log("FEHLER: %s" % e)
         return 2
