@@ -109,7 +109,15 @@ class Bericht(unittest.TestCase):
         self.assertIn("- **CVE-1**", text)
         self.assertNotIn("NEU", text)
         self.assertNotIn("seit dem letzten Lauf", text)
-        self.assertIn("; nur mit verfügbarem Fix", text)
+        self.assertIn("; nur mit verfügbarem Fix, aktiv ausgenutzte auch ohne (außer LOW)", text)
+
+    def test_nur_behebbare_kev_ohne_fix(self):
+        # aktiv ausgenutzt ohne Fix: auch mit --nur-behebbare relevant, mit "noch kein Fix" in der Zeile
+        self.findings[1]["kev"] = "2026-10-26"
+        _, relevant, text = self.bericht(nur_behebbare=True)
+        self.assertEqual([r["id"] for r in relevant], ["CVE-2", "CVE-1", "CVE-3"])
+        self.assertIn("- **CVE-2** (CRITICAL KEV) in express 4.0.0 – noch kein Fix – genutzt von node:3000 – "
+                      "**aktiv ausgenutzt** (KEV seit 2026-10-26)", text)
 
     def test_probleme_und_warnungen_stehen_oben(self):
         _, _, text = self.bericht(problems=["Daten fehlen für: Ubuntu"], warnungen=["Supportende: vue 2.7.16"])

@@ -2,7 +2,7 @@
 
 - Image: node:22.22.0-alpine (sha256:e4bf2a82ad0a)  
 - OS: Alpine Linux v3.23  
-- Zeitpunkt: 2026-11-25 09:54  
+- Zeitpunkt: 2026-11-25 11:35  
 - Scanner: container-security-scan 1.2.0  
 - Datenbank: OSV, Stand 2026-11-24 13:43 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer)
@@ -10,7 +10,7 @@
 ## Ergebnis
 
 **Warnung:** Öffentlicher Dienst node:3000 läuft als root (UID 0, ohne unprivilegierte Worker) – eine Lücke darin gibt root im Container; Benutzer setzen (user:, USER) oder non-root-Image  
-**13 relevante Schwachstellen** (Kriterium: P1 CRITICAL, P1 HIGH, P2 CRITICAL; aktiv ausgenutzte (KEV) unabhängig von Priorität und Schweregrad; nur mit verfügbarem Fix)
+**13 relevante Schwachstellen** (Kriterium: P1 CRITICAL, P1 HIGH, P2 CRITICAL; aktiv ausgenutzte (KEV) unabhängig von Priorität und Schweregrad; nur mit verfügbarem Fix, aktiv ausgenutzte auch ohne (außer LOW))
 
 - **CVE-2026-111497** (CRITICAL KEV) in node 22.22.0 – behoben in 22.23.4 – genutzt von node:3000 – **aktiv ausgenutzt** (KEV seit 2026-10-27)
 - **CVE-2021-23337** (HIGH) in lodash 4.17.20 – behoben in 4.17.21 – genutzt von node:3000
@@ -222,8 +222,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        e60af4eb6d8ee5ddea17a3627bd5f9f8be3f144218247c1a1f27f8989898c1b6
-Gestartet: 2026-11-25T09:54:12.99756109Z
+ID:        75e3f206d4aa4deff80b7252915fc35d91256d08f6a13c73ef1d6659de274cc9
+Gestartet: 2026-11-25T11:34:53.062171222Z
 Kommando:  ["docker-entrypoint.sh"] ["node", "server.js"]
 Mounts:    /w/beispiele/umgebung/node->/app
 Host:      Kernel 7.0.14-linuxkit
@@ -233,7 +233,7 @@ Host:      Kernel 7.0.14-linuxkit
 
 ```
 PID                 USER                COMMAND
-6240                root                node server.js
+586                 root                node server.js
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

@@ -4139,8 +4139,12 @@ def priority(c, published):
 
 
 def ist_relevant(r, nur_behebbare):
+    """Mit --nur-behebbare zählen Funde ohne Fix nicht – außer aktiv ausgenutzte (KEV): Dann muss gehandelt werden,
+    auch ohne Paket (abschalten, absichern). Ausgenommen Schweregrad LOW (bei Debian "unimportant": das Paket der
+    Distribution ist laut Debian nicht wirklich betroffen, und "end-of-life") – sonst meldet z.B. jedes Image mit
+    openssh-client dauerhaft 1."""
     return not r.get("ausgenommen") and ((r["prio"], r["sev"]) in RELEVANT or bool(r.get("kev"))) \
-        and bool(r["fix"] or not nur_behebbare)
+        and bool(r["fix"] or not nur_behebbare or (r.get("kev") and r["sev"] != "LOW"))
 
 
 def ohne_schweregrad(rows, nur_behebbare):
@@ -4256,7 +4260,7 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, bewertet, db
     w("**%d relevante Schwachstellen** (Kriterium: %s; aktiv ausgenutzte (KEV) unabhängig von Priorität und "
       "Schweregrad%s)\n" % (len(relevant), ", ".join(
           "P%d %s" % k for k in sorted(RELEVANT, key=lambda k: (k[0], SEV.index(k[1])))),
-          "; nur mit verfügbarem Fix" if nur_behebbare else ""))
+          "; nur mit verfügbarem Fix, aktiv ausgenutzte auch ohne (außer LOW)" if nur_behebbare else ""))
     for r in relevant[:30]:
         w("- " + fund_text(r, "**"))
     if len(relevant) > 30:
@@ -5016,7 +5020,8 @@ def kommandozeile():
     ap.add_argument("--oekosysteme", help="mit --db-aktualisieren: zusätzlich diese Ökosysteme direkt von OSV laden "
                                            "(z.B. SUSE); ohne daten/ Standard: " + ",".join(OSV_ECOSYSTEMS))
     ap.add_argument("--nur-behebbare", action="store_true",
-                    help="für den Rückgabewert nur Funde zählen, für die es einen Fix gibt")
+                    help="für den Rückgabewert nur Funde zählen, für die es einen Fix gibt "
+                         "(aktiv ausgenutzte auch ohne Fix, außer Schweregrad LOW)")
     ap.add_argument("--alle", action="store_true",
                     help="mit --bericht: alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV)")
     ap.add_argument("--user", default="0", help="Benutzer für docker exec (Standard 0 = root, nötig für /proc)")

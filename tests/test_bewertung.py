@@ -235,7 +235,19 @@ class Relevanz(unittest.TestCase):
     def test_kev_unabhaengig_von_prioritaet_und_schweregrad(self):
         self.assertFalse(scanner.ist_relevant(self.row(), False))
         self.assertTrue(scanner.ist_relevant(self.row(kev="2025-05-06"), False))
-        self.assertFalse(scanner.ist_relevant(self.row(kev="2025-05-06", fix=""), True))     # --nur-behebbare gilt
+        self.assertTrue(scanner.ist_relevant(self.row(kev="2025-05-06", fix=""), False))
+
+    def test_nur_behebbare_kev_auch_ohne_fix(self):
+        # --nur-behebbare: ohne Fix nicht gezählt, außer aktiv ausgenutzt (dann abschalten oder absichern)
+        self.assertTrue(scanner.ist_relevant(self.row(prio=1, sev="CRITICAL"), True))
+        self.assertFalse(scanner.ist_relevant(self.row(prio=1, sev="CRITICAL", fix=""), True))
+        self.assertTrue(scanner.ist_relevant(self.row(kev="2025-05-06", fix=""), True))
+        self.assertTrue(scanner.ist_relevant(self.row(kev="2025-05-06", fix="", sev="UNKNOWN"), True))
+        # Debian "unimportant"/"end-of-life" (Schweregrad LOW): ohne Fix nicht, mit Fix weiter relevant
+        self.assertFalse(scanner.ist_relevant(self.row(kev="2025-05-06", fix="", sev="LOW"), True))
+        self.assertTrue(scanner.ist_relevant(self.row(kev="2025-05-06", sev="LOW"), True))
+        self.assertTrue(scanner.ist_relevant(self.row(kev="2025-05-06", fix="", sev="LOW"), False))
+        self.assertFalse(scanner.ist_relevant(self.row(kev="2025-05-06", fix="", ausgenommen="x"), True))
 
     def test_ausgenommen_ist_nie_relevant(self):
         self.assertTrue(scanner.ist_relevant(self.row(prio=1, sev="HIGH"), False))
