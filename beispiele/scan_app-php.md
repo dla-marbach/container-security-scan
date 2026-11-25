@@ -2,7 +2,7 @@
 
 - Image: php:8.3.30-fpm-bookworm (sha256:e7ca6c7f5a59)  
 - OS: Debian GNU/Linux 12 (bookworm)  
-- Zeitpunkt: 2026-11-25 09:54  
+- Zeitpunkt: 2026-11-25 11:34  
 - Scanner: container-security-scan 1.2.0  
 - Datenbank: OSV, Stand 2026-11-24 13:43 UTC (daten)  
 - Erfassung: OS-Pakete dpkg; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer); 1 Kernel-Pakete nicht geprüft (Container nutzen den Kernel des Hosts)
@@ -10,7 +10,7 @@
 ## Ergebnis
 
 **Warnung:** Supportende: jquery 1.12.4 (jquery 1, Datum unbekannt; /srv/app/public/js/jquery-1.12.4.min.js)  
-**65 relevante Schwachstellen** (Kriterium: P1 CRITICAL, P1 HIGH, P2 CRITICAL; aktiv ausgenutzte (KEV) unabhängig von Priorität und Schweregrad; nur mit verfügbarem Fix)
+**65 relevante Schwachstellen** (Kriterium: P1 CRITICAL, P1 HIGH, P2 CRITICAL; aktiv ausgenutzte (KEV) unabhängig von Priorität und Schweregrad; nur mit verfügbarem Fix, aktiv ausgenutzte auch ohne (außer LOW))
 
 - **CVE-2026-111497** (CRITICAL KEV) in libbrotli1 1.0.9-2+b6 – behoben in 1.0.9-2+deb12u1 – genutzt von php-fpm:9000 – **aktiv ausgenutzt** (KEV seit 2026-10-27)
 - **CVE-2026-33845** (CRITICAL) in libgnutls30 3.7.9-2+deb12u6 – behoben in 3.7.9-2+deb12u7 – genutzt von php-fpm:9000
@@ -699,8 +699,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        84df20145085f83450abacf1bd3327157ed0452eb072b9cae4f5bbe1184e5d03
-Gestartet: 2026-11-25T09:54:13.07471809Z
+ID:        49f38734dd51182c1a654ea9092e1f8c2034f048686d22b6dbd2ae04d0f05971
+Gestartet: 2026-11-25T11:34:53.147487263Z
 Kommando:  ["docker-php-entrypoint"] ["php-fpm"]
 Mounts:    /w/beispiele/umgebung/php->/srv/app
 Host:      Kernel 7.0.14-linuxkit
@@ -710,9 +710,9 @@ Host:      Kernel 7.0.14-linuxkit
 
 ```
 PID                 USER                COMMAND
-6302                root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
-6368                33                  php-fpm: pool www
-6369                33                  php-fpm: pool www
+649                 root                php-fpm: master process (/usr/local/etc/php-fpm.conf)
+690                 33                  php-fpm: pool www
+691                 33                  php-fpm: pool www
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher

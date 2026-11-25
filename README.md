@@ -235,8 +235,10 @@ Einlesen dauert länger (Ubuntu ca. 30 statt 5 s je Container).
 **Relevant** (Rückgabewert 1) sind P1 CRITICAL/HIGH und P2 CRITICAL (`RELEVANT` im Skript) sowie jede **aktiv
 ausgenutzte Lücke** aus dem [KEV-Katalog der CISA](https://www.cisa.gov/known-exploited-vulnerabilities-catalog),
 auch als P4 – Programme wie ImageMagick oder ffmpeg laufen nur bei Bedarf. Der Wrapper zählt nur Funde mit Fix
-(`--nur-behebbare`). Nicht relevant sind Funde aus der Ausnahmeliste, Funde ohne Schweregrad (in P1 einzeln
-aufgeführt, zum selbst Einschätzen) und Lücken, die laut Titel nur Windows betreffen.
+(`--nur-behebbare`), aktiv ausgenutzte aber auch ohne Fix (dann abschalten oder anders absichern), außer mit
+Schweregrad LOW (bei Debian „unimportant“: das Paket der Distribution ist nicht wirklich betroffen). Nicht relevant
+sind Funde aus der Ausnahmeliste, Funde ohne Schweregrad (in P1 einzeln aufgeführt, zum selbst Einschätzen) und
+Lücken, die laut Titel nur Windows betreffen.
 
 „Genutzt von“ ermittelt der Scan aus `/proc` (Programm, geladene Bibliotheken, offene Dateien und Ports) und für
 npm/Composer/PyPI/RubyGems/Nextcloud über das Projektverzeichnis (Arbeitsverzeichnis, Skriptpfad, venv, Docroot des
@@ -404,7 +406,7 @@ sudo python3 -I $C --db $DB --bericht --alle --container 'app-*' <ausgabeverzeic
 | `--alle-container` | alle laufenden Container, zuerst die erreichbaren und die Backends ihrer Proxys |
 | `--oeffentliche` | nur die erreichbaren Container und deren Backends |
 | `--container MUSTER` | nur passende Container (Name, ID oder Muster wie `surveyor_*`, mehrfach möglich; auch ohne Option als erstes Argument), Erreichbarkeit wie im Gesamtlauf |
-| `--nur-behebbare` | nur Funde mit Fix zählen – empfohlen, sonst melden ungepatchte Lücken dauerhaft `1` |
+| `--nur-behebbare` | nur Funde mit Fix zählen, aktiv ausgenutzte (KEV) auch ohne – empfohlen, sonst melden ungepatchte Lücken dauerhaft `1` |
 | `--bericht` | je Container einen [Bericht](#ausgabe) schreiben (Markdown) |
 | `--sbom` | je Container eine SBOM schreiben (CycloneDX 1.5) |
 | `--alle` | mit `--bericht`: alle Befunde in die Tabelle (sonst P3/P4 nur CRITICAL/HIGH/KEV) |
