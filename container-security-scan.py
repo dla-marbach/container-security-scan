@@ -878,6 +878,7 @@ GEMFILE_LOCK_EINTRAG = re.compile(r"^    ([^ (]+) \(([^-)]+)(?:-([^)]+))?\)$")
 # Gemfile.lock innerhalb installierter Gems (<gem_home>/gems/<name>-<version>/, Git-Quellen unter bundler/gems/):
 # gehört zum Quellcode des Gems, nicht zu einer Anwendung
 GEM_IN_GEM = re.compile(r"/gems/[^/]+-\d[^/]*/|/bundler/gems/")
+GEM_DEV_HINWEIS = "in Gemfile.lock, aber nicht installiert (Gruppe development/test o. ä.)"
 
 
 def rubygems_packages(files):
@@ -887,8 +888,9 @@ def rubygems_packages(files):
     (Gruppen development/test, die "bundle config without" ausschließt, die Gemfile.lock aber führt) gelten als
     Entwicklungsabhängigkeit (P4) – aber nur, wenn mindestens die Hälfte der Gems aus GEM-Quellen dieser Datei
     installiert gefunden wurde; sonst ist die Installation nicht erkennbar (anderer Ort) und alle zählen.
-    "datei" ist die Spezifikation, falls installiert (gehört sie einem OS-Paket, prüft der Abgleich das Paket),
-    sonst die Gemfile.lock."""
+    "dateien" sind alle passenden Spezifikationen (im Projektverzeichnis zuerst), sonst die Gemfile.lock; "datei"
+    ist die erste davon. Nur wenn alle einem OS-Paket gehören, prüft der Abgleich das Paket (inventar_erfassen) –
+    eine daneben installierte Kopie (vendor/bundle, /usr/local/bundle) bekommt keine Korrekturen der Distribution."""
     specs = defaultdict(list)    # "<name>-<version>" (auch mit Plattform) -> Pfade der Spezifikationen
     for path in files:
         m = re.search(r"/specifications/(?:default/)?([^/]+)\.gemspec$", path)
@@ -916,9 +918,10 @@ def rubygems_packages(files):
         for (name, version), quelle in gems.items():
             spec = installiert[(name, version)]
             dev = pruefbar and quelle == "GEM" and not spec
-            c = comp("rubygems", name, version, ort, dev=dev, quelle=quelle, datei=spec[0] if spec else path)
+            dateien = spec or [path]
+            c = comp("rubygems", name, version, ort, dev=dev, quelle=quelle, datei=dateien[0], dateien=dateien)
             if dev:
-                c["hinweise"].append("in Gemfile.lock, aber nicht installiert (Gruppe development/test o. ä.)")
+                c["hinweise"].append(GEM_DEV_HINWEIS)
             elif quelle == "GIT":
                 c["hinweise"].append("aus Git-Quelle (Version laut Gemfile.lock)")
             elif quelle == "PATH":
@@ -1133,6 +1136,9 @@ if (defined("ZLIB_VERSION")) $r["libs"]["zlib"] = ZLIB_VERSION;
 echo json_encode($r);
 """
 NODE_SKIP = {"modules", "napi", "unicode", "cldr", "tz"}
+# Version und tatsächliches Programm (Symlinks aufgelöst, wie realpath bei node/python/php); --disable-gems: lädt
+# keine Bibliothek (RubyGems, rbconfig), RUBYOPT ist geleert (DOCKER_ENV)
+RUBY_CODE = 'print RUBY_VERSION, "\\n", File.readlink("/proc/self/exe")'
 
 
 def probe_runtimes(c, procs, owners):
@@ -1193,9 +1199,12 @@ def probe_runtimes(c, procs, owners):
                     add("php-ext", k, v, d["exe"], "eigene Version (PECL o.ä.)")
                 for k, v in (d["libs"] or {}).items():
                     add("runtime-lib", k, v, d["exe"], "von php gelinkt")
-        elif re.match(r"ruby[\d.]*$", base):    # RUBYOPT ist geleert (DOCKER_ENV)
-            m = re.match(r"ruby (\d+\.\d+\.\d+)", probe([exe, "--version"])[1])
-            add("runtime", "ruby", m and m.group(1), exe)
+        elif re.match(r"ruby[\d.]*$", base):
+            # ohne ermittelten Pfad keine Komponente (wie bei node/python/php): sonst fehlte der Besitzer im OS-Paket
+            rc, out = probe([exe, "--disable-gems", "-e", RUBY_CODE])
+            m = re.match(r"(\d+\.\d+\.\d+)\n(/.+)$", out) if rc == 0 else None
+            if m:
+                add("runtime", "ruby", m.group(1), m.group(2))
         elif base.startswith("php-fpm"):
             m = re.match(r"PHP (\S+)", probe([exe, "-v"])[1])
             add("runtime", "php-fpm", m and m.group(1), exe, "gleicher Build wie php-CLI angenommen")
@@ -2487,11 +2496,27 @@ def frontends_ermitteln(procs, web):
                         p["frontends"].append(ff)
 
 
+def gem_nutzer(name, version, loc, procs):
+    """Ruby-Prozesse, die ein Gem aus der Gemfile.lock in loc nutzen: Arbeitsverzeichnis oder Skript im Projekt
+    (Puma, Unicorn, Sidekiq …) oder geladene Erweiterung des Gems. Liefert [(Prozess, Erweiterung geladen)]."""
+    gem_dir = "/gems/%s-%s" % (name, version)
+    result = []
+    for p in procs.values():
+        if not p["base"].startswith("ruby"):
+            continue
+        scripts = [a if a.startswith("/") else posixpath.join(p["cwd"], a)
+                   for a in p["argv"][1:] if a.startswith("/") or re.search(r"\.(rb|ru)$", a)]
+        geladen = any(gem_dir + "/" in m or gem_dir + "-" in m for m in p["maps"])
+        if geladen or under(p["cwd"], loc) or any(under(s, loc) for s in scripts):
+            result.append((p, geladen))
+    return result
+
+
 def komponenten_zuordnen(comps, procs, owners, web, php_servers):
-    """c["aktiv"] bzw. c["aktiv_ohne_port"] je Komponente: OS-Paket über das Programm und geladene Bibliotheken,
-    Laufzeit über das Programm, npm/Composer/PyPI/Nextcloud über Projektverzeichnis, Docroot bzw. venv, Gems über
-    das Projektverzeichnis (Gemfile.lock) oder eine geladene Erweiterung, JAR über offene Dateien, eingebettete
-    JavaScript-Bibliothek über den Docroot."""
+    """c["aktiv"] bzw. c["aktiv_ohne_port"] je Komponente: OS-Paket über das Programm und geladene Bibliotheken
+    (und die Gems des Pakets wie unten), Laufzeit über das Programm, npm/Composer/PyPI/Nextcloud über
+    Projektverzeichnis, Docroot bzw. venv, Gems über das Projektverzeichnis (Gemfile.lock) oder eine geladene
+    Erweiterung, JAR über offene Dateien, eingebettete JavaScript-Bibliothek über den Docroot."""
     pkg_users = defaultdict(list)   # OS-Paket -> Prozesse, die eine seiner Dateien geladen haben
     for p in procs.values():
         for f in p["maps"] | {p["exe"]}:
@@ -2506,6 +2531,10 @@ def komponenten_zuordnen(comps, procs, owners, web, php_servers):
         elif t == "os-paket":
             for p in pkg_users.get(c["name"], ()):
                 use(c, p)
+            # Gems dieses Pakets in einer Gemfile.lock (inventar_erfassen): reine Ruby-Dateien fehlen in maps
+            for name, version, ort in c.get("gems", ()):
+                for p, _ in gem_nutzer(name, version, ort, procs):
+                    use(c, p)
         elif t in ("runtime", "runtime-lib", "php-ext", "server"):
             for p in procs.values():
                 if norm(p["exe"]) == norm(loc):
@@ -2538,16 +2567,13 @@ def komponenten_zuordnen(comps, procs, owners, web, php_servers):
                 for p in php_servers:
                     if p["ports"] and p["label"] + " (Docroot unbekannt)" not in c["aktiv"]:
                         c["aktiv"].append(p["label"] + " (Docroot unbekannt)")
-        elif t == "rubygems":   # Ruby-Prozess im Projektverzeichnis (Puma, Unicorn, Sidekiq …) oder Skript dort
-            gem_dir = "/gems/%s-%s" % (c["name"], c["version"])
-            for p in procs.values():
-                if not p["base"].startswith("ruby"):
-                    continue
-                scripts = [a if a.startswith("/") else posixpath.join(p["cwd"], a)
-                           for a in p["argv"][1:] if a.startswith("/") or re.search(r"\.(rb|ru)$", a)]
-                if under(p["cwd"], loc) or any(under(s, loc) for s in scripts) \
-                        or any(gem_dir + "/" in m or gem_dir + "-" in m for m in p["maps"]):
-                    use(c, p)
+        elif t == "rubygems":
+            for p, geladen in gem_nutzer(c["name"], c["version"], loc, procs):
+                use(c, p)
+                if geladen and c.get("dev"):    # Erweiterung geladen: installiert, auch ohne gefundene gemspec
+                    c["dev"] = False
+                    c["hinweise"] = [h for h in c["hinweise"] if h != GEM_DEV_HINWEIS]
+                    c["hinweise"].append("Erweiterung geladen, aber keine Spezifikation gefunden")
         elif t == "maven":   # JAR von einem Prozess geöffnet (die JVM hält ihre JARs offen)
             jar = loc.split("!/")[0]
             for p in procs.values():
@@ -4585,11 +4611,21 @@ def inventar_erfassen(c):
             + anwendungen(files) + extra)
     if how["pkgdb"] == "rpm (im Container)":
         owners.update(rpm_owners(c, {norm(f) for p in procs.values() for f in p["maps"] | {p["exe"]}} |
-                                 {x["datei"] for x in lang}))
+                                 {d for x in lang for d in x.get("dateien") or [x["datei"]]}))
+
+    def os_eigen(x):    # alle Kopien (Gems: jede passende Spezifikation) gehören einem OS-Paket
+        return all(owners.get(norm(d)) for d in x.get("dateien") or [x["datei"]])
     # Sprach-Komponenten, deren Datei zu einem OS-Paket gehört (z.B. gosu, python3-*-Pakete, libxyz-java),
     # prüft der Abgleich über das OS-Paket – sonst würden sie doppelt gezählt (so hält es auch Trivy)
-    how["os_owned"] = sum(1 for x in lang if owners.get(norm(x["datei"])))
-    comps = pkgs + [x for x in lang if not owners.get(norm(x["datei"]))]
+    how["os_owned"] = sum(1 for x in lang if os_eigen(x))
+    comps = pkgs + [x for x in lang if not os_eigen(x)]
+    # Gem eines OS-Pakets (ruby-rack) in einer Gemfile.lock: die Nutzung über das Projekt gilt für das Paket
+    for x in lang:
+        if x["typ"] == "rubygems" and os_eigen(x):
+            besitzer = {o for d in x["dateien"] for o in owners[norm(d)]}
+            for pkg in pkgs:
+                if pkg["name"] in besitzer:
+                    pkg.setdefault("gems", []).append((x["name"], x["version"], x["ort"]))
     comps += probe_runtimes(c, procs, owners) + host_components()
     return files, osinfo, pkgs, owners, procs, fremd, comps, how, problems
 

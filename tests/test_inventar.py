@@ -317,6 +317,28 @@ class Anwendungspakete(unittest.TestCase):
         self.assertNotIn("rack", gems)
         self.assertIn("rails", gems)
         self.assertEqual(how["os_owned"], 1)
+        # Nutzung über das Projekt geht auf das Paket über (komponenten_zuordnen)
+        paket = [c for c in comps if c["typ"] == "os-paket" and c["name"] == "ruby-rack"][0]
+        self.assertEqual(paket["gems"], [("rack", "3.1.7", "/app")])
+
+    def test_rubygems_kopie_neben_os_paket_bleibt(self):
+        # OS-Kopie (alphabetisch zuerst) und separat installierte Kopie unter /var/lib/gems: Gem bleibt erhalten
+        os_spec = "/usr/share/rubygems-integration/all/specifications/rack-3.1.7.gemspec"
+        eigen = "/var/lib/gems/3.1.0/specifications/rack-3.1.7.gemspec"
+        files = {"/etc/os-release": b"ID=debian\nVERSION_ID=12\n", "/app/Gemfile.lock": GEMFILE_LOCK,
+                 os_spec: b"", eigen: b"",
+                 "/var/lib/dpkg/status": b"Package: ruby-rack\nStatus: install ok installed\nVersion: 3.1.7-1\n",
+                 "/var/lib/dpkg/info/ruby-rack.list": os_spec.encode() + b"\n"}
+        with mock.patch.object(scanner, "collect_files", return_value=(files, [], "test", [])), \
+                mock.patch.object(scanner, "collect_procs", return_value=({}, "test", {})), \
+                mock.patch.object(scanner, "probe_runtimes", return_value=[]), \
+                mock.patch.object(scanner, "host_components", return_value=[]):
+            comps, how = scanner.inventar_erfassen(mock.Mock())[6:8]
+        rack = [c for c in comps if c["typ"] == "rubygems" and c["name"] == "rack"]
+        self.assertEqual(len(rack), 1)
+        self.assertEqual(rack[0]["dateien"], [os_spec, eigen])
+        self.assertEqual(how["os_owned"], 0)
+        self.assertNotIn("gems", [c for c in comps if c["name"] == "ruby-rack"][0])
 
 
 class JavaScript(unittest.TestCase):

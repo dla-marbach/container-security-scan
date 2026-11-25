@@ -597,7 +597,31 @@ class Gesamtlauf(unittest.TestCase):
         with open(base + ".md", encoding="utf-8") as f:
             self.assertRegex(f.read(), r"\| 4 \| CRITICAL \| CVE-2026-61 \| rubocop \|")
 
-    def test_unvollstaendig_ergibt_2(self):
+    def test_os_eigenes_gem_ueber_puma_im_projekt_p1(self):
+        # Rack aus dem Debian-Paket ruby-rack (nur Ruby-Dateien, nichts in maps), Puma im Projekt auf einem
+        # veröffentlichten Port: das Paket erbt die Nutzung des Gems -> P1; geprüft über Debian, nicht doppelt
+        self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2") + \
+            b"\nPackage: ruby-rack\nStatus: install ok installed\nVersion: 2.2.6.4-1\n"
+        spec = "/usr/share/rubygems-integration/all/specifications/rack-2.2.6.4.gemspec"
+        self.files[spec] = b""
+        self.files["/var/lib/dpkg/info/ruby-rack.list"] = spec.encode() + b"\n"
+        self.files["/app/Gemfile.lock"] = b"GEM\n  specs:\n    puma (6.4.3)\n    rack (2.2.6.4)\n"
+        self.files["/app/vendor/bundle/ruby/3.1.0/specifications/puma-6.4.3.gemspec"] = b""
+        schreibe_jsonl(self.db, "Debian", [eintrag("DEBIAN-CVE-2026-70", "Debian:12", "ruby-rack",
+                                                   [{"introduced": "0"}, {"fixed": "2.2.6.4-1+deb12u1"}],
+                                                   upstream=["CVE-2026-70"], published="2026-11-01T00:00:00Z",
+                                                   affected_extra={"ecosystem_specific": {"urgency": "high"}})])
+        schreibe_jsonl(self.db, "RubyGems", [
+            eintrag("GHSA-r70", "RubyGems", "rack", [{"introduced": "0"}, {"fixed": "2.2.7"}], aliases=["CVE-2026-70"],
+                    database_specific={"severity": "HIGH"})])
+        puma = proc(1, "/usr/bin/ruby3.1", ["puma 6.4.3 (tcp://0.0.0.0:3000) [app]"], cwd="/app",
+                    ports={"3000": "alle"})
+        code, _, base = self.lauf(prozess=puma, published={"3000": ["0.0.0.0:3000"]})
+        self.assertEqual(code, 1)
+        self.assertIn("CVE-2026-70 (HIGH) in ruby-rack 2.2.6.4-1 – behoben in 2.2.6.4-1+deb12u1 – genutzt von "
+                      "ruby3.1:3000", self.konsole)
+        self.assertNotIn("in rack 2.2.6.4", self.konsole)     # nicht zusätzlich als Gem gemeldet
+
         self.problems = ["Dateien im Container nicht vollständig lesbar"]
         self.assertEqual(self.lauf()[0], 2)
 

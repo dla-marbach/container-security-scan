@@ -241,7 +241,9 @@ aufgeführt, zum selbst Einschätzen) und Lücken, die laut Titel nur Windows be
 „Genutzt von“ ermittelt der Scan aus `/proc` (Programm, geladene Bibliotheken, offene Dateien und Ports) und für
 npm/Composer/PyPI/RubyGems/Nextcloud über das Projektverzeichnis (Arbeitsverzeichnis, Skriptpfad, venv, Docroot des
 Webservers). Gems aus der `Gemfile.lock`, die nirgends im Container installiert sind (keine
-`specifications/<name>-<version>.gemspec`, meist die Gruppen development/test), gelten als Entwicklungsabhängigkeit.
+`specifications/<name>-<version>.gemspec`, meist die Gruppen development/test), gelten als Entwicklungsabhängigkeit,
+außer ein Prozess hat ihre Erweiterung geladen. Gehören alle Kopien eines Gems einem OS-Paket, wird das Paket geprüft
+und übernimmt die Nutzung über das Projekt.
 
 Schweregrad: Einstufung der Distribution, sonst der Quelle, sonst CVSS.
 Fehlt er, gilt die Bewertung derselben CVE aus den Bitnami- bzw. Alpine-Daten, markiert mit `*` (`CRITICAL*`).

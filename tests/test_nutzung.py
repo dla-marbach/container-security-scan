@@ -159,6 +159,21 @@ class Zuordnung(unittest.TestCase):
         rails["dev"] = True
         self.assertEqual(scanner.priority(rails, {"ruby:3000"}), 4)
 
+    def test_rubygems_dev_mit_geladener_erweiterung_nicht_dev(self):
+        # gemspec nicht gefunden (dev), Erweiterung aber in maps: installiert und genutzt, also nicht P4
+        puma = proc(1, "/usr/local/bin/ruby", ["puma 6.4.2 (tcp://0.0.0.0:3000) [app]"], cwd="/app",
+                    ports={"3000": "alle"},
+                    maps={"/usr/local/bundle/gems/nokogiri-1.16.7-x86_64-linux-gnu/lib/nokogiri/3.3/nokogiri.so"})
+        nokogiri = C("rubygems", "nokogiri", "1.16.7", "/app", dev=True, hinweise=[scanner.GEM_DEV_HINWEIS])
+        rubocop = C("rubygems", "rubocop", "1.66.1", "/app", dev=True, hinweise=[scanner.GEM_DEV_HINWEIS])
+        scanner.mark_usage([nokogiri, rubocop], {"1": puma}, {}, web())
+        self.assertFalse(nokogiri["dev"])
+        self.assertNotIn(scanner.GEM_DEV_HINWEIS, nokogiri["hinweise"])
+        self.assertEqual(scanner.priority(nokogiri, {"ruby:3000"}), 1)
+        # nur über das Projektverzeichnis zugeordnet: bleibt Entwicklungsabhängigkeit
+        self.assertEqual((rubocop["dev"], rubocop["aktiv"]), (True, ["ruby:3000"]))
+        self.assertEqual(scanner.priority(rubocop, {"ruby:3000"}), 4)
+
 
 class Dienste(unittest.TestCase):
     def dienst(self, p, **kw):
