@@ -32,8 +32,7 @@ Aufruf:
 
 Ergebnis: auf der Konsole Zeitpunkt, Stand der Daten, Host mit laufenden Containern, dann je Container ein
           Abschnitt "=== Name ===" mit Zusammenfassung, Image, Dienste mit Erreichbarkeit und Webadressen,
-          gefährliche Einstellungen und relevante Funde; im Ausgabeverzeichnis bekannt_<name>.json
-          (relevante Funde des letzten Laufs, für "NEU"), dazu auf Wunsch:
+          gefährliche Einstellungen und relevante Funde; im Ausgabeverzeichnis auf Wunsch:
           scan_<name>_<zeit>.md        mit --bericht: Ergebnis, Dienste, Webadressen, Befunde nach Priorität, Anhang
           scan_<name>_<zeit>.cdx.json  mit --sbom: SBOM (CycloneDX 1.5); auch mit Trivy/Grype/Dependency-Track nutzbar
           scan_<name>_<zeit>.sha256    Prüfsummen der geschriebenen Dateien
@@ -93,7 +92,7 @@ from functools import cmp_to_key
 # Einstellungen: Version, Relevanz, Fristen für die Daten
 # ===========================================================================
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
@@ -3802,8 +3801,8 @@ def konfiguration_pruefen(c):
     h = c.info.get("HostConfig") or {}
     funde = []
 
-    def fund(kennung, text, quelle=""):     # quelle: unterscheidet mehrere Mounts derselben Kennung ("neu")
-        funde.append({"id": kennung, "pkg": c.name, "text": text, "quelle": quelle})
+    def fund(kennung, text):
+        funde.append({"id": kennung, "pkg": c.name, "text": text})
 
     if h.get("Privileged"):
         fund("CONF-PRIVILEGED", "--privileged: alle Capabilities und Zugriff auf alle Geräte des Hosts")
@@ -3823,9 +3822,9 @@ def konfiguration_pruefen(c):
         src = (m.get("Source") or "").rstrip("/") or "/"
         if KONF_SOCKET.fullmatch(src):
             fund("CONF-SOCKET", "%s eingebunden als %s: Zugriff auf die Container-Laufzeit = root auf dem Host "
-                                "(auch schreibgeschützt)" % (src, m.get("Destination")), src)
+                                "(auch schreibgeschützt)" % (src, m.get("Destination")))
         elif m.get("RW") and KONF_HOST_PFAD.fullmatch(src):
-            fund("CONF-HOST-PFAD", "%s beschreibbar eingebunden als %s" % (src, m.get("Destination")), src)
+            fund("CONF-HOST-PFAD", "%s beschreibbar eingebunden als %s" % (src, m.get("Destination")))
     return funde
 
 
@@ -4022,10 +4021,9 @@ def dienste_konsole(services):
     return zeilen or ["Dienste: keine (kein Prozess mit offenem Port)"]
 
 
-def befunde_bewerten(findings, services, ausnahmen, nur_behebbare, known, warnungen):
-    """Befunde bewerten: Priorität, Ausnahmen (abgelaufene als Warnung), Relevanz, neu gegenüber dem letzten Lauf
-    (known: dessen relevante Funde, None ohne vorherigen Lauf). Liefert (alle Befunde nach Priorität und Schwere,
-    relevante – neue zuerst –, ausgenommene, die sonst relevant wären)."""
+def befunde_bewerten(findings, services, ausnahmen, nur_behebbare, warnungen):
+    """Befunde bewerten: Priorität, Ausnahmen (abgelaufene als Warnung), Relevanz. Liefert (alle Befunde nach
+    Priorität und Schwere, relevante, ausgenommene, die sonst relevant wären)."""
     published = {s["label"] for s in services if s["exposed"]}
     rows = []
     for f in findings:
@@ -4037,14 +4035,10 @@ def befunde_bewerten(findings, services, ausnahmen, nur_behebbare, known, warnun
     relevant = [r for r in rows if ist_relevant(r, nur_behebbare)]
     # ausgenommen, wäre sonst relevant: im Ergebnis gesondert ausweisen
     ausgenommen = [r for r in rows if r.get("ausgenommen") and ist_relevant(dict(r, ausgenommen=""), nur_behebbare)]
-    for r in relevant:     # neu gegenüber dem letzten Lauf (ohne vorherigen Lauf: alle neu)
-        r["neu"] = known is None or (r["pkg"], r["ver"], r["id"]) not in known
-    relevant.sort(key=lambda r: not r["neu"])
     return rows, relevant, ausgenommen
 
 
-def write_report(path, c, osinfo, comps, services, procs, web, how, bewertet, db_info, alle, nur_behebbare, known,
-                 konf=()):
+def write_report(path, c, osinfo, comps, services, procs, web, how, bewertet, db_info, alle, nur_behebbare, konf=()):
     """Bericht (Markdown, --bericht) schreiben; bewertet: Ergebnis von befunde_bewerten."""
     rows, relevant, ausgenommen = bewertet
     out = []
@@ -4067,10 +4061,8 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, bewertet, db
       "Schweregrad%s)\n" % (len(relevant), ", ".join(
           "P%d %s" % k for k in sorted(RELEVANT, key=lambda k: (k[0], SEV.index(k[1])))),
           "; nur mit verfügbarem Fix" if nur_behebbare else ""))
-    if known is not None:
-        w("Davon **%d neu** seit dem letzten Lauf.\n" % sum(r["neu"] for r in relevant))
     for r in relevant[:30]:
-        w(("- NEU: " if r["neu"] and known is not None else "- ") + fund_text(r, "**"))
+        w("- " + fund_text(r, "**"))
     if len(relevant) > 30:
         w("- … weitere %d in der Tabelle unten" % (len(relevant) - 30))
     konf_gezaehlt = [k for k in konf if not k.get("ausgenommen")]
@@ -4078,7 +4070,7 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, bewertet, db
         w("\n**%d gefährliche Einstellungen des Containers** (eine Lücke im Container führt damit zu root auf dem "
           "Host; Kennung für die Ausnahmeliste, Paket = Containername)\n" % len(konf_gezaehlt))
         for k in konf_gezaehlt:
-            w(("- NEU: " if k.get("neu") and known is not None else "- ") + konf_text(k, "**"))
+            w("- " + konf_text(k, "**"))
     else:
         w("\nGefährliche Einstellungen des Containers (privileged, Docker-Socket, pid=host …): keine gezählt.")
     konf_ausgenommen = [k for k in konf if k.get("ausgenommen")]
@@ -4457,26 +4449,10 @@ def daten_probleme(c, osinfo, how, procs, pkgs, missing, db_date, os_newest):
     return problems
 
 
-def bekannte_funde(known_file, name, bekannt):
-    """Relevante Funde des letzten Laufs (bekannt_<name>.json) als {(Paket, Version bzw. Quelle, Kennung)}; None ohne
-    vorherigen Lauf. bekannt: {Container: bekannte Funde} je Lauf – eine erneute Prüfung im selben Lauf vergleicht mit
-    dem Stand vor dem Lauf, nicht mit der eigenen ersten."""
-    if bekannt is not None and name in bekannt:
-        return bekannt[name]
-    try:
-        known = {tuple(k) for k in json_datei(known_file)}
-    except (OSError, ValueError):
-        known = None
-    if bekannt is not None:
-        bekannt[name] = known
-    return known
-
-
-def container_ausgeben(c, osinfo, services, warnings, problems, bewertet, konf_relevant, known, code, nur_behebbare,
-                       bericht):
+def container_ausgeben(c, osinfo, services, warnings, problems, bewertet, konf_relevant, code, nur_behebbare, bericht):
     """Ergebnis eines Containers auf der Konsole – für Rundeck-Log und Mail auch ohne Bericht: Warnungen,
-    Zusammenfassung, Image, Dienste mit Erreichbarkeit und Webadressen, gefährliche Einstellungen, relevante Funde
-    (neue zuerst), P1-Funde ohne Schweregrad."""
+    Zusammenfassung, Image, Dienste mit Erreichbarkeit und Webadressen, gefährliche Einstellungen, relevante Funde,
+    P1-Funde ohne Schweregrad."""
     rows, relevant, _ = bewertet
     unknown = ohne_schweregrad(rows, nur_behebbare)
     kev = sum(1 for r in relevant if r.get("kev"))
@@ -4484,19 +4460,19 @@ def container_ausgeben(c, osinfo, services, warnings, problems, bewertet, konf_r
         print("WARNUNG: %s" % warn)
     funde = " und ".join(x for x in ("RELEVANTE SCHWACHSTELLEN" if relevant else "",
                                      "GEFÄHRLICHE EINSTELLUNGEN" if konf_relevant else "") if x)
-    print("%s – %d Befunde, davon %d relevant (%d neu%s)%s%s%s" % (
+    print("%s – %d Befunde, davon %d relevant%s%s%s%s" % (
         {0: "OK", 1: funde, 2: "UNVOLLSTÄNDIG: " + "; ".join(problems)}[code],
-        len(rows), len(relevant), sum(r["neu"] for r in relevant), ", %d aktiv ausgenutzt" % kev if kev else "",
+        len(rows), len(relevant), " (%d aktiv ausgenutzt)" % kev if kev else "",
         ", P1 ohne Schweregrad: %d" % len(unknown) if unknown else "",
         ", %d gefährliche Einstellungen" % len(konf_relevant) if konf_relevant else "",
         " – Bericht: %s" % bericht if bericht else ""))
     print("Image %s – %s" % (c.info["Config"]["Image"], osinfo["pretty"]))
     for zeile in dienste_konsole(services):
         print(zeile)
-    for k in sorted(konf_relevant, key=lambda k: not k["neu"]):
-        print("%s%s" % ("NEU: " if k["neu"] and known is not None else "", konf_text(k)))
+    for k in konf_relevant:
+        print(konf_text(k))
     for r in relevant:
-        print("%s%s" % ("NEU: " if r["neu"] and known is not None else "", fund_text(r)))
+        print(fund_text(r))
     if unknown:
         print("P1 ohne Schweregrad (nicht gezählt, bitte selbst einschätzen):")
         for r in unknown:
@@ -4504,11 +4480,11 @@ def container_ausgeben(c, osinfo, services, warnings, problems, bewertet, konf_r
     sys.stdout.flush()
 
 
-def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None, anlass=None):
+def scan_container(name, a, via_proxy=None, via_urls=None, anlass=None):
     """Einen Container scannen. via_proxy: {Port: [Grund]} (Ziel eines erreichbaren Proxys), via_urls: {Port:
-    [Webadresse]} (dessen Webadressen, siehe webadressen), bekannt: siehe bekannte_funde; anlass: Grund der erneuten
-    Prüfung für die Überschrift. Liefert (Rückgabewert, öffentliche Backends [(Container, Port, Dienst)], Basis der
-    Berichtsdateien, Webadressen der Ziele in anderen Containern {(Container, Port): [Webadresse]})."""
+    [Webadresse]} (dessen Webadressen, siehe webadressen); anlass: Grund der erneuten Prüfung für die Überschrift.
+    Liefert (Rückgabewert, öffentliche Backends [(Container, Port, Dienst)], Basis der Berichtsdateien, Webadressen
+    der Ziele in anderen Containern {(Container, Port): [Webadresse]})."""
     # Überschrift des Abschnitts, sofort (Fortschritt, Meldungen auf stderr); eine erneute Prüfung im selben Lauf
     # (anlass, siehe durchlauf) ersetzt die vorige
     print("\n=== %s%s ===" % (name, " (erneute Prüfung wegen %s; ersetzt den Abschnitt oben)" % anlass if anlass else ""))
@@ -4536,25 +4512,17 @@ def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None, anlass=
     problems.extend(daten_probleme(c, osinfo, how, procs, pkgs, missing, db_date, os_newest))
     db_info = {"problems": problems, "text": "OSV, Stand %s UTC (%s)" % (db_date.strftime("%Y-%m-%d %H:%M") if db_date else "?", ", ".join(a.dbdirs))}
 
-    # Bewertung, neu gegenüber dem letzten Lauf
-    known_file = os.path.join(a.ausgabe, "bekannt_%s.json" % c.name)    # relevante Funde des letzten Laufs
-    known = bekannte_funde(known_file, c.name, bekannt)
-    for k in konf_relevant:
-        k["neu"] = known is None or (k["pkg"], k["quelle"], k["id"]) not in known
-    bewertet = befunde_bewerten(findings, services, ausnahmen, a.nur_behebbare, known, warnings)
+    # Bewertung
+    bewertet = befunde_bewerten(findings, services, ausnahmen, a.nur_behebbare, warnings)
     relevant = bewertet[1]
     code = 2 if problems else 1 if relevant or konf_relevant else 0
 
-    # Dateien: bekannte Funde (nur nach vollständiger Prüfung), auf Wunsch Bericht und SBOM mit Prüfsummen
+    # Dateien auf Wunsch: Bericht und SBOM mit Prüfsummen
     os.makedirs(a.ausgabe, exist_ok=True)
     base = os.path.join(a.ausgabe, "scan_%s_%s" % (c.name, datetime.datetime.now().strftime("%Y%m%d_%H%M%S")))
     if a.bericht:
         write_report(base + ".md", c, osinfo, comps, services, procs, web, how, bewertet, db_info, a.alle,
-                     a.nur_behebbare, known, konf)
-    if not problems:
-        with open(known_file, "w", encoding="utf-8") as f:
-            json.dump(sorted([[r["pkg"], r["ver"], r["id"]] for r in relevant] +
-                             [[k["pkg"], k["quelle"], k["id"]] for k in konf_relevant]), f)
+                     a.nur_behebbare, konf)
     if a.sbom:
         write_cdx(base + ".cdx.json", c, osinfo, comps, services)
     dateien = [ext for ext, ja in ((".md", a.bericht), (".cdx.json", a.sbom)) if ja]
@@ -4563,7 +4531,7 @@ def scan_container(name, a, via_proxy=None, via_urls=None, bekannt=None, anlass=
             for ext in dateien:
                 f.write("%s  %s\n" % (datei_sha256(base + ext), os.path.basename(base + ext)))
 
-    container_ausgeben(c, osinfo, services, warnings, problems, bewertet, konf_relevant, known, code, a.nur_behebbare,
+    container_ausgeben(c, osinfo, services, warnings, problems, bewertet, konf_relevant, code, a.nur_behebbare,
                        base + ".md" if a.bericht else "")
     return code, backends_von(services, c.name), base, web["ziel_urls"]
 
@@ -4794,8 +4762,8 @@ def kommandozeile():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("container", nargs="?", help="Name oder ID des laufenden Containers (wie --container)")
     ap.add_argument("ausgabe", nargs="?", default=".",
-                    help="Ausgabeverzeichnis für den Stand des letzten Laufs (bekannt_<container>.json) und die "
-                         "Dateien aus --bericht und --sbom (Standard: aktuelles Verzeichnis)")
+                    help="Ausgabeverzeichnis für die Dateien aus --bericht und --sbom (Standard: aktuelles "
+                         "Verzeichnis)")
     ap.add_argument("--bericht", action="store_true",
                     help="je Container einen Bericht (Markdown) mit allen Befunden, Diensten, Prozessen und "
                          "Webserver-Konfiguration schreiben (enthält Kommandozeilen der Prozesse)")
@@ -4913,10 +4881,10 @@ def auswahl_pruefen(a, muster, infos, public, rest, pause, ziele, gruppen, ziel_
 
 def alle_pruefen(a, public, rest, pause, ziele, gruppen, ziel_urls, host_code):
     """--oeffentliche bzw. --alle-container: siehe durchlauf."""
-    reports, bekannt = {}, {}
+    reports = {}
 
     def pruefen(name, via, urls, anlass):
-        code, backends, base, neue_urls = scan_container(name, a, via, urls, bekannt, anlass)
+        code, backends, base, neue_urls = scan_container(name, a, via, urls, anlass)
         if reports.get(name) and reports[name] != base:   # erneute Prüfung ersetzt den ersten Bericht dieses Laufs
             # (bei gleichem Namen – Prüfung in derselben Sekunde – ist er schon überschrieben)
             for ext in (".md", ".cdx.json", ".sha256"):

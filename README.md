@@ -30,7 +30,7 @@ Host: <rechner> mit 4 laufenden und 0 gestoppten Containern:
 
 === app-php ===
 WARNUNG: Supportende: jquery 1.12.4 (jquery 1, Datum unbekannt; /srv/app/public/js/jquery-1.12.4.min.js)
-RELEVANTE SCHWACHSTELLEN – 1437 Befunde, davon 65 relevant (65 neu, 4 aktiv ausgenutzt), P1 ohne Schweregrad: 1
+RELEVANTE SCHWACHSTELLEN – 1437 Befunde, davon 65 relevant (4 aktiv ausgenutzt), P1 ohne Schweregrad: 1
 Image php:8.3.30-fpm-bookworm – Debian GNU/Linux 12 (bookworm)
 Dienst php-fpm 8.3.30 (in /var/www/html), Port 9000: öffentlich über nginx:80 in app-proxy
   Webadressen: http://shop.example.org:8080/ (\.php$)
@@ -90,7 +90,7 @@ flowchart TD
 /var/lib/container-security-scan/daten/        Daten (Branch daten, Benutzer csscan)
 /usr/local/sbin/container-security-scan-lauf   Wrapper: Daten aktualisieren, dann scannen
 /etc/container-security-scan/ausnahmen.txt     Ausnahmeliste
-/var/log/container-security-scan/              Logs; unter berichte/ Stand für „NEU“ und Berichte
+/var/log/container-security-scan/              Logs; unter berichte/ Berichte und SBOMs (auf Wunsch)
 ```
 
 ### Einrichten
@@ -169,7 +169,7 @@ chmod 440 /etc/sudoers.d/rundeck-container-scan && visudo -c
 | Rückgabewert | `ERGEBNIS:` | Bedeutung | Zu tun |
 |---|---|---|---|
 | `0` | `OK` | nichts Relevantes gefunden | nichts |
-| `1` | `FUNDE` | relevante Schwachstellen oder [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) | Funde ansehen (neue sind markiert), Images aktualisieren, Einstellungen beheben; Fehlalarme und akzeptierte Risiken in die [Ausnahmeliste](#ausnahmen) |
+| `1` | `FUNDE` | relevante Schwachstellen oder [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) | Funde ansehen, Images aktualisieren, Einstellungen beheben; Fehlalarme und akzeptierte Risiken in die [Ausnahmeliste](#ausnahmen) |
 | `2` | `UNVOLLSTAENDIG` | **Prüfung unvollständig – nie als „sauber“ werten** | Meldung lesen und Ursache beheben |
 
 Gründe für `2` sind z. B.: Docker nicht erreichbar, Daten fehlen oder sind 3 Tage oder älter, Dateien, Prozesse
@@ -360,7 +360,7 @@ Abschnitt ersetzt den früheren:
   aufgerufenen Container (`ruft auf: …`)
 - [gefährliche Einstellungen](#gefährliche-einstellungen-des-containers) (`CONF-…`)
 - relevante Funde, eine Zeile je Fund: Kennung, Schweregrad, Paket und Version, Fix-Version, genutzt von, aktiv
-  ausgenutzt (KEV); neue zuerst mit `NEU:`, wenn ein Fund im letzten Lauf noch nicht relevant war
+  ausgenutzt (KEV)
 - unter `P1 ohne Schweregrad (nicht gezählt, bitte selbst einschätzen):` die P1-Funde, die noch keinen Schweregrad
   haben, gleiches Format (mit `--nur-behebbare` nur mit Fix)
 
@@ -368,13 +368,12 @@ Dateien im Ausgabeverzeichnis, nur für den Aufrufer lesbar:
 
 | Datei | Wann | Inhalt |
 |---|---|---|
-| `bekannt_<container>.json` | jeder Lauf außer Rückgabewert 2 | relevante Funde des letzten Laufs, für die Markierung „NEU“ |
 | `scan_<container>_<zeit>.md` | `--bericht` | Bericht: relevante Funde und Warnungen, Dienste mit Ports, Webadressen, alle Befunde nach Priorität, nicht gezählte Funde, Prozesse mit Kommandozeilen (oft mit Passwörtern), Webserver-Konfiguration |
 | `….cdx.json` | `--sbom` | SBOM (CycloneDX 1.5), auch mit Trivy, Grype oder Dependency-Track nutzbar |
 | `….sha256` | `--bericht` oder `--sbom` | Prüfsummen |
 
-Bis 0.6.x schrieb jeder Lauf Bericht und SBOM; die alten Dateien `scan_*` unter
-`/var/log/container-security-scan/berichte/` können gelöscht werden, `bekannt_*.json` bleiben.
+Bis 0.6.x schrieb jeder Lauf Bericht und SBOM, bis 1.1.x außerdem `bekannt_<container>.json` für die Markierung
+„NEU“ (entfallen); diese alten Dateien unter `/var/log/container-security-scan/berichte/` können gelöscht werden.
 
 ## Aufruf ohne Wrapper
 
