@@ -179,6 +179,12 @@ class Konsole(unittest.TestCase):
                 "- web  erstellt 2026-11-20 08:00 UTC, läuft seit 5 h (healthy), 2 Neustarts"])
             # gestoppte nicht ermittelbar: nur die laufenden
             self.assertEqual(scanner.host_kopf([]), ["Host: %s mit 0 laufenden Containern" % host])
+            # Auswahl (--container): Zahlen wie im Gesamtlauf, aufgeführt nur die geprüften (Spaltenbreite danach)
+            self.assertEqual(scanner.host_kopf([web, a, pause], 2, ["a", "pause"]), [
+                "Host: %s mit 2 laufenden, 1 pausierten und 2 gestoppten Containern, davon geprüft:" % host,
+                "- a  erstellt 2026-11-01 00:00 UTC, läuft seit 23 Tagen"])
+            self.assertEqual(scanner.host_kopf([web, a, pause], 2, []), [
+                "Host: %s mit 2 laufenden, 1 pausierten und 2 gestoppten Containern, davon geprüft: keiner" % host])
         # gestoppte: erstellt, beendet, tot
         with mock.patch.object(scanner, "run", return_value=(0, "b1\nb2\nb3\n")) as run:
             self.assertEqual(scanner.gestoppte_container(), 3)

@@ -4633,14 +4633,19 @@ def dauer_text(sekunden):
     return "%d h" % (sekunden // 3600) if sekunden < 48 * 3600 else "%d Tagen" % (sekunden // 86400)
 
 
-def host_kopf(infos, gestoppt=None):
+def host_kopf(infos, gestoppt=None, auswahl=None):
     """Kopfzeilen zum Host: Name, Zahl der laufenden, pausierten und gestoppten Container (gestoppt: Zahl oder
-    None), die laufenden mit Erstellung, Laufzeit, Zustand (healthcheck) und Neustarts."""
+    None), die laufenden mit Erstellung, Laufzeit, Zustand (healthcheck) und Neustarts. auswahl (--container):
+    Namen der geprüften Container; die Zahlen bleiben, aufgeführt werden nur die laufenden davon."""
     pause = pausiert(infos)
     infos = [d for d in infos if name_von(d) not in pause]
+    zahl, ende = len(infos), ":" if infos else ""
+    if auswahl is not None:
+        infos = [d for d in infos if name_von(d) in auswahl]
+        ende = ", davon geprüft:" if infos else ", davon geprüft: keiner"
     zeilen = ["Host: %s mit %d laufenden%s%s Containern%s" % (
-        os.uname().nodename, len(infos), ", %d pausierten" % len(pause) if pause else "",
-        " und %d gestoppten" % gestoppt if gestoppt is not None else "", ":" if infos else "")]
+        os.uname().nodename, zahl, ", %d pausierten" % len(pause) if pause else "",
+        " und %d gestoppten" % gestoppt if gestoppt is not None else "", ende)]
     breite = max([len(name_von(d)) for d in infos] or [0])
     for d in sorted(infos, key=name_von):
         state = d.get("State") or {}
@@ -4937,7 +4942,7 @@ def main():
     sys.stdout.flush()          # vor Meldungen auf stderr (Wrapper: 2>&1)
     try:
         infos, netze = docker_lage()
-        print("\n".join(host_kopf(infos, gestoppte_container())))
+        print("\n".join(host_kopf(infos, gestoppte_container(), container_auswahl(infos, muster) if muster else None)))
         sys.stdout.flush()
         public, rest, gruppen = container_liste(infos, netze)
         pause = pausiert(infos)         # Kontext für die Erreichbarkeit, nicht prüfen

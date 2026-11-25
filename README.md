@@ -344,7 +344,8 @@ CONF-SOCKET     monitoring    2027-03-31  liest nur den Status der Container, So
 
 Auf der Konsole (Rundeck, Log, Mail) zuerst Version, Zeitpunkt des Scans, Stand der Daten (älteste
 Aktualisierung) und der Host (Hostname) mit der Zahl der laufenden, pausierten und gestoppten Container, die
-laufenden mit Erstellung, Laufzeit, Healthcheck und Neustarts, dazu Proxys direkt auf dem Host (`Host: …`).
+laufenden mit Erstellung, Laufzeit, Healthcheck und Neustarts (bei einer Auswahl mit `--container` nur die
+geprüften: `…, davon geprüft:`), dazu Proxys direkt auf dem Host (`Host: …`).
 Geprüft werden nur laufende Container; pausierte (`docker pause`) und gestoppte nicht (ein pausierter zählt aber
 für die Erreichbarkeit mit, etwa wenn ein laufender Container seinen Netzwerk-Namespace nutzt). Danach je Container ein
 Abschnitt `=== <container> ===`. Bringt ein später geprüfter Proxy einen weiteren Weg oder weitere Webadressen zu
