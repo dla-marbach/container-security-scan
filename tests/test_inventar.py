@@ -142,6 +142,43 @@ class Anwendungspakete(unittest.TestCase):
         self.assertTrue(result["phpunit/phpunit"]["dev"])
         self.assertEqual(result["symfony/yaml"]["version"], "v3.4.0")
 
+    def test_composer_anderes_vendor_dir(self):
+        # Nextcloud: 3rdparty/composer.json mit "vendor-dir": "." -> 3rdparty/composer/installed.json; Projektverzeichnis
+        # ist dann das vendor-dir selbst. lib/composer/composer/installed.json (vendor-dir des Kerns) und die
+        # composer/composer/installed.json der mitgelieferten Apps führen keine Pakete; jede Datei zählt nur einmal.
+        ein = lambda *namen: json.dumps({"packages": [{"name": n, "version": v} for n, v in namen],
+                                          "dev": False, "dev-package-names": []}).encode()
+        files = {
+            "/var/www/html/3rdparty/composer/installed.json": ein(("guzzlehttp/guzzle", "7.15.2"), ("sabre/dav", "4.7.0")),
+            "/var/www/html/lib/composer/composer/installed.json": ein(),
+            "/var/www/html/apps/dav/composer/composer/installed.json": ein(),
+            "/var/www/html/apps/photos/vendor/composer/installed.json": ein(("hexogen/kdtree", "v0.2.5")),
+            "/composer/installed.json": ein(("x/wurzel", "1.0")),
+            "/var/www/html/3rdparty/composer/installed.json.bak": ein(("x/kopie", "1.0")),
+            "/vendor/composer/installed.json": ein(("x/y", "1.0"))}
+        result = sorted((c["name"], c["ort"], c["datei"]) for c in scanner.composer_packages(files))
+        self.assertEqual(result, [
+            ("guzzlehttp/guzzle", "/var/www/html/3rdparty", "/var/www/html/3rdparty/composer/installed.json"),
+            ("hexogen/kdtree", "/var/www/html/apps/photos", "/var/www/html/apps/photos/vendor/composer/installed.json"),
+            ("sabre/dav", "/var/www/html/3rdparty", "/var/www/html/3rdparty/composer/installed.json"),
+            ("x/y", "/", "/vendor/composer/installed.json")])
+
+    def test_nextcloud_version(self):
+        nc = (b"<?php \n$OC_Version = array(35,0,3,2);\n$OC_VersionString = '35.0.3';\n$OC_Edition = '';\n"
+              b"$OC_Channel = 'stable';\n$OC_VersionCanBeUpgradedFrom = array (\n  'nextcloud' => \n  array (\n"
+              b"    '34.0' => true,\n  ),\n);\n$OC_Build = '2026-11-12T14:11:48+00:00 7764ef49';\n$vendor = 'nextcloud';\n")
+        files = {
+            "/var/www/html/version.php": nc,
+            "/usr/src/nextcloud/version.php": nc.replace(b"'35.0.3'", b"'30.0.0 RC1'"),
+            "/srv/owncloud/version.php": nc.replace(b"'nextcloud';", b"'owncloud';"),
+            "/var/www/wp/wp-includes/version.php": b"<?php\n$wp_version = '6.8.1';\n",
+            "/var/www/html/lib/version.php": b"<?php\n// $OC_VersionString = '1.0.0';\n$vendor = 'nextcloud';\n",
+            "/var/www/html/3rdparty/x/version.php": b"<?php return '35.0.3';\n"}
+        result = sorted((c["typ"], c["name"], c["version"], c["ort"], c["datei"]) for c in scanner.anwendungen(files))
+        self.assertEqual(result, [
+            ("anwendung", "nextcloud", "30.0.0-RC1", "/usr/src/nextcloud", "/usr/src/nextcloud/version.php"),
+            ("anwendung", "nextcloud", "35.0.3", "/var/www/html", "/var/www/html/version.php")])
+
     def test_pypi(self):
         files = {
             "/opt/venv/lib/python3.12/site-packages/Django-4.2.1.dist-info/METADATA":
@@ -254,13 +291,16 @@ class TarStrom(unittest.TestCase):
             add("app/public/jquery.min.js", b"/*! jQuery v3.4.1 */")
             add("app/lib/x.jar", zip_bytes({"META-INF/maven/g/a/pom.properties": "groupId=g\nartifactId=a\nversion=1\n"}))
             add("app/README.md", b"ignoriert")
+            add("nc/3rdparty/composer/installed.json", b"{}")
+            add("nc/version.php", b"<?php")
             link = tarfile.TarInfo("app2/package.json")
             link.type, link.linkname = tarfile.LNKTYPE, "app/package.json"
             tf.addfile(link)
         buf.seek(0)
         files, extra = {}, []
         scanner.read_tar(buf, files, extra, prefix="/")
-        self.assertEqual(sorted(files), ["/app/package.json", "/app2/package.json", "/etc/os-release"])
+        self.assertEqual(sorted(files), ["/app/package.json", "/app2/package.json", "/etc/os-release",
+                                         "/nc/3rdparty/composer/installed.json", "/nc/version.php"])
         self.assertEqual(files["/app2/package.json"], files["/app/package.json"])
         self.assertEqual(sorted((c["typ"], c["name"]) for c in extra), [("js-lib", "jquery"), ("maven", "g:a")])
 
@@ -329,6 +369,19 @@ class Dateisuche(unittest.TestCase):
         # BusyBox-tar ohne gefundene Dateien (reiner Daten-Container): "tar: empty archive" mit Fehlercode 1
         self.assertEqual(self.suche(self.tmp, tar='echo "tar: empty archive" >&2\nexit 1\n')[:3:2], (0, ""))
         self.assertEqual(self.suche(self.tmp, tar='echo "tar: empty archive: x" >&2\nexit 1\n')[0], 3)
+
+    def test_nextcloud_3rdparty_und_version(self):
+        # Composer mit anderem vendor-dir (Nextcloud 3rdparty/) und version.php werden übertragen
+        for pfad in ("nc/3rdparty/composer/installed.json", "nc/lib/composer/composer/installed.json",
+                     "nc/version.php", "nc/3rdparty/composer/autoload_real.php"):
+            os.makedirs(os.path.dirname(os.path.join(self.tmp, pfad)), exist_ok=True)
+            with open(os.path.join(self.tmp, pfad), "w") as f:
+                f.write("{}")
+        rc, _, err = self.suche(self.tmp)
+        self.assertEqual((rc, err), (0, ""))
+        self.assertEqual(sorted(n[len(self.tmp.lstrip("/")):] for n in self.alle if "/nc/" in n),
+                         ["/nc/3rdparty/composer/installed.json", "/nc/lib/composer/composer/installed.json",
+                          "/nc/version.php"])
 
     def test_nextcloud_nutzerdaten_nicht_ausgewertet(self):
         # hochgeladene Dateien im Datenverzeichnis (.ocdata) verlassen den Container nicht; daneben alles wie bisher

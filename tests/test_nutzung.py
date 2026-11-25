@@ -43,6 +43,26 @@ class Zuordnung(unittest.TestCase):
         fpm_dienst = [s for s in services if s["name"] == "php-fpm"][0]
         self.assertIn("hinter nginx:80 (gleicher Container)", fpm_dienst["description"])
 
+    def test_nextcloud_ueber_docroot(self):
+        # offizielles Image: Apache mit mod_php, Docroot /var/www/html; Quellen zusätzlich unter /usr/src/nextcloud
+        apache = proc(1, "/usr/sbin/apache2", ports={"80": "alle"})
+        w = web(docroots={"/usr/sbin/apache2": ["/var/www/html"]}, modphp={"/usr/sbin/apache2"})
+        guzzle = C("composer", "guzzlehttp/guzzle", "7.15.2", "/var/www/html/3rdparty")
+        nc = C("anwendung", "nextcloud", "35.0.3", "/var/www/html")
+        kopie = C("composer", "guzzlehttp/guzzle", "7.15.2", "/usr/src/nextcloud/3rdparty")
+        nc_kopie = C("anwendung", "nextcloud", "35.0.3", "/usr/src/nextcloud")
+        services = scanner.mark_usage([guzzle, nc, kopie, nc_kopie], {"1": apache}, {}, w)
+        self.assertEqual((guzzle["aktiv"], nc["aktiv"]), (["apache2:80"], ["apache2:80"]))
+        self.assertEqual((kopie["aktiv"], nc_kopie["aktiv"]), ([], []))
+        exposed = {"apache2:80"}
+        self.assertEqual([s["label"] for s in services], ["apache2:80"])
+        self.assertEqual([scanner.priority(x, exposed) for x in (guzzle, nc, kopie, nc_kopie)], [1, 1, 4, 4])
+        # Cron (php -f cron.php im Installationsverzeichnis, ohne Port): Nextcloud selbst
+        cron = proc(2, "/usr/local/bin/php", ["php", "-f", "/var/www/html/cron.php"], cwd="/var/www/html")
+        nc2 = C("anwendung", "nextcloud", "35.0.3", "/var/www/html")
+        scanner.mark_usage([nc2], {"2": cron}, {}, web())
+        self.assertEqual(nc2["aktiv_ohne_port"], ["php (ohne Port)"])
+
     def test_docroot_unbekannt(self):
         fpm = proc(1, "/usr/local/sbin/php-fpm", ports={"9000": "alle"})
         nginx = proc(2, "/usr/sbin/nginx", ports={"80": "alle"})
