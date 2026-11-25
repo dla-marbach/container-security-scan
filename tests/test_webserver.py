@@ -1251,6 +1251,28 @@ class Webadressen(unittest.TestCase):
         scanner.webadressen([dienst("nginx:443", "/usr/sbin/nginx", ["443"], exposed=True)], w)
         self.assertEqual([e["weg"] for e in w["ziel_urls"][("app", "3000")]], ["nginx:443 in proxy"])
 
+    def test_nur_an_loopback_veroeffentlicht(self):
+        # Apache im Container, Port 80 nur an 127.0.0.1:9080 des Hosts, nginx auf dem Host davor: keine direkte
+        # Webadresse http://*:9080/ (sähe aus wie „auf allen Adressen“), nur die über den Proxy
+        site = {"exe": "/usr/sbin/apache2", "art": "apache", "namen": [], "datei": "000-default.conf:1",
+                "roots": ["/var/www/html"], "listen": [{"adresse": "*", "port": "80", "ssl": False}], "weiter": []}
+        via = {"80": [{"url": "https://ssp.example.org:9443/", "erreichbar": True, "weg": "nginx:9443 auf dem Host",
+                       "lokal": False}]}
+
+        def urls(**kw):
+            apache = dienst("apache2:80", "/usr/sbin/apache2", ["80"], exposed=True)
+            scanner.webadressen([apache], web(sites=[site], via_urls=via, published={"80": ["127.0.0.1:9080"]}, **kw))
+            return [(e["url"], e["erreichbar"]) for e in apache["webadressen"]]
+        self.assertEqual(urls(loopback_zweifel=""), [("https://ssp.example.org:9443/", True)])
+        # im Zweifel (Docker-Version bzw. Prozesse des Hosts nicht geprüft) wie bisher
+        self.assertEqual(urls(), [("https://ssp.example.org:9443/", True), ("http://*:9080/", True)])
+        # Container zusätzlich direkt im LAN (macvlan): dort der Port im Container, nicht der Loopback-Port des Hosts
+        self.assertEqual(urls(loopback_zweifel="", lan=["macvlan-Netz mv"]),
+                         [("https://ssp.example.org:9443/", True), ("http://*/", True)])
+        # zugleich auf allen Adressen veröffentlicht: der öffentliche Port, auch wenn er nicht zuerst steht
+        w = web(published={"80": ["127.0.0.1:9080", "0.0.0.0:18080"]}, loopback_zweifel="")
+        self.assertEqual(scanner.site_urls(site, w), ["http://*:18080/"])
+
     def test_ziel_nur_auf_loopback(self):
         # Proxy von außerhalb (Container-IP), Dienst lauscht nur auf Loopback: Adresse nicht erreichbar
         node = dienst("node:3000", "/usr/local/bin/node", ["3000"], exposed=False)

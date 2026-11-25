@@ -1,9 +1,9 @@
 # Container-Scan: app-proxy
 
-- Image: nginx:1.31-alpine (sha256:b50897d5c7b1)  
+- Image: nginx:1.31-alpine (sha256:7fc0fb4af7bf)  
 - OS: Alpine Linux v3.24  
-- Zeitpunkt: 2026-11-25 11:34  
-- Scanner: container-security-scan 1.2.0  
+- Zeitpunkt: 2026-11-25 23:07  
+- Scanner: container-security-scan 1.2.1  
 - Datenbank: OSV, Stand 2026-11-24 13:43 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer)
 
@@ -70,8 +70,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        1d814d73157ef9702e7a2533253916b7b192e80ba0b742fba13c3bff3c60af60
-Gestartet: 2026-11-25T11:34:53.21644843Z
+ID:        0eec37c69b44cd7472a529ef947616e9bb4a02d20805d3267e026796c3cc488e
+Gestartet: 2026-11-25T23:07:50.006313294Z
 Kommando:  ["/docker-entrypoint.sh"] ["nginx", "-g", "daemon off;"]
 Mounts:    /w/beispiele/umgebung/nginx.conf->/etc/nginx/conf.d/default.conf
 Host:      Kernel 7.0.14-linuxkit
@@ -81,11 +81,11 @@ Host:      Kernel 7.0.14-linuxkit
 
 ```
 PID                 USER                COMMAND
-705                 root                nginx: master process nginx -g daemon off;
-766                 nginx               nginx: worker process
-767                 nginx               nginx: worker process
-768                 nginx               nginx: worker process
-769                 nginx               nginx: worker process
+601                 root                nginx: master process nginx -g daemon off;
+665                 nginx               nginx: worker process
+666                 nginx               nginx: worker process
+667                 nginx               nginx: worker process
+668                 nginx               nginx: worker process
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher
