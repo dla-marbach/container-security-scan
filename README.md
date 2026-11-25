@@ -293,7 +293,9 @@ aus demselben Netzsegment erreichbar ([moby/moby#45610](https://github.com/moby/
 Zur Orientierung, unter welcher Adresse ein Dienst mit Funden erreichbar ist; ohne Einfluss auf Priorität und
 Rückgabewert. Aus der Konfiguration von nginx (`listen`, `server_name`, `ssl`) und Apache (vHosts aus `httpd -S`
 samt `ServerAlias`, `SSLEngine`, `Listen` des Hauptservers) bildet der Scan je Website die Webadressen, z. B.
-`https://www.example.org/`; ohne Namen `*`, mit dem veröffentlichten Port statt des Ports im Container.
+`https://www.example.org/`; ohne Namen `*`, mit dem veröffentlichten Port statt des Ports im Container. Ist der
+Port nur an Loopback des Hosts veröffentlicht (`127.0.0.1:9080`), entfällt diese direkte Adresse; von außen
+kommen Anfragen dann nur über den Proxy davor, dessen Adressen erscheinen.
 
 Leitet ein Webserver einen Pfad weiter (`location /app/ { proxy_pass http://127.0.0.1:8080/; }`, `ProxyPass`,
 `SetHandler proxy:fcgi://…`), erscheint die Adresse mit Pfad beim Ziel, auch über mehrere Stufen und Container:

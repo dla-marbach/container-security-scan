@@ -93,7 +93,7 @@ from functools import cmp_to_key
 # Einstellungen: Version, Relevanz, Fristen für die Daten
 # ===========================================================================
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
@@ -2805,7 +2805,9 @@ def port_erreichbar(p, port, addr, web):
 def site_urls(site, web):
     """Webadressen einer Website (eine je Name und Adresse): Schema aus TLS, Name aus server_name/ServerName/
     ServerAlias (ohne Namen "*": jeder Name), Port – im Container der veröffentlichte Port des Hosts, falls
-    vorhanden."""
+    vorhanden (ein öffentlicher vor einem auf Loopback). Ist der Port nur an Loopback des Hosts veröffentlicht,
+    gibt es keine direkte Webadresse: von außen kommen Anfragen nur über einen Proxy (dessen Adressen kommen über
+    via_urls), außer loopback_zweifel spricht dagegen (dann wie bisher)."""
     namen = []
     for n in site["namen"]:
         if n.startswith("~"):            # regulärer Ausdruck (nginx): nicht als Adresse darstellbar
@@ -2815,7 +2817,11 @@ def site_urls(site, web):
     urls = []
     for l in site["listen"]:
         schema = "https" if l["ssl"] else "http"
-        pub = [e.split(" ")[0].rpartition(":")[2] for e in web["published"].get(l["port"], [])]
+        eintraege = web["published"].get(l["port"], [])
+        oeffentlich = [e for e in eintraege if not loopback_veroeffentlicht([e])]
+        if eintraege and not oeffentlich and not web.get("loopback_zweifel", LOOPBACK_UNGEPRUEFT):
+            continue
+        pub = [e.split(" ")[0].rpartition(":")[2] for e in oeffentlich or eintraege]
         port = pub[0] if pub else l["port"]
         for n in namen:
             urls.append("%s://%s%s/" % (schema, n, "" if port == {"http": "80", "https": "443"}[schema] else ":" + port))
