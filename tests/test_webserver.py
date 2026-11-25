@@ -1266,6 +1266,9 @@ class Webadressen(unittest.TestCase):
         self.assertEqual(urls(loopback_zweifel=""), [("https://ssp.example.org:9443/", True)])
         # im Zweifel (Docker-Version bzw. Prozesse des Hosts nicht geprüft) wie bisher
         self.assertEqual(urls(), [("https://ssp.example.org:9443/", True), ("http://*:9080/", True)])
+        # Container zusätzlich direkt im LAN (macvlan): dort der Port im Container, nicht der Loopback-Port des Hosts
+        self.assertEqual(urls(loopback_zweifel="", lan=["macvlan-Netz mv"]),
+                         [("https://ssp.example.org:9443/", True), ("http://*/", True)])
         # zugleich auf allen Adressen veröffentlicht: der öffentliche Port, auch wenn er nicht zuerst steht
         w = web(published={"80": ["127.0.0.1:9080", "0.0.0.0:18080"]}, loopback_zweifel="")
         self.assertEqual(scanner.site_urls(site, w), ["http://*:18080/"])

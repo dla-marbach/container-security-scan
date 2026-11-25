@@ -2806,8 +2806,9 @@ def site_urls(site, web):
     """Webadressen einer Website (eine je Name und Adresse): Schema aus TLS, Name aus server_name/ServerName/
     ServerAlias (ohne Namen "*": jeder Name), Port – im Container der veröffentlichte Port des Hosts, falls
     vorhanden (ein öffentlicher vor einem auf Loopback). Ist der Port nur an Loopback des Hosts veröffentlicht,
-    gibt es keine direkte Webadresse: von außen kommen Anfragen nur über einen Proxy (dessen Adressen kommen über
-    via_urls), außer loopback_zweifel spricht dagegen (dann wie bisher)."""
+    gibt es keine direkte Webadresse über den Host: von außen kommen Anfragen nur über einen Proxy (dessen Adressen
+    kommen über via_urls) bzw. bei einem Container direkt im LAN (macvlan, geroutet) an den Port im Container,
+    außer loopback_zweifel spricht dagegen (dann wie bisher)."""
     namen = []
     for n in site["namen"]:
         if n.startswith("~"):            # regulärer Ausdruck (nginx): nicht als Adresse darstellbar
@@ -2820,7 +2821,9 @@ def site_urls(site, web):
         eintraege = web["published"].get(l["port"], [])
         oeffentlich = [e for e in eintraege if not loopback_veroeffentlicht([e])]
         if eintraege and not oeffentlich and not web.get("loopback_zweifel", LOOPBACK_UNGEPRUEFT):
-            continue
+            if not web.get("lan"):
+                continue
+            eintraege = []          # direkt im LAN: der Port im Container
         pub = [e.split(" ")[0].rpartition(":")[2] for e in oeffentlich or eintraege]
         port = pub[0] if pub else l["port"]
         for n in namen:
