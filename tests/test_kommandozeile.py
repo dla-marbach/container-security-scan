@@ -345,7 +345,12 @@ class Kommandozeile(unittest.TestCase):
             return 0, [], None, {}
         gesperrt = scanner.HOST_NICHT_LESBAR + " (3; Skript nicht als root?) – Reverse Proxys auf dem Host ggf. " \
                                                "nicht erkannt"
-        for warnungen, erwartet in (([], ""), ([gesperrt], scanner.HOST_NICHT_LESBAR)):
+        # fehlgeschlagene Abfrage der Proxys auf dem Host: Problem (Rückgabewert 2) und ebenfalls im Zweifel erreichbar
+        fehler = scanner.HOST_NICHT_LESBAR + ": Abfrage der Proxys auf dem Host über /proc fehlgeschlagen " \
+                                             "(Rückgabewert 1) – Reverse Proxys auf dem Host nicht ausgewertet"
+        for warnungen, probleme, erwartet, code in (([], [], "", 0), ([gesperrt], [], scanner.HOST_NICHT_LESBAR, 0),
+                                                    ([], [fehler], scanner.HOST_NICHT_LESBAR, 2),
+                                                    ([], ["/usr/sbin/nginx -T fehlgeschlagen"], "", 2)):
             # Gesamtlauf; Auswahl: Erreichbarkeit über alle Container, dann der Scan
             for argv, anzahl in ((["--alle-container"], 1), (["--container", "web"], 2)):
                 gesehen[:] = []
@@ -355,11 +360,11 @@ class Kommandozeile(unittest.TestCase):
                                           or (None, [], None, {})), \
                         mock.patch.object(scanner, "docker_lage", return_value=([{"Id": "abc", "Name": "/web"}], {})), \
                         mock.patch.object(scanner, "container_liste", return_value=(["web"], [], {})), \
-                        mock.patch.object(scanner, "host_proxys", return_value=([], [], warnungen, [], {})), \
+                        mock.patch.object(scanner, "host_proxys", return_value=([], [], warnungen, probleme, {})), \
                         mock.patch.object(scanner, "log"), mock.patch("sys.stdout", new_callable=io.StringIO), \
                         mock.patch.object(sys, "argv", ["x", "--db", db] + argv + [self.tmp]):
-                    self.assertEqual(scanner.main(), 0)
-                self.assertEqual(gesehen, [erwartet] * anzahl, (warnungen, argv))
+                    self.assertEqual(scanner.main(), code, (warnungen, probleme, argv))
+                self.assertEqual(gesehen, [erwartet] * anzahl, (warnungen, probleme, argv))
 
     def auswahl(self, args, infos, public, rest, gruppen, backends, host=([], [], [], [], {}), fehler=(),
                 ziel_urls=None):

@@ -4655,6 +4655,11 @@ def host_proxys(infos):
         return [], [], warnings, [], {}
     rc, out = run(["sh", "-s", "--"] + pids, input=PROC_SH)
     procs, _ = procs_auswerten(out)
+    if not procs:
+        # Abfrage fehlgeschlagen (bzw. kein Proxy-Prozess lesbar): Proxys nicht ausgewertet, im Zweifel unvollständig;
+        # beginnt mit HOST_NICHT_LESBAR, damit main() an Loopback veröffentlichte Ports als erreichbar behält
+        return [], [], warnings, [HOST_NICHT_LESBAR + ": Abfrage der Proxys auf dem Host über /proc fehlgeschlagen "
+                                  "(Rückgabewert %d) – Reverse Proxys auf dem Host nicht ausgewertet" % rc], {}
     web = web_leer()
     web.update(self="Host", host_network=True, containers=container_index(infos), eigene_adressen=eigene_adressen(),
                nachbarn=sorted(name_von(d) for d in infos if netze_von(netz_basis(d, infos))),
@@ -5020,9 +5025,11 @@ def main():
         pause = pausiert(infos)         # Kontext für die Erreichbarkeit, nicht prüfen
         public, rest = [n for n in public if n not in pause], [n for n in rest if n not in pause]
         ziele, services, warnings, problems, ziel_urls = host_proxys(infos)
-        # nur an Loopback veröffentlichte Ports: ohne lesbare Prozesse des Hosts bliebe ein Proxy davor unerkannt;
-        # nicht auswertbare Proxys auf dem Host machen die Container ohnehin möglicherweise erreichbar
-        a.loopback_zweifel = HOST_NICHT_LESBAR if any(w.startswith(HOST_NICHT_LESBAR) for w in warnings) else ""
+        # nur an Loopback veröffentlichte Ports: ohne lesbare Prozesse des Hosts (Warnung) bzw. bei fehlgeschlagener
+        # Abfrage der Proxys (Problem) bliebe ein Proxy davor unerkannt; nicht auswertbare Proxys auf dem Host machen
+        # die Container ohnehin möglicherweise erreichbar
+        a.loopback_zweifel = HOST_NICHT_LESBAR if any(m.startswith(HOST_NICHT_LESBAR) for m in warnings + problems) \
+            else ""
     except ScanError as e:
         log("FEHLER: %s" % e)
         return 2

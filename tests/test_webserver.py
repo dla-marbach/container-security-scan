@@ -551,6 +551,24 @@ class HostProxys(unittest.TestCase):
         self.assertTrue(warnings[0].startswith(scanner.HOST_NICHT_LESBAR))     # main: loopback_zweifel
         self.assertIn("Weiterleitungen von nginx:443 auf dem Host nicht vollständig auswertbar", warnings[1])
 
+    def test_host_proxys_abfrage_fehlgeschlagen(self):
+        # Abfrage über /proc ohne Ausgabe fehlgeschlagen (bzw. Proxy inzwischen beendet): nicht still übergehen,
+        # sondern unvollständig (Rückgabewert 2) und mit HOST_NICHT_LESBAR (main: loopback_zweifel, im Zweifel P1)
+        infos = [inspect("app", ["back"])]
+        for rc in (1, 127):
+            with mock.patch.object(scanner, "host_proxy_pids", return_value=(["10"], 0)), \
+                    mock.patch.object(scanner, "run", return_value=(rc, "")), \
+                    mock.patch.object(scanner.Host, "exec") as ex:
+                ziele, services, warnings, problems, urls = scanner.host_proxys(infos)
+            ex.assert_not_called()
+            self.assertEqual((ziele, services, warnings, urls), ([], [], [], {}))
+            self.assertEqual(len(problems), 1)
+            self.assertTrue(problems[0].startswith(scanner.HOST_NICHT_LESBAR))
+            self.assertIn("über /proc fehlgeschlagen (Rückgabewert %d)" % rc, problems[0])
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+                self.assertEqual(scanner.host_ausgeben(services, warnings, problems), 2)
+            self.assertIn("Host: UNVOLLSTÄNDIG: " + scanner.HOST_NICHT_LESBAR, out.getvalue())
+
     def test_host_proxys_loopback_zugeordnet(self):
         # nginx auf dem Host vor mehreren Containern per 127.0.0.1: jeder Port nur bei dem Container, der dort
         # lauscht bzw. ihn auf Loopback veröffentlicht – nicht alle Ports bei allen Containern im Host-Netzwerk
