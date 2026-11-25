@@ -214,12 +214,12 @@ class Kommandozeile(unittest.TestCase):
                     mock.patch.object(sys, "argv", ["x", "--db", db] + optionen + ["web", self.tmp]):
                 self.assertEqual(scanner.main(), 0)
         self.assertEqual(gesehen, [(False, False), (True, False), (False, True), (True, True)])
-        # Kopf: Version, Zeitpunkt, Stand der Daten, Host mit den laufenden Containern
+        # Kopf: Version, Zeitpunkt, Stand der Daten, Host mit den laufenden Containern (bei einer Auswahl die geprüften)
         kopf = out.getvalue().splitlines()
         self.assertEqual(kopf[0], "container-security-scan " + scanner.VERSION)
         self.assertRegex(kopf[1], r"^Scan: \d{4}-\d\d-\d\d \d\d:\d\d UTC$")
-        self.assertEqual(kopf[2:5], ["Daten: Stand unbekannt", "Host: %s mit 1 laufenden und 3 gestoppten Containern:"
-                                     % os.uname().nodename, "- web  erstellt ?, läuft"])
+        self.assertEqual(kopf[2:5], ["Daten: Stand unbekannt", "Host: %s mit 1 laufenden und 3 gestoppten Containern, "
+                                     "davon geprüft:" % os.uname().nodename, "- web  erstellt ?, läuft"])
 
     def test_pausierte_nur_kontext(self):
         # vpn ist pausiert (docker exec nicht möglich): nicht geprüft, auch nicht als Ziel eines Proxys; der laufende
@@ -249,7 +249,8 @@ class Kommandozeile(unittest.TestCase):
                 self.assertEqual(scanner.main(), 0)
             self.assertNotIn("vpn", gesehen, argv)
             self.assertIn("mit", gesehen, argv)
-            self.assertIn(" mit 1 laufenden, 1 pausierten und 3 gestoppten Containern:", out.getvalue())
+            self.assertIn(" mit 1 laufenden, 1 pausierten und 3 gestoppten Containern%s\n- mit "
+                          % (":" if argv[0] == "--alle-container" else ", davon geprüft:"), out.getvalue())
         # Kontext: der Spender liefert die Veröffentlichung -> mit ist direkt erreichbar
         public, rest, _ = scanner.container_liste([vpn, mit], {})
         self.assertIn("mit", public)
@@ -439,6 +440,10 @@ class Kommandozeile(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertEqual(voll, [("surveyor_app", {"8080": ["nginx:80 in proxy"]}), ("surveyor_db", {})])
         self.assertIn("Gesamt: 2 von 4 Containern geprüft (surveyor_*) – RELEVANTE FUNDE", out)
+        # Kopf: Zahl aller laufenden, aufgeführt nur die geprüften
+        self.assertIn(" mit 4 laufenden und 3 gestoppten Containern, davon geprüft:\n- surveyor_app  erstellt ?, läuft\n"
+                      "- surveyor_db   erstellt ?, läuft\n", out)
+        self.assertNotIn("- proxy", out)
         # mehrere Muster, ID-Anfang; [..] wie in der Shell
         rc, _, voll, _ = self.auswahl(["--container", "prox?", "--container", "x1", "surveyor_[d]*"], infos,
                                       ["proxy"], [], {}, {})
@@ -446,8 +451,10 @@ class Kommandozeile(unittest.TestCase):
 
     def test_auswahl_ohne_treffer_oder_mit_fehler_ergibt_2(self):
         infos = [{"Id": "a1", "Name": "/app"}, {"Id": "p1", "Name": "/proxy"}]
-        rc, leicht, voll, _ = self.auswahl(["--container", "surveyor_*"], infos, ["proxy"], ["app"], {}, {})
+        rc, leicht, voll, out = self.auswahl(["--container", "surveyor_*"], infos, ["proxy"], ["app"], {}, {})
         self.assertEqual((rc, leicht, voll), (2, [], []))
+        self.assertIn(" mit 2 laufenden und 3 gestoppten Containern, davon geprüft: keiner\n", out)
+        self.assertNotIn("- app", out)
         # Erreichbarkeit über einen anderen Container nicht ermittelbar: Ergebnis der Auswahl ggf. unvollständig
         rc, _, voll, out = self.auswahl(["app"], infos, ["proxy"], ["app"], {}, {}, fehler=("proxy",))
         self.assertEqual((rc, voll), (2, [("app", {})]))
