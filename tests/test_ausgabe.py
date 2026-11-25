@@ -208,7 +208,8 @@ class Sbom(unittest.TestCase):
                  C("npm", "@scope/pkg", "1.0.0", dev=True), C("composer", "laravel/framework", "v10.0.0"),
                  C("pypi", "Foo_Bar", "1.0"), C("maven", "org.x:y", "2.0"), C("maven", "y", "2.0", maven_key="*:y"),
                  C("go", "golang.org/x/net", "v0.1.0"), C("js-lib", "jquery", "1.10.2"),
-                 C("runtime", "php", "8.3.1"), C("php-ext", "redis", "6.0.2"), C("host", "linux-kernel", "6.1")]
+                 C("runtime", "php", "8.3.1"), C("php-ext", "redis", "6.0.2"), C("host", "linux-kernel", "6.1"),
+                 C("rubygems", "nokogiri", "1.16.7")]
         services = [{"label": "php-fpm:9000", "name": "php-fpm", "version": "8.3.1", "exe": "/usr/sbin/php-fpm",
                      "endpoints": ["tcp://0.0.0.0:9000"], "description": "Port 9000"}]
         tmp = tempfile.mkdtemp()
@@ -224,7 +225,7 @@ class Sbom(unittest.TestCase):
             "pkg:deb/debian/libssl3@3.0.15-1?arch=amd64&epoch=1&upstream=openssl&distro=debian-12.7",
             "pkg:npm/%40scope/pkg@1.0.0", "pkg:composer/laravel/framework@v10.0.0", "pkg:pypi/foo-bar@1.0",
             "pkg:maven/org.x/y@2.0", None, "pkg:golang/golang.org/x/net@v0.1.0", "pkg:npm/jquery@1.10.2",
-            "pkg:generic/php@8.3.1", "pkg:generic/php-ext-redis@6.0.2", None])
+            "pkg:generic/php@8.3.1", "pkg:generic/php-ext-redis@6.0.2", None, "pkg:gem/nokogiri@1.16.7"])
         self.assertEqual(entries["c2"]["scope"], "optional")
         self.assertEqual(entries["c9"]["cpe"], "cpe:2.3:a:php:php:8.3.1:*:*:*:*:*:*:*")
         self.assertEqual(entries["c11"]["type"], "platform")
@@ -569,7 +570,58 @@ class Gesamtlauf(unittest.TestCase):
         self.assertEqual(self.lauf()[0], 0)
         self.assertRegex(self.konsole, r"\nOK – 0 Befunde, davon 0 relevant – Bericht: ")
 
-    def test_unvollstaendig_ergibt_2(self):
+    def test_ruby_gems_ueber_arbeitsverzeichnis_und_fehlende_rubygems_daten(self):
+        # Redmine: Puma im Projektverzeichnis, Port veröffentlicht; rubocop (nicht installiert) ist dev
+        self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2")
+        self.files["/home/redmine/redmine/Gemfile.lock"] = b"GEM\n  specs:\n    puma (6.4.2)\n    rubocop (1.0.0)\n" \
+                                                           b"    rack (3.1.7)\n"
+        for spec in ("puma-6.4.2", "rack-3.1.7"):
+            self.files["/home/redmine/redmine/vendor/bundle/ruby/3.3.0/specifications/%s.gemspec" % spec] = b""
+        puma = proc(1, "/usr/local/bin/ruby", ["puma 6.4.2 (tcp://0.0.0.0:3000) [redmine]"],
+                    cwd="/home/redmine/redmine", ports={"3000": "alle"})
+        # Übergangszeit: RubyGems fehlt in den Daten -> unvollständig mit klarer Meldung
+        code, _, base = self.lauf(prozess=puma, published={"3000": ["0.0.0.0:3000"]})
+        self.assertEqual(code, 2)
+        self.assertIn("UNVOLLSTÄNDIG: Daten fehlen für: RubyGems (--db-aktualisieren --oekosysteme RubyGems)",
+                      self.konsole)
+        # mit den Daten: Puma P1 (relevant), rubocop nur P4
+        schreibe_jsonl(self.db, "RubyGems", [
+            eintrag("GHSA-p1", "RubyGems", "puma", [{"introduced": "0"}, {"fixed": "6.4.3"}], aliases=["CVE-2026-60"],
+                    database_specific={"severity": "HIGH"}),
+            eintrag("GHSA-p2", "RubyGems", "rubocop", [{"introduced": "0"}, {"fixed": "1.1.0"}], aliases=["CVE-2026-61"],
+                    database_specific={"severity": "CRITICAL"})])
+        code, _, base = self.lauf(prozess=puma, published={"3000": ["0.0.0.0:3000"]})
+        self.assertEqual(code, 1)
+        self.assertIn("CVE-2026-60 (HIGH) in puma 6.4.2 – behoben in 6.4.3 – genutzt von ruby:3000", self.konsole)
+        self.assertNotIn("CVE-2026-61 (", self.konsole)
+        with open(base + ".md", encoding="utf-8") as f:
+            self.assertRegex(f.read(), r"\| 4 \| CRITICAL \| CVE-2026-61 \| rubocop \|")
+
+    def test_os_eigenes_gem_ueber_puma_im_projekt_p1(self):
+        # Rack aus dem Debian-Paket ruby-rack (nur Ruby-Dateien, nichts in maps), Puma im Projekt auf einem
+        # veröffentlichten Port: das Paket erbt die Nutzung des Gems -> P1; geprüft über Debian, nicht doppelt
+        self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2") + \
+            b"\nPackage: ruby-rack\nStatus: install ok installed\nVersion: 2.2.6.4-1\n"
+        spec = "/usr/share/rubygems-integration/all/specifications/rack-2.2.6.4.gemspec"
+        self.files[spec] = b""
+        self.files["/var/lib/dpkg/info/ruby-rack.list"] = spec.encode() + b"\n"
+        self.files["/app/Gemfile.lock"] = b"GEM\n  specs:\n    puma (6.4.3)\n    rack (2.2.6.4)\n"
+        self.files["/app/vendor/bundle/ruby/3.1.0/specifications/puma-6.4.3.gemspec"] = b""
+        schreibe_jsonl(self.db, "Debian", [eintrag("DEBIAN-CVE-2026-70", "Debian:12", "ruby-rack",
+                                                   [{"introduced": "0"}, {"fixed": "2.2.6.4-1+deb12u1"}],
+                                                   upstream=["CVE-2026-70"], published="2026-11-01T00:00:00Z",
+                                                   affected_extra={"ecosystem_specific": {"urgency": "high"}})])
+        schreibe_jsonl(self.db, "RubyGems", [
+            eintrag("GHSA-r70", "RubyGems", "rack", [{"introduced": "0"}, {"fixed": "2.2.7"}], aliases=["CVE-2026-70"],
+                    database_specific={"severity": "HIGH"})])
+        puma = proc(1, "/usr/bin/ruby3.1", ["puma 6.4.3 (tcp://0.0.0.0:3000) [app]"], cwd="/app",
+                    ports={"3000": "alle"})
+        code, _, base = self.lauf(prozess=puma, published={"3000": ["0.0.0.0:3000"]})
+        self.assertEqual(code, 1)
+        self.assertIn("CVE-2026-70 (HIGH) in ruby-rack 2.2.6.4-1 – behoben in 2.2.6.4-1+deb12u1 – genutzt von "
+                      "ruby3.1:3000", self.konsole)
+        self.assertNotIn("in rack 2.2.6.4", self.konsole)     # nicht zusätzlich als Gem gemeldet
+
         self.problems = ["Dateien im Container nicht vollständig lesbar"]
         self.assertEqual(self.lauf()[0], 2)
 

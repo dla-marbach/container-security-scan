@@ -160,6 +160,33 @@ class Versionsabfrage(unittest.TestCase):
         self.assertEqual(sorted(aufrufe), [["/usr/local/apache2/bin/httpd", "-V"], ["apache2", "-V"], ["httpd", "-V"]])
         self.assertIn(("apache-httpd", "2.4.71"), [(x["name"], x["version"]) for x in comps])
 
+    def test_ruby_version_und_tatsaechlicher_pfad(self):
+        # Version und Programm (Symlink aufgelöst) aus Ruby selbst, ohne RubyGems und RUBYOPT
+        self.assertIn("RUBYOPT=", scanner.DOCKER_ENV)
+        ausgaben = {"/usr/local/bin/ruby": (0, "3.3.6\n/usr/local/bin/ruby"),      # offizielles Image
+                    "ruby": (0, "3.1.2\n/usr/bin/ruby3.1")}                       # nur im PATH: Debian-Paket
+        c = mock.Mock(user="0")
+        c.probe.side_effect = lambda cmd, user, **kw: ausgaben.get(cmd[0], (1, ""))
+        owners = {scanner.norm("/usr/bin/ruby3.1"): {"ruby3.1"}}
+        comps = scanner.probe_runtimes(c, {"1": proc(1, "/usr/local/bin/ruby", user="999:999")}, owners)
+        rubys = {x["version"]: x for x in comps if x["name"] == "ruby"}
+        self.assertEqual(sorted(rubys), ["3.1.2", "3.3.6"])
+        aufrufe = {cmd[0]: (cmd[1:3], user) for (cmd, user), kw in c.probe.call_args_list if "ruby" in cmd[0]}
+        self.assertEqual(aufrufe, {"/usr/local/bin/ruby": (["--disable-gems", "-e"], "999:999"),
+                                   "ruby": (["--disable-gems", "-e"], scanner.NOBODY)})
+        self.assertEqual(scanner.osv_target(rubys["3.3.6"], {"id": "debian", "version": "12"})[:1], ("Bitnami",))
+        # aus dem PATH: Pfad des Programms ermittelt -> OS-Paket erkannt, kein Abgleich über Bitnami
+        self.assertEqual(rubys["3.1.2"]["ort"], "/usr/bin/ruby3.1")
+        self.assertIn("aus OS-Paket ruby3.1", rubys["3.1.2"]["hinweise"])
+        self.assertIsNone(scanner.osv_target(rubys["3.1.2"], {"id": "debian", "version": "12"}))
+
+    def test_ruby_ohne_pfad_keine_komponente(self):
+        # wie bei node/python/php: ohne ermittelten Pfad (Fehler, unerwartete Ausgabe) nicht über Bitnami prüfen
+        for ausgabe in ((1, "3.1.2\n/usr/bin/ruby3.1"), (0, "3.1.2\n"), (0, "ruby 3.1.2p20 [x86_64-linux]\n")):
+            c = mock.Mock(user="0")
+            c.probe.side_effect = lambda cmd, user, **kw: ausgabe if cmd[0] == "ruby" else (1, "")
+            self.assertEqual([x for x in scanner.probe_runtimes(c, {}, {}) if x["name"] == "ruby"], [])
+
     def test_host_komponenten(self):
         version = (0, '[{"Name": "Engine", "Version": "29.1.0"}, {"Name": "containerd", "Version": "2.2.0"}]')
         for lesbar, name in ((True, "SUSE Linux Enterprise Server 15 SP7"), (False, "")):

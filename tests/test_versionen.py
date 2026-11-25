@@ -94,6 +94,28 @@ class Php(Vergleich):
         self.gleich(scanner.cmp_php, "v2.1.0", "2.1.0")
 
 
+class Gem(Vergleich):
+    def test_reihenfolge_mit_vorabversionen(self):
+        # Buchstaben-Segment = Vorabversion (Gem::Version): 1.0.a < 1.0 < 1.0.1; Zahlen numerisch
+        self.kleiner(scanner.cmp_gem, "0.9.12", "1.0.a", "1.0.b1", "1.0.beta", "1.0.rc1", "1.0", "1.0.1", "1.1",
+                     "1.10", "8.1.4", "8.1.4.1", "8.1.5.rc1", "8.1.5")
+        self.kleiner(scanner.cmp_gem, "2.0.0.pre", "2.0.0.pre.1", "2.0.0")
+
+    def test_gleichwertige_schreibweisen(self):
+        # Nullen am Ende zählen nicht (auch vor dem Buchstabenteil), "-" steht für ".pre."
+        self.gleich(scanner.cmp_gem, "1.0", "1.0.0")
+        self.gleich(scanner.cmp_gem, "1.a", "1.0.a")
+        self.gleich(scanner.cmp_gem, "1.0-beta", "1.0.pre.beta")
+        self.gleich(scanner.cmp_gem, "1.0rc1", "1.0.rc.1")
+
+    def test_osv_bereich(self):
+        a = {"ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "8.1.0"}, {"fixed": "8.1.4.1"}]}]}
+        self.assertEqual(scanner.affected_by("8.1.4", a, scanner.cmp_gem), (True, "8.1.4.1"))
+        self.assertFalse(scanner.affected_by("8.1.0.rc1", a, scanner.cmp_gem)[0])   # Vorabversion vor 8.1.0
+        self.assertFalse(scanner.affected_by("8.1.4.1", a, scanner.cmp_gem)[0])
+        self.assertIs(scanner.OSV_CMP["RubyGems"], scanner.cmp_gem)
+
+
 class Betroffen(unittest.TestCase):
     def aff(self, *ranges, **kw):
         a = {"ranges": [{"type": t, "events": e} for t, e in ranges]}

@@ -80,6 +80,16 @@ class Eol(unittest.TestCase):
         self.assertIn("php 8.1.31 (php 8.1, seit 2025-12-31; /usr/local/bin/php)", warnings[0])
         self.assertIn("php-fpm 8.1.31", warnings[1])
 
+    def test_ruby_aus_offiziellem_image(self):
+        self.data["products"].append({"name": "ruby", "purls": [], "cycles": [
+            {"cycle": "3.1", "eol": "2025-03-31"}, {"cycle": "3.4", "eol": "2028-03-31"}]})
+        self.write()
+        alt = scanner.comp("runtime", "ruby", "3.1.6", ort="/usr/local/bin/ruby")
+        debian = scanner.comp("runtime", "ruby", "3.1.2", ort="/usr/bin/ruby3.1", hinweise=["aus OS-Paket ruby3.1"])
+        warnings = scanner.eol_warnungen([alt, debian, scanner.comp("runtime", "ruby", "3.4.1", ort="/x/ruby")], self.path)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("ruby 3.1.6 (ruby 3.1, seit 2025-03-31; /usr/local/bin/ruby)", warnings[0])
+
     def test_same_component_in_many_places_is_one_warning(self):
         comps = [scanner.comp("npm", "vue", "2.7.16", ort="/app%d" % i) for i in range(5)]
         warnings = scanner.eol_warnungen(comps, self.path)

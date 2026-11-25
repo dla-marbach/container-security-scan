@@ -49,14 +49,14 @@ Priorität (P1 = zuerst beheben):
   P4  Komponente ist installiert, aber nicht in Benutzung erkannt; oder Entwicklungsabhängigkeit (dev)
 
 Erfasst: OS-Pakete (dpkg, apk, rpm) inkl. Quellpaket, npm (jede package.json), Composer (auch mit anderem
-vendor-dir, z.B. Nextcloud 3rdparty/), PyPI (auch venvs), Java (JAR/WAR/EAR, auch verschachtelt), Go-Programme,
-eingebettete JavaScript-Bibliotheken (jQuery u.a.), Nextcloud (version.php, über den Bitnami-Datensatz),
-Laufzeiten am Programm (node, php, python, java, nginx, apache, mariadb, postgresql; geprüft über den
-Bitnami-Datensatz von OSV, falls nicht aus einem OS-Paket), Host-Kernel/Container-Laufzeit, Dienste.
-Nicht erfasst: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung.
+vendor-dir, z.B. Nextcloud 3rdparty/), PyPI (auch venvs), RubyGems (Gemfile.lock), Java (JAR/WAR/EAR, auch
+verschachtelt), Go-Programme, eingebettete JavaScript-Bibliotheken (jQuery u.a.), Nextcloud (version.php, über den
+Bitnami-Datensatz), Laufzeiten am Programm (node, php, python, ruby, java, nginx, apache, mariadb, postgresql;
+geprüft über den Bitnami-Datensatz von OSV, falls nicht aus einem OS-Paket), Host-Kernel/Container-Laufzeit, Dienste.
+Nicht erfasst: Rust, .NET, Tcl, Programme ohne Versionskennung.
 "Genutzt von" je Komponente: OS-Paket/Laufzeit = Programm oder geladene Bibliothek (/proc/<pid>/maps);
-npm/composer/pypi/Nextcloud = Projektverzeichnis passt zu Arbeitsverzeichnis/Skript bzw. Docroot (welche Pakete
-eine Anwendung wirklich importiert, ist von außen nicht sichtbar).
+npm/composer/pypi/rubygems/Nextcloud = Projektverzeichnis passt zu Arbeitsverzeichnis/Skript bzw. Docroot (welche
+Pakete eine Anwendung wirklich importiert, ist von außen nicht sichtbar).
 Webadressen je Dienst (nur zur Information): aus nginx (listen, server_name, TLS) und Apache (vHosts aus
 -S) im Container, in Proxys davor (andere Container, direkt auf dem Host) und über mehrere Stufen mit Pfad.
 """
@@ -208,7 +208,7 @@ def comp(typ, name, version, ort="", **extra):
 # ===========================================================================
 DOCKER_ENV = ["-e", "JAVA_TOOL_OPTIONS=", "-e", "JDK_JAVA_OPTIONS=", "-e", "_JAVA_OPTIONS=",
               "-e", "NO_UPDATE_NOTIFIER=1", "-e", "NPM_CONFIG_UPDATE_NOTIFIER=false",
-              "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "NODE_OPTIONS=", "-e", "PYTHONPATH="]
+              "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "NODE_OPTIONS=", "-e", "PYTHONPATH=", "-e", "RUBYOPT="]
 
 # Suchpfad für Befehle im Container (sh, find, tar, awk, rpm …). Nicht der PATH des Images: Enthält er ein
 # Verzeichnis, in das die Anwendung schreiben darf (z.B. /opt/venv/bin), könnte sie dort ein "sh" ablegen,
@@ -343,6 +343,7 @@ WANTED = re.compile(r"""^/(etc/os-release|usr/lib/os-release|etc/alpine-release|
                        |var/lib/dpkg/status|var/lib/dpkg/status\.d/[^/]+|var/lib/dpkg/info/[^/]+\.list
                        |lib/apk/db/installed)$
                       |/(package\.json|\.?package-lock\.json)$
+                      |/Gemfile\.lock$|/specifications/(default/)?[^/]+\.gemspec$
                       |\.dist-info/METADATA$|\.egg-info/PKG-INFO$|\.egg-info$
                       |/composer/installed\.(json|php)$|/version\.php$|/pyvenv\.cfg$
                       |/\.[on]cdata$""", re.X)
@@ -411,6 +412,7 @@ meldungen=$( { for r in / "$@"; do
        -path /etc/os-release -o -path /usr/lib/os-release -o -path /etc/alpine-release -o -path /etc/debian_version \
     -o -path /var/lib/dpkg/status -o -path '/var/lib/dpkg/status.d/*' -o -path '/var/lib/dpkg/info/*.list' \
     -o -path /lib/apk/db/installed -o -name package.json -o -name .package-lock.json -o -name package-lock.json \
+    -o -name Gemfile.lock -o -path '*/specifications/*.gemspec' \
     -o -path '*.dist-info/METADATA' -o -path '*.egg-info/PKG-INFO' -o -name '*.egg-info' \
     -o -path '*/composer/installed.json' -o -path '*/composer/installed.php' -o -name version.php \
     -o -name '*.jar' -o -name '*.war' -o -name '*.ear' \
@@ -770,7 +772,7 @@ def rpm_owners(c, paths):
 
 
 # ===========================================================================
-# 4. Anwendungspakete: npm, Composer, PyPI; Anwendungen (Nextcloud)
+# 4. Anwendungspakete: npm, Composer, PyPI, RubyGems; Anwendungen (Nextcloud)
 # ===========================================================================
 def npm_packages(files):
     dev = set()   # Paketverzeichnisse, die in einer (.)package-lock.json als "dev" markiert sind
@@ -866,6 +868,64 @@ def pypi_packages(files):
             c = comp("pypi", name.group(1), version.group(1), ort, datei=path)
             if re.match(r"/usr/lib(64)?/python[\d.]*/(dist|site)-packages$|/usr/lib/python3/dist-packages$", ort):
                 c["hinweise"].append("per OS-Paket installiert")
+            result.append(c)
+    return result
+
+
+# Gemfile.lock: Einträge "    name (version)" bzw. "    name (version-plattform)" (genau vier Leerzeichen;
+# mit sechs folgen die Abhängigkeiten eines Eintrags). Wie bei Bundler endet die Version am ersten "-".
+GEMFILE_LOCK_EINTRAG = re.compile(r"^    ([^ (]+) \(([^-)]+)(?:-([^)]+))?\)$")
+# Gemfile.lock innerhalb installierter Gems (<gem_home>/gems/<name>-<version>/, Git-Quellen unter bundler/gems/):
+# gehört zum Quellcode des Gems, nicht zu einer Anwendung
+GEM_IN_GEM = re.compile(r"/gems/[^/]+-\d[^/]*/|/bundler/gems/")
+GEM_DEV_HINWEIS = "in Gemfile.lock, aber nicht installiert (Gruppe development/test o. ä.)"
+
+
+def rubygems_packages(files):
+    """Gems aus jeder Gemfile.lock (Abschnitte GEM, GIT, PATH); Projektverzeichnis ist das Verzeichnis der Datei.
+    Installiert ist ein Gem, wenn irgendwo im Container seine Spezifikation liegt (specifications/<name>-<version>
+    [-<plattform>].gemspec, z.B. in vendor/bundle, /usr/local/bundle, /var/lib/gems). Einträge ohne Spezifikation
+    (Gruppen development/test, die "bundle config without" ausschließt, die Gemfile.lock aber führt) gelten als
+    Entwicklungsabhängigkeit (P4) – aber nur, wenn mindestens die Hälfte der Gems aus GEM-Quellen dieser Datei
+    installiert gefunden wurde; sonst ist die Installation nicht erkennbar (anderer Ort) und alle zählen.
+    "dateien" sind alle passenden Spezifikationen (im Projektverzeichnis zuerst), sonst die Gemfile.lock; "datei"
+    ist die erste davon. Nur wenn alle einem OS-Paket gehören, prüft der Abgleich das Paket (inventar_erfassen) –
+    eine daneben installierte Kopie (vendor/bundle, /usr/local/bundle) bekommt keine Korrekturen der Distribution."""
+    specs = defaultdict(list)    # "<name>-<version>" (auch mit Plattform) -> Pfade der Spezifikationen
+    for path in files:
+        m = re.search(r"/specifications/(?:default/)?([^/]+)\.gemspec$", path)
+        if m:
+            teile = m.group(1).split("-")
+            for i in range(2, len(teile) + 1):
+                specs["-".join(teile[:i])].append(path)
+    result = []
+    for path, data in sorted(files.items()):
+        if posixpath.basename(path) != "Gemfile.lock" or GEM_IN_GEM.search(path):
+            continue
+        ort = posixpath.dirname(path) or "/"
+        gems, abschnitt = OrderedDict(), None
+        for line in text(data).splitlines():
+            if line and not line[0].isspace():
+                abschnitt = line.strip()
+                continue
+            m = GEMFILE_LOCK_EINTRAG.match(line)
+            if m and abschnitt in ("GEM", "GIT", "PATH"):
+                # mehrere Plattformen derselben Version (nokogiri (1.16.0), nokogiri (1.16.0-x86_64-linux)): einmal
+                gems.setdefault((m.group(1), m.group(2)), abschnitt)
+        installiert = {k: sorted(specs.get("%s-%s" % k, []), key=lambda s: (not under(s, ort), s)) for k in gems}
+        aus_gem = [k for k, q in gems.items() if q == "GEM"]
+        pruefbar = bool(aus_gem) and 2 * sum(1 for k in aus_gem if installiert[k]) >= len(aus_gem)
+        for (name, version), quelle in gems.items():
+            spec = installiert[(name, version)]
+            dev = pruefbar and quelle == "GEM" and not spec
+            dateien = spec or [path]
+            c = comp("rubygems", name, version, ort, dev=dev, quelle=quelle, datei=dateien[0], dateien=dateien)
+            if dev:
+                c["hinweise"].append(GEM_DEV_HINWEIS)
+            elif quelle == "GIT":
+                c["hinweise"].append("aus Git-Quelle (Version laut Gemfile.lock)")
+            elif quelle == "PATH":
+                c["hinweise"].append("lokale Quelle (PATH), nicht abgeglichen")
             result.append(c)
     return result
 
@@ -1076,6 +1136,9 @@ if (defined("ZLIB_VERSION")) $r["libs"]["zlib"] = ZLIB_VERSION;
 echo json_encode($r);
 """
 NODE_SKIP = {"modules", "napi", "unicode", "cldr", "tz"}
+# Version und tatsächliches Programm (Symlinks aufgelöst, wie realpath bei node/python/php); --disable-gems: lädt
+# keine Bibliothek (RubyGems, rbconfig), RUBYOPT ist geleert (DOCKER_ENV)
+RUBY_CODE = 'print RUBY_VERSION, "\\n", File.readlink("/proc/self/exe")'
 
 
 def probe_runtimes(c, procs, owners):
@@ -1085,7 +1148,7 @@ def probe_runtimes(c, procs, owners):
     for p in procs.values():
         users.setdefault(p["exe"], p["user"] or NOBODY)   # Benutzer unbekannt: nobody
     candidates = list(OrderedDict.fromkeys([p["exe"] for p in procs.values()] +
-                                           ["node", "php", "python3", "python", "nginx", "httpd", "apache2", "java", "mariadbd", "mysqld", "postgres"]))
+                                           ["node", "php", "python3", "python", "ruby", "nginx", "httpd", "apache2", "java", "mariadbd", "mysqld", "postgres"]))
     result, seen = [], set()
 
     def add(typ, name, version, ort, hinweis=""):
@@ -1136,6 +1199,12 @@ def probe_runtimes(c, procs, owners):
                     add("php-ext", k, v, d["exe"], "eigene Version (PECL o.ä.)")
                 for k, v in (d["libs"] or {}).items():
                     add("runtime-lib", k, v, d["exe"], "von php gelinkt")
+        elif re.match(r"ruby[\d.]*$", base):
+            # ohne ermittelten Pfad keine Komponente (wie bei node/python/php): sonst fehlte der Besitzer im OS-Paket
+            rc, out = probe([exe, "--disable-gems", "-e", RUBY_CODE])
+            m = re.match(r"(\d+\.\d+\.\d+)\n(/.+)$", out) if rc == 0 else None
+            if m:
+                add("runtime", "ruby", m.group(1), m.group(2))
         elif base.startswith("php-fpm"):
             m = re.match(r"PHP (\S+)", probe([exe, "-v"])[1])
             add("runtime", "php-fpm", m and m.group(1), exe, "gleicher Build wie php-CLI angenommen")
@@ -2427,10 +2496,27 @@ def frontends_ermitteln(procs, web):
                         p["frontends"].append(ff)
 
 
+def gem_nutzer(name, version, loc, procs):
+    """Ruby-Prozesse, die ein Gem aus der Gemfile.lock in loc nutzen: Arbeitsverzeichnis oder Skript im Projekt
+    (Puma, Unicorn, Sidekiq …) oder geladene Erweiterung des Gems. Liefert [(Prozess, Erweiterung geladen)]."""
+    gem_dir = "/gems/%s-%s" % (name, version)
+    result = []
+    for p in procs.values():
+        if not p["base"].startswith("ruby"):
+            continue
+        scripts = [a if a.startswith("/") else posixpath.join(p["cwd"], a)
+                   for a in p["argv"][1:] if a.startswith("/") or re.search(r"\.(rb|ru)$", a)]
+        geladen = any(gem_dir + "/" in m or gem_dir + "-" in m for m in p["maps"])
+        if geladen or under(p["cwd"], loc) or any(under(s, loc) for s in scripts):
+            result.append((p, geladen))
+    return result
+
+
 def komponenten_zuordnen(comps, procs, owners, web, php_servers):
-    """c["aktiv"] bzw. c["aktiv_ohne_port"] je Komponente: OS-Paket über das Programm und geladene Bibliotheken,
-    Laufzeit über das Programm, npm/Composer/PyPI/Nextcloud über Projektverzeichnis, Docroot bzw. venv, JAR über
-    offene Dateien, eingebettete JavaScript-Bibliothek über den Docroot."""
+    """c["aktiv"] bzw. c["aktiv_ohne_port"] je Komponente: OS-Paket über das Programm und geladene Bibliotheken
+    (und die Gems des Pakets wie unten), Laufzeit über das Programm, npm/Composer/PyPI/Nextcloud über
+    Projektverzeichnis, Docroot bzw. venv, Gems über das Projektverzeichnis (Gemfile.lock) oder eine geladene
+    Erweiterung, JAR über offene Dateien, eingebettete JavaScript-Bibliothek über den Docroot."""
     pkg_users = defaultdict(list)   # OS-Paket -> Prozesse, die eine seiner Dateien geladen haben
     for p in procs.values():
         for f in p["maps"] | {p["exe"]}:
@@ -2445,6 +2531,10 @@ def komponenten_zuordnen(comps, procs, owners, web, php_servers):
         elif t == "os-paket":
             for p in pkg_users.get(c["name"], ()):
                 use(c, p)
+            # Gems dieses Pakets in einer Gemfile.lock (inventar_erfassen): reine Ruby-Dateien fehlen in maps
+            for name, version, ort in c.get("gems", ()):
+                for p, _ in gem_nutzer(name, version, ort, procs):
+                    use(c, p)
         elif t in ("runtime", "runtime-lib", "php-ext", "server"):
             for p in procs.values():
                 if norm(p["exe"]) == norm(loc):
@@ -2477,6 +2567,13 @@ def komponenten_zuordnen(comps, procs, owners, web, php_servers):
                 for p in php_servers:
                     if p["ports"] and p["label"] + " (Docroot unbekannt)" not in c["aktiv"]:
                         c["aktiv"].append(p["label"] + " (Docroot unbekannt)")
+        elif t == "rubygems":
+            for p, geladen in gem_nutzer(c["name"], c["version"], loc, procs):
+                use(c, p)
+                if geladen and c.get("dev"):    # Erweiterung geladen: installiert, auch ohne gefundene gemspec
+                    c["dev"] = False
+                    c["hinweise"] = [h for h in c["hinweise"] if h != GEM_DEV_HINWEIS]
+                    c["hinweise"].append("Erweiterung geladen, aber keine Spezifikation gefunden")
         elif t == "maven":   # JAR von einem Prozess geöffnet (die JVM hält ihre JARs offen)
             jar = loc.split("!/")[0]
             for p in procs.values():
@@ -3065,10 +3162,35 @@ def cmp_php(a, b):
     return 0
 
 
+def cmp_gem(a, b):
+    """Vergleich wie Gem::Version (RubyGems): Segmente aus Ziffern bzw. Buchstaben, ein Buchstaben-Segment macht
+    eine Vorabversion (1.0.a < 1.0 < 1.0.1); Nullen am Ende des Zahlen- und des Buchstabenteils zählen nicht,
+    "-" steht für ".pre.". Die Plattform (1.16.0-x86_64-linux) trennt schon der Parser der Gemfile.lock ab."""
+    def canon(v):
+        v = v.strip().replace("-", ".pre.")
+        seg = [int(x) if x.isdigit() else x for x in re.findall(r"[0-9]+|[a-z]+", v, re.I)]
+        k = next((i for i, x in enumerate(seg) if isinstance(x, str)), len(seg))
+        zahlen, rest = seg[:k], seg[k:]
+        while zahlen and zahlen[-1] == 0:
+            zahlen.pop()
+        while rest and rest[-1] == 0:
+            rest.pop()
+        return zahlen + rest
+    ca, cb = canon(a), canon(b)
+    for i in range(max(len(ca), len(cb))):
+        x, y = (ca[i] if i < len(ca) else 0), (cb[i] if i < len(cb) else 0)
+        if x == y:
+            continue
+        if isinstance(x, str) != isinstance(y, str):
+            return -1 if isinstance(x, str) else 1
+        return -1 if x < y else 1
+    return 0
+
+
 # Versionsvergleich je Ökosystem wie beim Abgleich (osv_target)
 OSV_CMP = {"Debian": cmp_dpkg, "Ubuntu": cmp_dpkg, "Alpine": cmp_apk, "SUSE": cmp_rpm, "openSUSE": cmp_rpm,
            "npm": cmp_semver, "PyPI": cmp_pep440, "Packagist": cmp_php, "Maven": cmp_maven, "Go": cmp_semver,
-           "Bitnami": cmp_semver}
+           "RubyGems": cmp_gem, "Bitnami": cmp_semver}
 
 
 # ===========================================================================
@@ -3185,13 +3307,13 @@ OSV_BASE = "https://osv-vulnerabilities.storage.googleapis.com/"
 OSV_URL = OSV_BASE + "%s/all.zip"
 
 # Direkt von OSV (ohne Branch daten), Gesamtexporte rund 1,2 GB, davon Ubuntu ca. 800 MB. Bei Bedarf ergänzen: SUSE, openSUSE.
-OSV_ECOSYSTEMS = ["Debian", "Ubuntu", "Alpine", "npm", "PyPI", "Packagist", "Maven", "Go", "Bitnami"]
+OSV_ECOSYSTEMS = ["Debian", "Ubuntu", "Alpine", "npm", "PyPI", "Packagist", "RubyGems", "Maven", "Go", "Bitnami"]
 INKREMENT_MAX = 2000           # mehr geänderte Einträge -> Gesamtexport laden (schneller)
 
 # OSV-Kennungen (GHSA-…, DEBIAN-CVE-…, SUSE-SU-2024:1234-1 …) werden zu Dateinamen: kein "/" und kein ".." möglich
 OSV_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:+-]*")
 DATEN_BRANCH = "daten"         # Branch mit den Daten (ohne Code), siehe README "Installation und Betrieb"
-DATEN_OEKOSYSTEME = ["Debian", "Ubuntu", "Alpine", "npm", "PyPI", "Packagist", "Maven", "Go", "Bitnami"]
+DATEN_OEKOSYSTEME = ["Debian", "Ubuntu", "Alpine", "npm", "PyPI", "Packagist", "RubyGems", "Maven", "Go", "Bitnami"]
 DATEN_TEILE = {"Debian": 8, "Ubuntu": 8, "npm": 8, "PyPI": 2}     # Dateien je Ökosystem (jede deutlich < 50 MB)
 
 
@@ -3402,7 +3524,7 @@ def osv_records(dbdir, fname):
 # Laufzeiten und Server, die nicht aus einem OS-Paket stammen (offizielle Images bauen sie aus dem Quellcode),
 # werden über den Bitnami-Datensatz von OSV geprüft (z.B. PHP2Shell, Node2Shell).
 BITNAMI = {"php": "php", "php-fpm": "php", "node": "node", "python": "python", "java": "jre", "nginx": "nginx",
-           "apache-httpd": "apache", "mariadb": "mariadb", "postgresql": "postgresql"}
+           "apache-httpd": "apache", "mariadb": "mariadb", "postgresql": "postgresql", "ruby": "ruby"}
 # Anwendungen (Typ anwendung) im Bitnami-Datensatz; geprüft, soweit Bitnami Einträge führt
 BITNAMI_ANWENDUNGEN = {"nextcloud": "nextcloud"}
 
@@ -3465,6 +3587,10 @@ def osv_target(c, osinfo):
         return "Packagist", lambda e: e == "Packagist", {name.lower()}, version, cmp_php
     if t == "pypi":
         return "PyPI", lambda e: e == "PyPI", {pypi_name(name)}, version, cmp_pep440
+    if t == "rubygems":
+        if c.get("quelle") == "PATH":
+            return None      # Quellcode im Projekt (eigenes Gem, Plugin): keine veröffentlichte Version
+        return "RubyGems", lambda e: e == "RubyGems", {name}, version, cmp_gem
     if t == "js-lib" and version != "unbekannt":
         return "npm", lambda e: e == "npm", {name}, version, cmp_semver
     if t == "maven":
@@ -3649,7 +3775,8 @@ EOL_TYPEN = {"npm": "npm", "js-lib": "npm", "composer": "composer", "pypi": "pyp
 # Laufzeiten/Server (Typ runtime/server) -> Produkt bei endoflife.date; nur geprüft, wenn nicht aus einem
 # OS-Paket (dort zählt der Support der Distribution, die Sicherheitskorrekturen zurückportiert)
 EOL_LAUFZEITEN = {"php": "php", "php-fpm": "php", "node": "nodejs", "python": "python", "nginx": "nginx",
-                  "apache-httpd": "apache-http-server", "mariadb": "mariadb", "mysql": "mysql", "postgresql": "postgresql"}
+                  "apache-httpd": "apache-http-server", "mariadb": "mariadb", "mysql": "mysql", "postgresql": "postgresql",
+                  "ruby": "ruby"}
 
 # Paketkennungen, die bei endoflife.date fehlen
 EOL_ZUSATZ = {"symfony": ["pkg:composer/symfony/symfony", "pkg:composer/symfony/http-kernel"],
@@ -4204,6 +4331,7 @@ def write_report(path, c, osinfo, comps, services, procs, web, how, bewertet, db
                  and not from_os_package(x) and x["name"] not in BITNAMI)
                  or (x["typ"] in ("js-lib", "go") and x["version"] == "unbekannt")
                  or (x["typ"] == "composer" and (x["version"].startswith("dev-") or x["version"].endswith("-dev")))
+                 or (x["typ"] == "rubygems" and x.get("quelle") == "PATH")
                  or (x["typ"] == "maven" and x.get("maven_key", "")[2:].lower() in MAVEN_GENERIC)]
     if unchecked:
         w("\n## Nicht automatisch geprüft – bitte gesondert prüfen\n")
@@ -4304,6 +4432,8 @@ def cdx_component(i, c, osinfo):
         entry["purl"] = "pkg:golang/%s@%s" % ("/".join(penc(x) for x in c["name"].split("/")), penc(c["version"]))
     elif t in ("js-lib", "maven"):
         pass   # ohne eindeutige Paket-URL
+    elif t == "rubygems":
+        entry["purl"] = "pkg:gem/%s@%s" % (penc(c["name"]), penc(c["version"]))
     elif t == "pypi":
         entry["purl"] = "pkg:pypi/%s@%s" % (penc(re.sub(r"[-_.]+", "-", c["name"].lower())), penc(c["version"]))
     elif t == "host" and c["name"] == "linux-kernel":
@@ -4477,14 +4607,25 @@ def inventar_erfassen(c):
     osinfo = os_release(files)
     pkgs, owners, how["pkgdb"] = os_packages(c, files)
     procs, how["procs"], fremd = collect_procs(c)
-    lang = npm_packages(files) + composer_packages(files) + pypi_packages(files) + anwendungen(files) + extra
+    lang = (npm_packages(files) + composer_packages(files) + pypi_packages(files) + rubygems_packages(files)
+            + anwendungen(files) + extra)
     if how["pkgdb"] == "rpm (im Container)":
         owners.update(rpm_owners(c, {norm(f) for p in procs.values() for f in p["maps"] | {p["exe"]}} |
-                                 {x["datei"] for x in lang}))
+                                 {d for x in lang for d in x.get("dateien") or [x["datei"]]}))
+
+    def os_eigen(x):    # alle Kopien (Gems: jede passende Spezifikation) gehören einem OS-Paket
+        return all(owners.get(norm(d)) for d in x.get("dateien") or [x["datei"]])
     # Sprach-Komponenten, deren Datei zu einem OS-Paket gehört (z.B. gosu, python3-*-Pakete, libxyz-java),
     # prüft der Abgleich über das OS-Paket – sonst würden sie doppelt gezählt (so hält es auch Trivy)
-    how["os_owned"] = sum(1 for x in lang if owners.get(norm(x["datei"])))
-    comps = pkgs + [x for x in lang if not owners.get(norm(x["datei"]))]
+    how["os_owned"] = sum(1 for x in lang if os_eigen(x))
+    comps = pkgs + [x for x in lang if not os_eigen(x)]
+    # Gem eines OS-Pakets (ruby-rack) in einer Gemfile.lock: die Nutzung über das Projekt gilt für das Paket
+    for x in lang:
+        if x["typ"] == "rubygems" and os_eigen(x):
+            besitzer = {o for d in x["dateien"] for o in owners[norm(d)]}
+            for pkg in pkgs:
+                if pkg["name"] in besitzer:
+                    pkg.setdefault("gems", []).append((x["name"], x["version"], x["ort"]))
     comps += probe_runtimes(c, procs, owners) + host_components()
     return files, osinfo, pkgs, owners, procs, fremd, comps, how, problems
 

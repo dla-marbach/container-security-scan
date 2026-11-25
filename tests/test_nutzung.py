@@ -132,6 +132,48 @@ class Zuordnung(unittest.TestCase):
         self.assertEqual(b["aktiv"], ["python3.11:8001"])
         self.assertEqual(s["aktiv_ohne_port"], ["python3.12 (ohne Port)"])
 
+    def test_rubygems_ueber_arbeitsverzeichnis_skript_oder_erweiterung(self):
+        # Puma überschreibt seine Kommandozeile; zugeordnet über das Arbeitsverzeichnis (Projekt der Gemfile.lock)
+        puma = proc(1, "/usr/local/bin/ruby", ["puma 6.4.2 (tcp://0.0.0.0:3000) [redmine]"],
+                    cwd="/home/redmine/redmine", ports={"3000": "alle"})
+        job = proc(2, "/usr/bin/ruby3.1", ["ruby", "/srv/jobs/bin/run.rb"],
+                   maps={"/usr/local/bundle/gems/nokogiri-1.16.7-x86_64-linux-gnu/lib/nokogiri/3.1/nokogiri.so"})
+        node = proc(3, "/usr/local/bin/node", ["node", "server.js"], cwd="/home/redmine/redmine", ports={"8080": "alle"})
+        wurzel = proc(4, "/usr/local/bin/ruby", ["ruby", "-e", "sleep"])
+        rails = C("rubygems", "rails", "7.2.1", "/home/redmine/redmine")
+        job_gem = C("rubygems", "sidekiq", "7.0.0", "/srv/jobs")
+        nokogiri = C("rubygems", "nokogiri", "1.16.7", "/opt/other")
+        andere = C("rubygems", "rack", "3.1.7", "/opt/other")
+        root = C("rubygems", "rake", "13.0.0", "/")
+        scanner.mark_usage([rails, job_gem, nokogiri, andere, root], {"1": puma, "2": job, "3": node, "4": wurzel},
+                           {}, web())
+        self.assertEqual((rails["aktiv"], rails["aktiv_ohne_port"]), (["ruby:3000"], []))
+        self.assertEqual(job_gem["aktiv_ohne_port"], ["ruby3.1 (ohne Port)"])
+        self.assertEqual(nokogiri["aktiv_ohne_port"], ["ruby3.1 (ohne Port)"])      # geladene Erweiterung
+        self.assertEqual((andere["aktiv"], andere["aktiv_ohne_port"]), ([], []))
+        # Gemfile.lock in /: Projekt umfasst den ganzen Container, im Zweifel von jedem Ruby-Prozess genutzt
+        self.assertEqual((root["aktiv"], root["aktiv_ohne_port"]), (["ruby:3000"], ["ruby3.1 (ohne Port)", "ruby (ohne Port)"]))
+        # P1 hinter einem erreichbaren Port, P2 intern, dev immer P4
+        self.assertEqual(scanner.priority(rails, {"ruby:3000"}), 1)
+        self.assertEqual(scanner.priority(rails, set()), 2)
+        rails["dev"] = True
+        self.assertEqual(scanner.priority(rails, {"ruby:3000"}), 4)
+
+    def test_rubygems_dev_mit_geladener_erweiterung_nicht_dev(self):
+        # gemspec nicht gefunden (dev), Erweiterung aber in maps: installiert und genutzt, also nicht P4
+        puma = proc(1, "/usr/local/bin/ruby", ["puma 6.4.2 (tcp://0.0.0.0:3000) [app]"], cwd="/app",
+                    ports={"3000": "alle"},
+                    maps={"/usr/local/bundle/gems/nokogiri-1.16.7-x86_64-linux-gnu/lib/nokogiri/3.3/nokogiri.so"})
+        nokogiri = C("rubygems", "nokogiri", "1.16.7", "/app", dev=True, hinweise=[scanner.GEM_DEV_HINWEIS])
+        rubocop = C("rubygems", "rubocop", "1.66.1", "/app", dev=True, hinweise=[scanner.GEM_DEV_HINWEIS])
+        scanner.mark_usage([nokogiri, rubocop], {"1": puma}, {}, web())
+        self.assertFalse(nokogiri["dev"])
+        self.assertNotIn(scanner.GEM_DEV_HINWEIS, nokogiri["hinweise"])
+        self.assertEqual(scanner.priority(nokogiri, {"ruby:3000"}), 1)
+        # nur über das Projektverzeichnis zugeordnet: bleibt Entwicklungsabhängigkeit
+        self.assertEqual((rubocop["dev"], rubocop["aktiv"]), (True, ["ruby:3000"]))
+        self.assertEqual(scanner.priority(rubocop, {"ruby:3000"}), 4)
+
 
 class Dienste(unittest.TestCase):
     def dienst(self, p, **kw):
