@@ -55,6 +55,12 @@ class Ziel(unittest.TestCase):
         self.assertIsNone(scanner.osv_target(C("runtime", "node", "18", hinweise=["aus OS-Paket nodejs"]), DEBIAN))
         self.assertIsNone(scanner.osv_target(C("runtime-lib", "openssl", "3.0"), DEBIAN))
 
+    def test_nextcloud_ueber_bitnami(self):
+        t = scanner.osv_target(C("anwendung", "nextcloud", "35.0.3", "/var/www/html"), DEBIAN)
+        self.assertEqual((t[0], t[2], t[3]), ("Bitnami", {"nextcloud"}, "35.0.3"))
+        self.assertTrue(t[1]("Bitnami") and not t[1]("Packagist"))
+        self.assertIsNone(scanner.osv_target(C("anwendung", "unbekannt", "1.0"), DEBIAN))
+
 
 class Abgleich(Tmp):
     def debian_daten(self):
@@ -108,6 +114,17 @@ class Abgleich(Tmp):
                  C("runtime", "php-fpm", "8.3.1")]
         findings, _, _, _ = scanner.osv_scan(comps, DEBIAN, [self.tmp])
         self.assertEqual(sorted((f["comp"]["name"], f["id"]) for f in findings), [("log4j-core", "GHSA-m"), ("php", "BIT-php")])
+
+    def test_nextcloud_abgleich(self):
+        schreibe_jsonl(self.tmp, "Bitnami", [
+            eintrag("BIT-nextcloud-1", "Bitnami", "nextcloud", [{"introduced": "34.0.0"}, {"fixed": "34.0.2"}], typ="SEMVER"),
+            eintrag("BIT-nextcloud-2", "Bitnami", "nextcloud", [{"introduced": "35.0.0"}, {"fixed": "35.0.4"}], typ="SEMVER"),
+            eintrag("BIT-nextcloud-3", "Bitnami", "nextcloud", [{"introduced": "0"}, {"fixed": "32.0.0"}], typ="SEMVER")])
+        neu, alt, rc = (C("anwendung", "nextcloud", v, "/var/www/html") for v in ("35.0.3", "34.0.1", "35.0.0-RC1"))
+        findings, _, missing, _ = scanner.osv_scan([neu, alt, rc], DEBIAN, [self.tmp])
+        self.assertEqual(missing, [])
+        self.assertEqual(sorted((f["comp"]["version"], f["id"], f["fix"]) for f in findings),
+                         [("34.0.1", "BIT-nextcloud-1", "34.0.2"), ("35.0.3", "BIT-nextcloud-2", "35.0.4")])
 
     def test_fremdquelle_ueber_bitnami(self):
         self.debian_daten()

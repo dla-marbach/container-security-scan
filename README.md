@@ -238,7 +238,8 @@ auch als P4 – Programme wie ImageMagick oder ffmpeg laufen nur bei Bedarf. Der
 aufgeführt, zum selbst Einschätzen) und Lücken, die laut Titel nur Windows betreffen.
 
 „Genutzt von“ ermittelt der Scan aus `/proc` (Programm, geladene Bibliotheken, offene Dateien und Ports) und für
-npm/Composer/PyPI über das Projektverzeichnis (Arbeitsverzeichnis, Skriptpfad, venv, Docroot des Webservers).
+npm/Composer/PyPI/Nextcloud über das Projektverzeichnis (Arbeitsverzeichnis, Skriptpfad, venv, Docroot des
+Webservers).
 
 Schweregrad: Einstufung der Distribution, sonst der Quelle, sonst CVSS.
 Fehlt er, gilt die Bewertung derselben CVE aus den Bitnami- bzw. Alpine-Daten, markiert mit `*` (`CRITICAL*`).
@@ -407,11 +408,12 @@ sudo python3 -I $C --db $DB --bericht --alle --container 'app-*' <ausgabeverzeic
 |---|---|---|
 | OS-Pakete | dpkg, apk, rpm, inkl. Quellpaket | Debian, Ubuntu, Alpine (optional SUSE, openSUSE) |
 | npm | `package.json` | npm |
-| Composer | `vendor/composer/installed.json` | Packagist |
+| Composer | `<vendor-dir>/composer/installed.json` (`vendor/`, auch z. B. Nextclouds `3rdparty/`) | Packagist |
 | PyPI | `*.dist-info`, `*.egg-info` (auch venvs) | PyPI |
 | Java | JAR/WAR/EAR, auch verschachtelt | Maven |
 | Go | Build-Info in Go-Programmen | Go |
 | JavaScript | eingebettete Bibliotheken (jQuery, Bootstrap, Moment, Vue …) | npm |
+| Anwendungen | Nextcloud (`version.php`) | OSV Bitnami |
 | Laufzeiten, Server | Version von node, php, php-fpm, python, java, nginx, apache, mariadb, postgresql | Distribution, sonst (offizielle Images, nginx.org, NodeSource, Sury, mariadb.org) OSV Bitnami |
 
 Nutzerdaten werden nicht ausgewertet: Dateien im Datenverzeichnis von Nextcloud (mit `.ocdata` bzw. `.ncdata`) lässt der Scan
@@ -456,6 +458,8 @@ Bekannte Grenzen:
 - Nicht erkannt: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung, JavaScript-Bundles ohne Kopfkommentar,
   Fremdpaketquellen außer den genannten.
 - Welche Pakete eine Anwendung tatsächlich importiert, ist von außen nicht sichtbar.
+- Nextcloud selbst nur so weit, wie der Bitnami-Datensatz Einträge führt (Apps aus dem App Store nur über ihre
+  Composer- und npm-Pakete).
 - Nur nginx, Apache und stunnel werden als Proxy ausgewertet; andere machen ihre Nachbarn „möglicherweise“ erreichbar
   (eher zu viel). Ziele, die nur in Konfigurationsdateien einer Anwendung stehen (z. B. Spring
   `application.yml`), fehlen, wenn gerade keine Verbindung besteht.

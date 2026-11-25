@@ -48,14 +48,15 @@ Priorität (P1 = zuerst beheben):
   P3  Komponente wird nur von einem Prozess ohne offenen Port genutzt
   P4  Komponente ist installiert, aber nicht in Benutzung erkannt; oder Entwicklungsabhängigkeit (dev)
 
-Erfasst: OS-Pakete (dpkg, apk, rpm) inkl. Quellpaket, npm (jede package.json), Composer, PyPI (auch venvs),
-Java (JAR/WAR/EAR, auch verschachtelt), Go-Programme, eingebettete JavaScript-Bibliotheken (jQuery u.a.),
+Erfasst: OS-Pakete (dpkg, apk, rpm) inkl. Quellpaket, npm (jede package.json), Composer (auch mit anderem
+vendor-dir, z.B. Nextcloud 3rdparty/), PyPI (auch venvs), Java (JAR/WAR/EAR, auch verschachtelt), Go-Programme,
+eingebettete JavaScript-Bibliotheken (jQuery u.a.), Nextcloud (version.php, über den Bitnami-Datensatz),
 Laufzeiten am Programm (node, php, python, java, nginx, apache, mariadb, postgresql; geprüft über den
 Bitnami-Datensatz von OSV, falls nicht aus einem OS-Paket), Host-Kernel/Container-Laufzeit, Dienste.
 Nicht erfasst: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung.
 "Genutzt von" je Komponente: OS-Paket/Laufzeit = Programm oder geladene Bibliothek (/proc/<pid>/maps);
-npm/composer/pypi = Projektverzeichnis passt zu Arbeitsverzeichnis/Skript bzw. Docroot (welche Pakete eine
-Anwendung wirklich importiert, ist von außen nicht sichtbar).
+npm/composer/pypi/Nextcloud = Projektverzeichnis passt zu Arbeitsverzeichnis/Skript bzw. Docroot (welche Pakete
+eine Anwendung wirklich importiert, ist von außen nicht sichtbar).
 Webadressen je Dienst (nur zur Information): aus nginx (listen, server_name, TLS) und Apache (vHosts aus
 -S) im Container, in Proxys davor (andere Container, direkt auf dem Host) und über mehrere Stufen mit Pfad.
 """
@@ -343,7 +344,7 @@ WANTED = re.compile(r"""^/(etc/os-release|usr/lib/os-release|etc/alpine-release|
                        |lib/apk/db/installed)$
                       |/(package\.json|\.?package-lock\.json)$
                       |\.dist-info/METADATA$|\.egg-info/PKG-INFO$|\.egg-info$
-                      |/vendor/composer/installed\.json$|/pyvenv\.cfg$
+                      |/composer/installed\.(json|php)$|/version\.php$|/pyvenv\.cfg$
                       |/\.[on]cdata$""", re.X)
 
 # Eingebettete JavaScript-Bibliotheken (wie Retire.js): npm-Name, Dateiname (regulärer Ausdruck),
@@ -411,7 +412,8 @@ meldungen=$( { for r in / "$@"; do
     -o -path /var/lib/dpkg/status -o -path '/var/lib/dpkg/status.d/*' -o -path '/var/lib/dpkg/info/*.list' \
     -o -path /lib/apk/db/installed -o -name package.json -o -name .package-lock.json -o -name package-lock.json \
     -o -path '*.dist-info/METADATA' -o -path '*.egg-info/PKG-INFO' -o -name '*.egg-info' \
-    -o -path '*/vendor/composer/installed.json' -o -name '*.jar' -o -name '*.war' -o -name '*.ear' \
+    -o -path '*/composer/installed.json' -o -path '*/composer/installed.php' -o -name version.php \
+    -o -name '*.jar' -o -name '*.war' -o -name '*.ear' \
     -o -name pyvenv.cfg -o -name .ocdata -o -name .ncdata JSGLOBS \) -print 2>&3 || echo "@find $r" >&3
   { find "$r" -xdev \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -perm -100 -size +1000k -print \
       2>&3 || echo "@find $r" >&3; } | xargs grep -l 'Go buildinf:' 2>/dev/null
@@ -768,7 +770,7 @@ def rpm_owners(c, paths):
 
 
 # ===========================================================================
-# 4. Anwendungspakete: npm, Composer, PyPI
+# 4. Anwendungspakete: npm, Composer, PyPI; Anwendungen (Nextcloud)
 # ===========================================================================
 def npm_packages(files):
     dev = set()   # Paketverzeichnisse, die in einer (.)package-lock.json als "dev" markiert sind
@@ -794,18 +796,57 @@ def npm_packages(files):
     return result
 
 
+def composer_root(files, vendor):
+    """Projektverzeichnis aus <vendor-dir>/composer/installed.php (Composer 2): install_path des Root-Pakets, meist
+    relativ (__DIR__ . '/../../'). Nur gelesen, kein PHP ausgeführt; None, wenn nicht vorhanden oder nicht lesbar."""
+    data = files.get(vendor + "/composer/installed.php")
+    if data is None:
+        return None
+    m = re.search(r"'root'\s*=>\s*(?:array\s*\(|\[)(.*?)'versions'\s*=>", text(data), re.S)
+    m = m and re.search(r"'install_path'\s*=>\s*(__DIR__\s*\.\s*)?'([^'\\]*)'", m.group(1))
+    if not m:
+        return None
+    pfad = (vendor + "/composer" if m.group(1) else "") + m.group(2)
+    return posixpath.normpath(pfad) if pfad.startswith("/") else None
+
+
 def composer_packages(files):
+    """Composer: <vendor-dir>/composer/installed.json. Projektverzeichnis (ort): bei Nextclouds 3rdparty/ (vendor-dir
+    ".") die erkannte Installation (version.php darüber), sonst das Root-Paket aus installed.php, sonst bei vendor/
+    das Verzeichnis darüber, sonst das vendor-dir selbst (nicht pauschal das Verzeichnis darüber: dort kann ein
+    allgemeines Verzeichnis liegen)."""
+    nextcloud = {c["ort"] for c in anwendungen(files) if c["name"] == "nextcloud"}
     result = []
     for path, data in files.items():
-        if not path.endswith("/vendor/composer/installed.json"):
+        vendor = path[:-len("/composer/installed.json")]
+        if not path.endswith("/composer/installed.json") or not vendor:
             continue
         d = load_json(data)
         pkgs = d.get("packages", []) if isinstance(d, dict) else (d or [])   # Composer 2 bzw. 1
         dev = set(d.get("dev-package-names", [])) if isinstance(d, dict) else set()
-        ort = path[:-len("/vendor/composer/installed.json")] or "/"
+        if posixpath.basename(vendor) == "3rdparty" and posixpath.dirname(vendor) in nextcloud:
+            ort = posixpath.dirname(vendor)
+        else:
+            ort = composer_root(files, vendor) \
+                or (posixpath.dirname(vendor) if posixpath.basename(vendor) == "vendor" else vendor)
         for p in pkgs:
             if isinstance(p, dict) and p.get("name") and p.get("version"):
                 result.append(comp("composer", p["name"], p["version"], ort, dev=p["name"] in dev, datei=path))
+    return result
+
+
+def anwendungen(files):
+    """Anwendungen mit eigener Version: Nextcloud (version.php im Installationsverzeichnis, ort). Nur mit
+    $OC_VersionString und $vendor = 'nextcloud' (andere version.php; ownCloud nutzt dieselbe Datei)."""
+    result = []
+    for path, data in files.items():
+        if posixpath.basename(path) != "version.php":
+            continue
+        t = text(data)
+        m = re.search(r"^\$OC_VersionString\s*=\s*'(\d+\.\d+\.\d+)( ?[A-Za-z][\w.]*)?'\s*;", t, re.M)
+        if m and re.search(r"^\$vendor\s*=\s*'nextcloud'\s*;", t, re.M):
+            version = m.group(1) + ("-" + m.group(2).strip() if m.group(2) else "")   # "30.0.0 RC1" -> "30.0.0-RC1"
+            result.append(comp("anwendung", "nextcloud", version, posixpath.dirname(path) or "/", datei=path))
     return result
 
 
@@ -2375,8 +2416,8 @@ def frontends_ermitteln(procs, web):
 
 def komponenten_zuordnen(comps, procs, owners, web, php_servers):
     """c["aktiv"] bzw. c["aktiv_ohne_port"] je Komponente: OS-Paket über das Programm und geladene Bibliotheken,
-    Laufzeit über das Programm, npm/Composer/PyPI über Projektverzeichnis, Docroot bzw. venv, JAR über offene
-    Dateien, eingebettete JavaScript-Bibliothek über den Docroot."""
+    Laufzeit über das Programm, npm/Composer/PyPI/Nextcloud über Projektverzeichnis, Docroot bzw. venv, JAR über
+    offene Dateien, eingebettete JavaScript-Bibliothek über den Docroot."""
     pkg_users = defaultdict(list)   # OS-Paket -> Prozesse, die eine seiner Dateien geladen haben
     for p in procs.values():
         for f in p["maps"] | {p["exe"]}:
@@ -2410,7 +2451,7 @@ def komponenten_zuordnen(comps, procs, owners, web, php_servers):
                         or (argv0 in ("npm", "npx") and root.endswith("/node_modules/npm")) \
                         or (argv0 == "yarn" and "yarn" in root):
                     use(c, p)
-        elif t == "composer":
+        elif t in ("composer", "anwendung"):
             for exe, roots in web["docroots"].items():
                 if any(under(d, loc) or under(loc, d) for d in roots):
                     for p in procs.values():
@@ -3338,6 +3379,8 @@ def osv_records(dbdir, fname):
 # werden über den Bitnami-Datensatz von OSV geprüft (z.B. PHP2Shell, Node2Shell).
 BITNAMI = {"php": "php", "php-fpm": "php", "node": "node", "python": "python", "java": "jre", "nginx": "nginx",
            "apache-httpd": "apache", "mariadb": "mariadb", "postgresql": "postgresql"}
+# Anwendungen (Typ anwendung) im Bitnami-Datensatz; geprüft, soweit Bitnami Einträge führt
+BITNAMI_ANWENDUNGEN = {"nextcloud": "nextcloud"}
 
 # Kernel-Pakete im Container (Header, Images): Container nutzen den Kernel des Hosts, deren CVEs betreffen
 # den Container nicht. Debian/Ubuntu führen alle Kernel-CVEs am Quellpaket "linux".
@@ -3409,6 +3452,8 @@ def osv_target(c, osinfo):
         return "Go", lambda e: e == "Go", {name}, version, cmp_semver
     if t in ("runtime", "server") and name in BITNAMI and not from_os_package(c):
         return "Bitnami", lambda e: e == "Bitnami", {BITNAMI[name]}, version, cmp_semver
+    if t == "anwendung" and name in BITNAMI_ANWENDUNGEN:
+        return "Bitnami", lambda e: e == "Bitnami", {BITNAMI_ANWENDUNGEN[name]}, version, cmp_semver
     return None
 
 
@@ -4177,7 +4222,7 @@ CPE = {"node": "nodejs:node.js", "php": "php:php", "python": "python:python", "n
        "zlib": "zlib:zlib", "nghttp2": "nghttp2:nghttp2", "undici": "nodejs:undici", "ares": "c-ares:c-ares",
        "llhttp": "llhttp:llhttp", "runc": "linuxfoundation:runc", "containerd": "linuxfoundation:containerd",
        "docker-engine": "docker:docker", "java": "oracle:openjdk", "mariadb": "mariadb:mariadb",
-       "mysql": "oracle:mysql", "postgresql": "postgresql:postgresql"}
+       "mysql": "oracle:mysql", "postgresql": "postgresql:postgresql", "nextcloud": "nextcloud:nextcloud_server"}
 
 
 def penc(s):
@@ -4241,7 +4286,7 @@ def cdx_component(i, c, osinfo):
         entry["type"] = "platform"
     else:
         entry["purl"] = "pkg:generic/%s%s@%s" % ("php-ext-" if t == "php-ext" else "", penc(c["name"]), penc(c["version"]))
-        if t in ("runtime", "server"):
+        if t in ("runtime", "server", "anwendung"):
             entry["type"] = "application"
         if c["name"] in CPE and t != "php-ext":
             entry["cpe"] = "cpe:2.3:a:%s:%s:*:*:*:*:*:*:*" % (CPE[c["name"]], c["version"].lstrip("v"))
@@ -4408,7 +4453,7 @@ def inventar_erfassen(c):
     osinfo = os_release(files)
     pkgs, owners, how["pkgdb"] = os_packages(c, files)
     procs, how["procs"], fremd = collect_procs(c)
-    lang = npm_packages(files) + composer_packages(files) + pypi_packages(files) + extra
+    lang = npm_packages(files) + composer_packages(files) + pypi_packages(files) + anwendungen(files) + extra
     if how["pkgdb"] == "rpm (im Container)":
         owners.update(rpm_owners(c, {norm(f) for p in procs.values() for f in p["maps"] | {p["exe"]}} |
                                  {x["datei"] for x in lang}))

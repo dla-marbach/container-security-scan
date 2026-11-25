@@ -1,4 +1,5 @@
 """Welcher laufende Dienst nutzt welche Komponente – Grundlage der Priorität P1–P4."""
+import json
 import unittest
 
 from _laden import scanner, proc, web
@@ -42,6 +43,63 @@ class Zuordnung(unittest.TestCase):
         self.assertEqual(fremd["aktiv"], [])
         fpm_dienst = [s for s in services if s["name"] == "php-fpm"][0]
         self.assertIn("hinter nginx:80 (gleicher Container)", fpm_dienst["description"])
+
+    def test_nextcloud_ueber_docroot(self):
+        # offizielles Image: Apache mit mod_php, Docroot /var/www/html; Quellen zusätzlich unter /usr/src/nextcloud.
+        # Komponenten wie im Inventar: 3rdparty/ (vendor-dir ".", Root-Paket 3rdparty) gehört zur Installation
+        installed = json.dumps({"packages": [{"name": "guzzlehttp/guzzle", "version": "7.15.2"}]}).encode()
+        root = b"<?php return array(\n    'root' => array(\n        'install_path' => __DIR__ . '/../',\n    ),\n    'versions' => array(),\n);\n"
+        version = b"<?php\n$OC_VersionString = '35.0.3';\n$vendor = 'nextcloud';\n"
+        files = {}
+        for inst in ("/var/www/html", "/usr/src/nextcloud"):
+            files.update({inst + "/version.php": version, inst + "/3rdparty/composer/installed.json": installed,
+                          inst + "/3rdparty/composer/installed.php": root})
+
+        def inventar():
+            comps = scanner.composer_packages(files) + scanner.anwendungen(files)
+            return {(c["name"], c["ort"]): c for c in comps}
+        k = inventar()
+        self.assertEqual(sorted(k), [("guzzlehttp/guzzle", "/usr/src/nextcloud"), ("guzzlehttp/guzzle", "/var/www/html"),
+                                     ("nextcloud", "/usr/src/nextcloud"), ("nextcloud", "/var/www/html")])
+        guzzle, nc = k["guzzlehttp/guzzle", "/var/www/html"], k["nextcloud", "/var/www/html"]
+        kopie, nc_kopie = k["guzzlehttp/guzzle", "/usr/src/nextcloud"], k["nextcloud", "/usr/src/nextcloud"]
+        apache = proc(1, "/usr/sbin/apache2", ports={"80": "alle"})
+        w = web(docroots={"/usr/sbin/apache2": ["/var/www/html"]}, modphp={"/usr/sbin/apache2"})
+        services = scanner.mark_usage(list(k.values()), {"1": apache}, {}, w)
+        self.assertEqual((guzzle["aktiv"], nc["aktiv"]), (["apache2:80"], ["apache2:80"]))
+        self.assertEqual((kopie["aktiv"], nc_kopie["aktiv"]), ([], []))
+        exposed = {"apache2:80"}
+        self.assertEqual([s["label"] for s in services], ["apache2:80"])
+        self.assertEqual([scanner.priority(x, exposed) for x in (guzzle, nc, kopie, nc_kopie)], [1, 1, 4, 4])
+        # Cron (php -f cron.php im Installationsverzeichnis, ohne Port): Nextcloud und seine 3rdparty-Pakete P3,
+        # die Kopie unter /usr/src/nextcloud bleibt ungenutzt
+        k = inventar()
+        cron = proc(2, "/usr/local/bin/php", ["php", "-f", "/var/www/html/cron.php"], cwd="/var/www/html")
+        scanner.mark_usage(list(k.values()), {"2": cron}, {}, web())
+        self.assertEqual({n: (c["aktiv"], c["aktiv_ohne_port"]) for n, c in k.items()}, {
+            ("guzzlehttp/guzzle", "/var/www/html"): ([], ["php (ohne Port)"]),
+            ("nextcloud", "/var/www/html"): ([], ["php (ohne Port)"]),
+            ("guzzlehttp/guzzle", "/usr/src/nextcloud"): ([], []), ("nextcloud", "/usr/src/nextcloud"): ([], [])})
+        self.assertEqual([scanner.priority(k[n], set()) for n in sorted(k)], [4, 3, 4, 3])
+
+    def test_composer_anderes_vendor_dir_ueber_docroot(self):
+        # composer.json in /srv/app mit "vendor-dir": "deps", Docroot /srv/app/public: Projektverzeichnis aus
+        # installed.php, Pakete über den Docroot genutzt (P1); ohne installed.php nur das vendor-dir (P4)
+        files = {"/srv/app/deps/composer/installed.json":
+                 json.dumps({"packages": [{"name": "slim/slim", "version": "4.14.0"}]}).encode(),
+                 "/srv/app/deps/composer/installed.php":
+                 b"<?php return array(\n    'root' => array(\n        'name' => 'firma/app',\n"
+                 b"        'install_path' => __DIR__ . '/../../',\n        'aliases' => array(),\n    ),\n"
+                 b"    'versions' => array(),\n);\n"}
+        nginx = proc(1, "/usr/sbin/nginx", ports={"80": "alle"})
+        fpm = proc(2, "/usr/local/sbin/php-fpm", ports={"9000": "alle"})
+        w = web(docroots={"/usr/sbin/nginx": ["/srv/app/public"]}, backends={"/usr/sbin/nginx": ["127.0.0.1:9000"]})
+        for mit_php, prio in ((True, 1), (False, 4)):
+            f = dict(files) if mit_php else {k: v for k, v in files.items() if k.endswith(".json")}
+            slim, = scanner.composer_packages(f)
+            self.assertEqual(slim["ort"], "/srv/app" if mit_php else "/srv/app/deps")
+            scanner.mark_usage([slim], {"1": nginx, "2": fpm}, {}, w)
+            self.assertEqual(scanner.priority(slim, {"nginx:80"}), prio)
 
     def test_docroot_unbekannt(self):
         fpm = proc(1, "/usr/local/sbin/php-fpm", ports={"9000": "alle"})
