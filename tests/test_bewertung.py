@@ -393,9 +393,8 @@ class OffeneDatendienste(unittest.TestCase):
         self.assertIn("(veröffentlicht als 0.0.0.0:8983, :::8983)",
                       self.warnungen(pg, published={"5432": ["0.0.0.0:8983", ":::8983"]})[0])
         # nur an Loopback des Hosts veröffentlicht: nicht von außerhalb des Hosts
-        self.assertEqual(self.warnungen(pg, published={"5432": ["127.0.0.1:5432 (nur lokal – vermutlich hinter "
-                                                                "einem Reverse Proxy auf dem Host)"]}), [])
-        self.assertEqual(self.warnungen(pg, published={"5432": ["::1:5432 (nur lokal)"]}), [])
+        self.assertEqual(self.warnungen(pg, published={"5432": ["127.0.0.1:5432"]}), [])
+        self.assertEqual(self.warnungen(pg, published={"5432": ["::1:5432"]}), [])
 
     def test_host_netzwerk_und_lan(self):
         redis = proc(1, "/usr/local/bin/redis-server", ports={"6379": "alle"})

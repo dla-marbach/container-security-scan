@@ -333,6 +333,34 @@ class Kommandozeile(unittest.TestCase):
         self.assertEqual(rc, 2)
         self.assertIn("Host: UNVOLLSTÄNDIG: /usr/sbin/nginx -T fehlgeschlagen", out)
 
+    def test_loopback_zweifel_aus_den_prozessen_des_hosts(self):
+        # an 127.0.0.1 veröffentlichte Ports zählen nur mit einem Proxy auf dem Host davor – außer die Prozesse des
+        # Hosts sind nicht vollständig lesbar (ein Proxy dort bliebe unerkannt): dann im Zweifel erreichbar
+        db = os.path.join(self.tmp, "db")
+        os.makedirs(db, exist_ok=True)
+        gesehen = []
+
+        def scan(name, a, via=None, urls=None, bekannt=None, anlass=None):
+            gesehen.append(a.loopback_zweifel)
+            return 0, [], None, {}
+        gesperrt = scanner.HOST_NICHT_LESBAR + " (3; Skript nicht als root?) – Reverse Proxys auf dem Host ggf. " \
+                                               "nicht erkannt"
+        for warnungen, erwartet in (([], ""), ([gesperrt], scanner.HOST_NICHT_LESBAR)):
+            # Gesamtlauf; Auswahl: Erreichbarkeit über alle Container, dann der Scan
+            for argv, anzahl in ((["--alle-container"], 1), (["--container", "web"], 2)):
+                gesehen[:] = []
+                with mock.patch.object(scanner, "scan_container", side_effect=scan), \
+                        mock.patch.object(scanner, "erreichbarkeit_pruefen",
+                                          side_effect=lambda n, a, *x: gesehen.append(a.loopback_zweifel)
+                                          or (None, [], None, {})), \
+                        mock.patch.object(scanner, "docker_lage", return_value=([{"Id": "abc", "Name": "/web"}], {})), \
+                        mock.patch.object(scanner, "container_liste", return_value=(["web"], [], {})), \
+                        mock.patch.object(scanner, "host_proxys", return_value=([], [], warnungen, [], {})), \
+                        mock.patch.object(scanner, "log"), mock.patch("sys.stdout", new_callable=io.StringIO), \
+                        mock.patch.object(sys, "argv", ["x", "--db", db] + argv + [self.tmp]):
+                    self.assertEqual(scanner.main(), 0)
+                self.assertEqual(gesehen, [erwartet] * anzahl, (warnungen, argv))
+
     def auswahl(self, args, infos, public, rest, gruppen, backends, host=([], [], [], [], {}), fehler=(),
                 ziel_urls=None):
         """main() mit Einzelscan bzw. --container: Erreichbarkeit über alle Container (erreichbarkeit_pruefen),

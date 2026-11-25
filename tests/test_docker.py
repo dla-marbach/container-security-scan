@@ -5,14 +5,17 @@ Szenario (Lauf mit --alle-container):
   veröffentlichten Port, einmal direkt, einmal über eine Variable (set $backend; proxy_pass $backend), dazu ein
   nicht auswertbares Ziel (proxy_pass http://$host:…): ein weiterer Nachbar gilt im Zweifel als erreichbar (dieselbe
   Rückfallregel wie bei Traefik, HAProxy u.a.)
-- Dienst im Netzwerk-Namespace eines anderen Containers (network_mode: container:), der den Port veröffentlicht
+- Dienst im Netzwerk-Namespace eines anderen Containers (network_mode: container:), der den Port an 127.0.0.1
+  veröffentlicht: ohne Proxy auf dem Host davor nicht erreichbar (als root; ohne root sind die Prozesse des Hosts
+  nicht vollständig lesbar: im Zweifel erreichbar)
 - Dienst in einem eigenen Netz ohne veröffentlichten Port: wird mitgeprüft, gilt als intern
-- Gateway in Node.js (veröffentlichter Port): Ziel-URL in der Umgebung (API_URL), offene Verbindungen zu einem
-  weiteren Dienst und zu Redis – die Ziele gelten als öffentlich, Redis nicht (Datenbank/Cache)
+- Gateway in Node.js (veröffentlichter Port, mit nginx auf dem Host an 127.0.0.1): Ziel-URL in der Umgebung
+  (API_URL), offene Verbindungen zu einem weiteren Dienst und zu Redis – die Ziele gelten als öffentlich, Redis
+  nicht (Datenbank/Cache)
 - nur wenn nginx auf dem Host installiert ist: nginx direkt auf dem Host (eigene Konfiguration, ohne root)
   vor einem Dienst über die Container-IP, ohne veröffentlichten Port, und über 127.0.0.1 vor Diensten in zwei
-  Containern im Host-Netzwerk (einer nur auf Loopback) und vor dem Gateway (Port auf 127.0.0.1 veröffentlicht):
-  jeder Port nur beim Container, der dort lauscht
+  Containern im Host-Netzwerk (einer nur auf Loopback) und vor dem Gateway (Port auf 127.0.0.1 veröffentlicht,
+  erreichbar über diesen Proxy): jeder Port nur beim Container, der dort lauscht
 - gehärteter Node.js-Container (read_only, cap_drop: ALL, no-new-privileges, Benutzer node) mit npm-Paketen in
   Verzeichnissen, die nur node lesen darf (im Image und in einem Bind-Mount): root im Container darf dort nicht
   hinein, der Scanner liest dann passiv von außen (docker export, docker cp) und ist trotzdem vollständig
@@ -95,7 +98,8 @@ class Integration(unittest.TestCase):
         docker("build", "-q", "-t", cls.klein, bau, timeout=600)
         docker("run", "-d", "--name", cls.node, "--network", cls.net, NODE_IMAGE, "node", "-e", NODE_SERVER % 3000)
         docker("run", "-d", "--name", cls.varnode, "--network", cls.net, NODE_IMAGE, "node", "-e", NODE_SERVER % 3001)
-        docker("run", "-d", "--name", cls.proxy, "--network", cls.net, "-p", "127.0.0.1::8080",
+        # Proxy auf allen Adressen veröffentlicht (Port zufällig): an 127.0.0.1 nur mit Proxy auf dem Host erreichbar
+        docker("run", "-d", "--name", cls.proxy, "--network", cls.net, "-p", "8080",
                "-v", conf + ":/etc/nginx/eigen/proxy.conf:ro", NGINX_IMAGE,
                "nginx", "-c", "/etc/nginx/eigen/proxy.conf", "-g", "daemon off;")
         docker("run", "-d", "--name", cls.nachbar, "--network", cls.net, cls.klein, *klein_server(3003))
@@ -128,7 +132,8 @@ class Integration(unittest.TestCase):
         docker("run", "-d", "--name", cls.hart, "--network", cls.inet, "--read-only", "--cap-drop", "ALL",
                "--security-opt", "no-new-privileges:true", "--user", "node", "-v", geheim + ":/app/geheim:ro",
                cls.hart, "node", "-e", NODE_SERVER % 3010)
-        docker("run", "-d", "--name", cls.gw, "--network", cls.gnet, "-p", "127.0.0.1::3007",
+        # Gateway an 127.0.0.1 nur mit nginx auf dem Host davor (sonst als root nicht erreichbar, seine Ziele auch nicht)
+        docker("run", "-d", "--name", cls.gw, "--network", cls.gnet, "-p", "127.0.0.1::3007" if HOST_NGINX else "3007",
                "-e", "API_URL=http://%s:3008/v1" % cls.api, NODE_IMAGE, "node", "-e", GATEWAY % (cls.ziel, cls.redis))
         cls.alle = (cls.node, cls.varnode, cls.proxy, cls.nachbar, cls.vpn, cls.mit, cls.intern,
                     cls.hinterhost, cls.api, cls.ziel, cls.redis, cls.gw, cls.hart)
@@ -244,7 +249,11 @@ class Integration(unittest.TestCase):
 
     def test_gemeinsamer_netzwerk_namespace(self):
         self.assertIn("Port 3004/tcp (alle) veröffentlicht als 127.0.0.1:", self.bericht(self.mit))
-        self.assertIn("(über Container %s)" % self.vpn, self.bericht(self.mit))
+        # nur an 127.0.0.1, kein Proxy auf dem Host davor: als root nicht erreichbar, sonst im Zweifel erreichbar
+        self.assertRegex(self.bericht(self.mit), r"Port 3004/tcp \(alle\) veröffentlicht als 127\.0\.0\.1:\d+ \(über "
+                         r"Container %s, nur lokal, %s\)" % (re.escape(self.vpn), "kein Proxy auf dem Host davor erkannt"
+                                                            if os.geteuid() == 0 else "im Zweifel erreichbar: Prozesse "
+                                                            "auf dem Host nicht vollständig lesbar"))
         self.assertIn("Prozess in einem Container mit demselben Netzwerk (%s)" % self.mit, self.bericht(self.vpn))
         self.assertNotIn("unbekannter Dienst", self.bericht(self.vpn))
 
@@ -264,6 +273,9 @@ class Integration(unittest.TestCase):
             for ct in (self.hostlo, self.hostnetz):
                 self.assertIn("%s (%d, %d)" % (ct, LOOPBACK_PORT, HOSTNETZ_PORT), host[0])
         self.assertIn("Port 3007/tcp (alle) veröffentlicht als 127.0.0.1:", self.bericht(self.gw))
+        if os.geteuid() == 0:   # an 127.0.0.1 veröffentlicht: erreichbar über nginx auf dem Host
+            self.assertRegex(self.bericht(self.gw), r"Port 3007/tcp \(alle\) veröffentlicht als 127\.0\.0\.1:\d+ "
+                                                    r"\(nur lokal\), öffentlich über nginx:18099 auf dem Host")
         self.assertIn("Port %d/tcp (alle) direkt im Host-Netzwerk erreichbar" % HOSTNETZ_PORT, self.bericht(self.hostnetz))
         self.assertIn("Port 3006/tcp (alle) öffentlich über nginx:18099 auf dem Host", self.bericht(self.hinterhost))
         # Container im Host-Netzwerk, nur auf Loopback: über proxy_pass http://127.0.0.1:… trotzdem erreichbar
