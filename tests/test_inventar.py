@@ -163,6 +163,42 @@ class Anwendungspakete(unittest.TestCase):
             ("sabre/dav", "/var/www/html/3rdparty", "/var/www/html/3rdparty/composer/installed.json"),
             ("x/y", "/", "/vendor/composer/installed.json")])
 
+    def test_composer_projektverzeichnis(self):
+        # Projektverzeichnis (ort) aus installed.php (Composer 2, Root-Paket) bzw. der erkannten Nextcloud-Installation;
+        # nie pauschal das Verzeichnis über einem beliebigen vendor-dir
+        ein = lambda name: json.dumps({"packages": [{"name": name, "version": "1.0"}]}).encode()
+        root = lambda pfad: ("<?php return array(\n    'root' => array(\n        'name' => '__root__',\n"
+                             "        'install_path' => %s,\n        'aliases' => array(),\n        'dev' => true,\n"
+                             "    ),\n    'versions' => array(\n        'x/y' => array(\n"
+                             "            'install_path' => __DIR__ . '/../x/y',\n        ),\n    ),\n);\n" % pfad).encode()
+        nc = b"<?php\n$OC_VersionString = '35.0.3';\n$vendor = 'nextcloud';\n"
+        files = {
+            # composer.json in /srv/app mit "vendor-dir": "deps"
+            "/srv/app/deps/composer/installed.json": ein("a/relativ"),
+            "/srv/app/deps/composer/installed.php": root("__DIR__ . '/../../'"),
+            # Pfad ohne gemeinsame Basis schreibt Composer absolut
+            "/opt/libs/composer/installed.json": ein("b/absolut"),
+            "/opt/libs/composer/installed.php": root("'/srv/projekt'"),
+            # Composer 1 bzw. unlesbare installed.php: das vendor-dir selbst
+            "/srv/alt/deps/composer/installed.json": ein("c/ohne"),
+            "/srv/kaputt/deps/composer/installed.json": ein("d/kaputt"),
+            "/srv/kaputt/deps/composer/installed.php": b"<?php return array('versions' => array());",
+            "/srv/quote/deps/composer/installed.json": ein("e/quote"),
+            "/srv/quote/deps/composer/installed.php": root("__DIR__ . '/../\\'../'"),
+            # Nextcloud: 3rdparty/ ist Root-Paket (vendor-dir "."), Projektverzeichnis die Installation
+            "/var/www/html/version.php": nc,
+            "/var/www/html/3rdparty/composer/installed.json": ein("f/nextcloud"),
+            "/var/www/html/3rdparty/composer/installed.php": root("__DIR__ . '/../'"),
+            "/usr/src/nextcloud/version.php": nc,
+            "/usr/src/nextcloud/3rdparty/composer/installed.json": ein("g/kopie"),
+            # 3rdparty ohne Nextcloud darüber: das vendor-dir
+            "/srv/anders/3rdparty/composer/installed.json": ein("h/anders")}
+        result = {c["name"]: c["ort"] for c in scanner.composer_packages(files)}
+        self.assertEqual(result, {"a/relativ": "/srv/app", "b/absolut": "/srv/projekt", "c/ohne": "/srv/alt/deps",
+                                  "d/kaputt": "/srv/kaputt/deps", "e/quote": "/srv/quote/deps",
+                                  "f/nextcloud": "/var/www/html", "g/kopie": "/usr/src/nextcloud",
+                                  "h/anders": "/srv/anders/3rdparty"})
+
     def test_nextcloud_version(self):
         nc = (b"<?php \n$OC_Version = array(35,0,3,2);\n$OC_VersionString = '35.0.3';\n$OC_Edition = '';\n"
               b"$OC_Channel = 'stable';\n$OC_VersionCanBeUpgradedFrom = array (\n  'nextcloud' => \n  array (\n"
@@ -292,6 +328,7 @@ class TarStrom(unittest.TestCase):
             add("app/lib/x.jar", zip_bytes({"META-INF/maven/g/a/pom.properties": "groupId=g\nartifactId=a\nversion=1\n"}))
             add("app/README.md", b"ignoriert")
             add("nc/3rdparty/composer/installed.json", b"{}")
+            add("nc/3rdparty/composer/installed.php", b"<?php")
             add("nc/version.php", b"<?php")
             link = tarfile.TarInfo("app2/package.json")
             link.type, link.linkname = tarfile.LNKTYPE, "app/package.json"
@@ -300,7 +337,8 @@ class TarStrom(unittest.TestCase):
         files, extra = {}, []
         scanner.read_tar(buf, files, extra, prefix="/")
         self.assertEqual(sorted(files), ["/app/package.json", "/app2/package.json", "/etc/os-release",
-                                         "/nc/3rdparty/composer/installed.json", "/nc/version.php"])
+                                         "/nc/3rdparty/composer/installed.json", "/nc/3rdparty/composer/installed.php",
+                                         "/nc/version.php"])
         self.assertEqual(files["/app2/package.json"], files["/app/package.json"])
         self.assertEqual(sorted((c["typ"], c["name"]) for c in extra), [("js-lib", "jquery"), ("maven", "g:a")])
 
@@ -372,16 +410,16 @@ class Dateisuche(unittest.TestCase):
 
     def test_nextcloud_3rdparty_und_version(self):
         # Composer mit anderem vendor-dir (Nextcloud 3rdparty/) und version.php werden übertragen
-        for pfad in ("nc/3rdparty/composer/installed.json", "nc/lib/composer/composer/installed.json",
-                     "nc/version.php", "nc/3rdparty/composer/autoload_real.php"):
+        for pfad in ("nc/3rdparty/composer/installed.json", "nc/3rdparty/composer/installed.php",
+                     "nc/lib/composer/composer/installed.json", "nc/version.php", "nc/3rdparty/composer/autoload_real.php"):
             os.makedirs(os.path.dirname(os.path.join(self.tmp, pfad)), exist_ok=True)
             with open(os.path.join(self.tmp, pfad), "w") as f:
                 f.write("{}")
         rc, _, err = self.suche(self.tmp)
         self.assertEqual((rc, err), (0, ""))
         self.assertEqual(sorted(n[len(self.tmp.lstrip("/")):] for n in self.alle if "/nc/" in n),
-                         ["/nc/3rdparty/composer/installed.json", "/nc/lib/composer/composer/installed.json",
-                          "/nc/version.php"])
+                         ["/nc/3rdparty/composer/installed.json", "/nc/3rdparty/composer/installed.php",
+                          "/nc/lib/composer/composer/installed.json", "/nc/version.php"])
 
     def test_nextcloud_nutzerdaten_nicht_ausgewertet(self):
         # hochgeladene Dateien im Datenverzeichnis (.ocdata) verlassen den Container nicht; daneben alles wie bisher

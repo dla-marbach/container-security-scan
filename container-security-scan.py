@@ -344,7 +344,7 @@ WANTED = re.compile(r"""^/(etc/os-release|usr/lib/os-release|etc/alpine-release|
                        |lib/apk/db/installed)$
                       |/(package\.json|\.?package-lock\.json)$
                       |\.dist-info/METADATA$|\.egg-info/PKG-INFO$|\.egg-info$
-                      |/composer/installed\.json$|/version\.php$|/pyvenv\.cfg$
+                      |/composer/installed\.(json|php)$|/version\.php$|/pyvenv\.cfg$
                       |/\.[on]cdata$""", re.X)
 
 # Eingebettete JavaScript-Bibliotheken (wie Retire.js): npm-Name, Dateiname (regulärer Ausdruck),
@@ -412,7 +412,8 @@ meldungen=$( { for r in / "$@"; do
     -o -path /var/lib/dpkg/status -o -path '/var/lib/dpkg/status.d/*' -o -path '/var/lib/dpkg/info/*.list' \
     -o -path /lib/apk/db/installed -o -name package.json -o -name .package-lock.json -o -name package-lock.json \
     -o -path '*.dist-info/METADATA' -o -path '*.egg-info/PKG-INFO' -o -name '*.egg-info' \
-    -o -path '*/composer/installed.json' -o -name version.php -o -name '*.jar' -o -name '*.war' -o -name '*.ear' \
+    -o -path '*/composer/installed.json' -o -path '*/composer/installed.php' -o -name version.php \
+    -o -name '*.jar' -o -name '*.war' -o -name '*.ear' \
     -o -name pyvenv.cfg -o -name .ocdata -o -name .ncdata JSGLOBS \) -print 2>&3 || echo "@find $r" >&3
   { find "$r" -xdev \( -path /proc -o -path /sys -o -path /dev \) -prune -o -type f -perm -100 -size +1000k -print \
       2>&3 || echo "@find $r" >&3; } | xargs grep -l 'Go buildinf:' 2>/dev/null
@@ -795,10 +796,26 @@ def npm_packages(files):
     return result
 
 
+def composer_root(files, vendor):
+    """Projektverzeichnis aus <vendor-dir>/composer/installed.php (Composer 2): install_path des Root-Pakets, meist
+    relativ (__DIR__ . '/../../'). Nur gelesen, kein PHP ausgeführt; None, wenn nicht vorhanden oder nicht lesbar."""
+    data = files.get(vendor + "/composer/installed.php")
+    if data is None:
+        return None
+    m = re.search(r"'root'\s*=>\s*(?:array\s*\(|\[)(.*?)'versions'\s*=>", text(data), re.S)
+    m = m and re.search(r"'install_path'\s*=>\s*(__DIR__\s*\.\s*)?'([^'\\]*)'", m.group(1))
+    if not m:
+        return None
+    pfad = (vendor + "/composer" if m.group(1) else "") + m.group(2)
+    return posixpath.normpath(pfad) if pfad.startswith("/") else None
+
+
 def composer_packages(files):
-    """Composer: <vendor-dir>/composer/installed.json. Projektverzeichnis (ort) ist bei vendor/ das Verzeichnis
-    darüber, bei einem anderen vendor-dir (Nextcloud: 3rdparty/ mit "vendor-dir": ".") das vendor-dir selbst: Wo
-    dann die composer.json liegt, ist unbekannt, und darüber kann ein allgemeines Verzeichnis liegen."""
+    """Composer: <vendor-dir>/composer/installed.json. Projektverzeichnis (ort): bei Nextclouds 3rdparty/ (vendor-dir
+    ".") die erkannte Installation (version.php darüber), sonst das Root-Paket aus installed.php, sonst bei vendor/
+    das Verzeichnis darüber, sonst das vendor-dir selbst (nicht pauschal das Verzeichnis darüber: dort kann ein
+    allgemeines Verzeichnis liegen)."""
+    nextcloud = {c["ort"] for c in anwendungen(files) if c["name"] == "nextcloud"}
     result = []
     for path, data in files.items():
         vendor = path[:-len("/composer/installed.json")]
@@ -807,7 +824,11 @@ def composer_packages(files):
         d = load_json(data)
         pkgs = d.get("packages", []) if isinstance(d, dict) else (d or [])   # Composer 2 bzw. 1
         dev = set(d.get("dev-package-names", [])) if isinstance(d, dict) else set()
-        ort = posixpath.dirname(vendor) if posixpath.basename(vendor) == "vendor" else vendor
+        if posixpath.basename(vendor) == "3rdparty" and posixpath.dirname(vendor) in nextcloud:
+            ort = posixpath.dirname(vendor)
+        else:
+            ort = composer_root(files, vendor) \
+                or (posixpath.dirname(vendor) if posixpath.basename(vendor) == "vendor" else vendor)
         for p in pkgs:
             if isinstance(p, dict) and p.get("name") and p.get("version"):
                 result.append(comp("composer", p["name"], p["version"], ort, dev=p["name"] in dev, datei=path))
