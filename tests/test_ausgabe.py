@@ -72,17 +72,17 @@ class Bericht(unittest.TestCase):
         self.services = [{"label": "node:3000", "name": "node", "version": "20.1.0", "exposed": True,
                           "description": "Port 3000/tcp (alle) veröffentlicht als 0.0.0.0:3000"}]
 
-    def bericht(self, nur_behebbare=False, known=None, problems=(), alle=False, warnungen=()):
+    def bericht(self, nur_behebbare=False, problems=(), alle=False, warnungen=()):
         path = os.path.join(self.tmp, "b.md")
         how = {"pkgdb": "dpkg", "files": "find/tar", "procs": "im Container", "os_owned": 0, "warnungen": list(warnungen)}
         w = web(raw=["--- nginx -T (Auszug)\nserver {"])
         stale = proc(5, "/usr/sbin/nginx", maps={"/usr/lib/libssl.so.3 (deleted)", "/dev/zero (deleted)"})
         with mock.patch.object(scanner, "run", side_effect=fake_run):
             bewertet = scanner.befunde_bewerten([dict(f) for f in self.findings], self.services, (), nur_behebbare,
-                                                known, how["warnungen"])
+                                                how["warnungen"])
             scanner.write_report(
                 path, FakeContainer(), DEBIAN, [self.p1, self.p2, self.p3], self.services, {"5": stale}, w, how,
-                bewertet, {"problems": list(problems), "text": "OSV, Stand heute"}, alle, nur_behebbare, known)
+                bewertet, {"problems": list(problems), "text": "OSV, Stand heute"}, alle, nur_behebbare)
             rows, relevant = bewertet[:2]
         with open(path, encoding="utf-8") as f:
             return rows, relevant, f.read()
@@ -102,11 +102,13 @@ class Bericht(unittest.TestCase):
         self.assertIn("### Webserver-Konfiguration", text)
         self.assertIn("## Befunde (6 von 6", self.bericht(alle=True)[2])
 
-    def test_nur_behebbare_und_neu(self):
-        _, relevant, text = self.bericht(nur_behebbare=True, known={("express", "4.0.0", "CVE-1")})
-        self.assertEqual([(r["id"], r["neu"]) for r in relevant], [("CVE-3", True), ("CVE-1", False)])
-        self.assertIn("Davon **1 neu** seit dem letzten Lauf.", text)
-        self.assertIn("- NEU: **CVE-3**", text)
+    def test_nur_behebbare(self):
+        # relevante Funde nach Priorität und Schwere, ohne Markierung "NEU"
+        _, relevant, text = self.bericht(nur_behebbare=True)
+        self.assertEqual([r["id"] for r in relevant], ["CVE-1", "CVE-3"])
+        self.assertIn("- **CVE-1**", text)
+        self.assertNotIn("NEU", text)
+        self.assertNotIn("seit dem letzten Lauf", text)
         self.assertIn("; nur mit verfügbarem Fix", text)
 
     def test_probleme_und_warnungen_stehen_oben(self):
@@ -230,7 +232,7 @@ class Sbom(unittest.TestCase):
 
 
 class Gesamtlauf(unittest.TestCase):
-    """scan_container mit nachgebildetem Container: Rückgabewerte 0/1/2, Dateien, bekannte Funde."""
+    """scan_container mit nachgebildetem Container: Rückgabewerte 0/1/2, Dateien, Konsole."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -253,7 +255,7 @@ class Gesamtlauf(unittest.TestCase):
         self.problems = []
         self.info = {}
 
-    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, via_urls=None, bekannt=None, anlass=None,
+    def lauf(self, ports=None, fremd=None, via=None, keine_prozesse=False, via_urls=None, anlass=None,
              prozess=None, has_sh=False, **web_kw):
         """scan_container; liefert (Rückgabewert, Backends, Bericht), Konsole in self.konsole, Webadressen der Ziele
         in self.ziel_urls."""
@@ -276,7 +278,7 @@ class Gesamtlauf(unittest.TestCase):
         for p in patches:
             p.start()
         try:
-            ergebnis = scanner.scan_container("app", self.a, via, via_urls, bekannt, anlass)
+            ergebnis = scanner.scan_container("app", self.a, via, via_urls, anlass)
             self.konsole = scanner.sys.stdout.getvalue()
             self.ziel_urls = ergebnis[3]
             return ergebnis[:3]
@@ -293,18 +295,16 @@ class Gesamtlauf(unittest.TestCase):
             self.assertIn("**CVE-2026-9** (HIGH) in libssl3", f.read())
         with open(base + ".sha256") as f:
             self.assertEqual(f.read().split()[0], scanner.datei_sha256(base + ".md"))
-        self.assertEqual(scanner.json_datei(os.path.join(self.a.ausgabe, "bekannt_app.json")),
-                         [["libssl3", "3.0.15-1~deb12u1", "CVE-2026-9"]])
 
     def test_ohne_bericht_und_sbom(self):
-        # Standard (Wrapper, Rundeck): nur der Stand für "NEU", alles Nötige auf der Konsole
+        # Standard (Wrapper, Rundeck): keine Dateien, alles Nötige auf der Konsole
         self.a.bericht = self.a.sbom = False
         code, _, base = self.lauf()
         self.assertEqual(code, 1)
-        self.assertEqual(os.listdir(self.a.ausgabe), ["bekannt_app.json"])
+        self.assertEqual(os.listdir(self.a.ausgabe), [])
         self.assertEqual(self.konsole.splitlines()[:2], ["", "=== app ==="])     # Überschrift, davor Leerzeile
         self.assertEqual(self.konsole.splitlines()[-4:], [
-            "RELEVANTE SCHWACHSTELLEN – 1 Befunde, davon 1 relevant (1 neu)",
+            "RELEVANTE SCHWACHSTELLEN – 1 Befunde, davon 1 relevant",
             "Image example/app:1 – Debian 12",
             "Dienst nginx, Port 80: veröffentlicht als 0.0.0.0:80",
             "CVE-2026-9 (HIGH) in libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u2 – genutzt von nginx:80"])
@@ -350,7 +350,7 @@ class Gesamtlauf(unittest.TestCase):
         code, _, base = self.lauf()
         self.assertEqual(code, 1)
         zeilen = self.konsole.splitlines()
-        self.assertTrue(any(z.startswith("RELEVANTE SCHWACHSTELLEN – 3 Befunde, davon 1 relevant (1 neu), P1 ohne "
+        self.assertTrue(any(z.startswith("RELEVANTE SCHWACHSTELLEN – 3 Befunde, davon 1 relevant, P1 ohne "
                                          "Schweregrad: 2 – Bericht:") for z in zeilen), zeilen)
         i = zeilen.index("P1 ohne Schweregrad (nicht gezählt, bitte selbst einschätzen):")
         self.assertEqual(zeilen[i + 1:], [
@@ -361,7 +361,7 @@ class Gesamtlauf(unittest.TestCase):
                           "**CVE-2026-10** (UNKNOWN)", f.read())
         self.a.nur_behebbare = True
         self.lauf()
-        self.assertIn("davon 1 relevant (0 neu), P1 ohne Schweregrad: 1", self.konsole)
+        self.assertIn("davon 1 relevant, P1 ohne Schweregrad: 1", self.konsole)
         self.assertNotIn("CVE-2026-11", self.konsole)
 
     def test_nicht_unterstuetztes_os_ergibt_2_mit_klarer_meldung(self):
@@ -414,25 +414,11 @@ class Gesamtlauf(unittest.TestCase):
         self.assertNotIn("## Webadressen", bericht)
         self.assertNotIn("Webadressen:", self.konsole)
 
-    def test_erneute_pruefung_im_selben_lauf_behaelt_neu(self):
-        # zweite Prüfung desselben Containers im Lauf (neuer Grund bzw. neue Webadressen): Vergleich mit dem Stand
-        # vor dem Lauf, sonst wären die Funde der ersten Prüfung schon "bekannt" und der endgültige Bericht ohne NEU
-        os.makedirs(self.a.ausgabe)
-        with open(os.path.join(self.a.ausgabe, "bekannt_app.json"), "w") as f:
-            f.write("[]")           # voriger Lauf ohne relevante Funde
-        bekannt = {}
-        for anlass in (None, "eines neuen Wegs über traefik:80 in proxy"):
-            code, _, base = self.lauf(bekannt=bekannt, anlass=anlass)
-            self.assertIn("NEU: CVE-2026-9 (HIGH) in libssl3", self.konsole)
-            with open(base + ".md", encoding="utf-8") as f:
-                self.assertIn("Davon **1 neu** seit dem letzten Lauf.", f.read())
-        self.assertEqual(bekannt, {"app": set()})
-        # Überschrift der erneuten Prüfung mit dem Anlass
+    def test_erneute_pruefung_im_selben_lauf(self):
+        # zweite Prüfung desselben Containers im Lauf (neuer Grund bzw. neue Webadressen): Überschrift mit dem Anlass
+        self.lauf(anlass="eines neuen Wegs über traefik:80 in proxy")
         self.assertEqual(self.konsole.splitlines()[1], "=== app (erneute Prüfung wegen eines neuen Wegs über "
                                                        "traefik:80 in proxy; ersetzt den Abschnitt oben) ===")
-        # nächster Lauf: bekannt aus der Datei
-        self.lauf(bekannt={})
-        self.assertNotIn("NEU:", self.konsole)
 
     def test_port_eines_mitnutzenden_containers(self):
         # vpn veröffentlicht 8080, darauf lauscht ein Prozess im Container "mit" (network_mode: service:vpn):
@@ -537,23 +523,35 @@ class Gesamtlauf(unittest.TestCase):
         self.lauf()
         self.assertIn("\nCVE-2026-9 (HIGH) in libssl3 3.0.15-1~deb12u1 – behoben in 3.0.15-1~deb12u2 – "
                       "genutzt von nginx:80\n", self.konsole)
-        self.assertNotIn("NEU:", self.konsole)     # erster Lauf ohne Vergleich: keine Markierung
-        with open(os.path.join(self.a.ausgabe, "bekannt_app.json"), "w") as f:
-            json.dump([], f)                        # letzter Lauf ohne relevante Funde
+
+    def test_kein_stand_des_letzten_laufs(self):
+        # keine Datei bekannt_<container>.json, keine Markierung "NEU" und keine Zählung "neu"; eine Datei aus
+        # früheren Versionen wird nicht gelesen und bleibt unverändert
+        self.a.bericht = self.a.sbom = False
+        os.makedirs(self.a.ausgabe)
+        alt = os.path.join(self.a.ausgabe, "bekannt_app.json")
+        with open(alt, "w") as f:
+            f.write("[]")           # voriger Lauf ohne relevante Funde
+        for _ in range(2):
+            self.assertEqual(self.lauf()[0], 1)
+            self.assertNotIn("NEU", self.konsole)
+            self.assertNotRegex(self.konsole, r"\bneu\b")
+            self.assertIn("RELEVANTE SCHWACHSTELLEN – 1 Befunde, davon 1 relevant\n", self.konsole)
+            self.assertEqual(os.listdir(self.a.ausgabe), ["bekannt_app.json"])
+            with open(alt) as f:
+                self.assertEqual(f.read(), "[]")
+        os.remove(alt)
         self.lauf()
-        self.assertIn("NEU: CVE-2026-9 (HIGH) in libssl3", self.konsole)
-        self.lauf()     # danach bekannt: nicht mehr neu
-        self.assertIn("\nCVE-2026-9 (HIGH) in libssl3", self.konsole)
-        self.assertNotIn("NEU:", self.konsole)
+        self.assertEqual(os.listdir(self.a.ausgabe), [])
 
     def test_behoben_ergibt_0(self):
         self.files["/var/lib/dpkg/status"] = self.files["/var/lib/dpkg/status"].replace(b"deb12u1", b"deb12u2")
         self.assertEqual(self.lauf()[0], 0)
+        self.assertRegex(self.konsole, r"\nOK – 0 Befunde, davon 0 relevant – Bericht: ")
 
-    def test_unvollstaendig_ergibt_2_und_ueberschreibt_bekannte_funde_nicht(self):
+    def test_unvollstaendig_ergibt_2(self):
         self.problems = ["Dateien im Container nicht vollständig lesbar"]
         self.assertEqual(self.lauf()[0], 2)
-        self.assertFalse(os.path.exists(os.path.join(self.a.ausgabe, "bekannt_app.json")))
 
     def test_veraltete_daten_ergeben_2(self):
         with open(os.path.join(self.db, "stand.json"), "w") as f:
@@ -581,6 +579,9 @@ class Gesamtlauf(unittest.TestCase):
         self.kev({"CVE-2025-27363": "2025-05-06"})
         code, _, base = self.lauf()
         self.assertEqual(code, 1)
+        # Klammer in der Ergebniszeile nur mit der Zahl der aktiv ausgenutzten
+        self.assertIn("RELEVANTE SCHWACHSTELLEN – 1 Befunde, davon 1 relevant (1 aktiv ausgenutzt) – Bericht: ",
+                      self.konsole)
         with open(base + ".md", encoding="utf-8") as f:
             text = f.read()
         self.assertIn("**CVE-2025-27363** (MEDIUM KEV) in libfreetype6", text)
@@ -614,19 +615,15 @@ class Gesamtlauf(unittest.TestCase):
         self.assertIn("**0 relevante Schwachstellen**", text)
         self.assertIn("**2 gefährliche Einstellungen des Containers**", text)
         self.assertIn("- **CONF-PRIVILEGED**: --privileged", text)
-        self.assertIn("GEFÄHRLICHE EINSTELLUNGEN – 0 Befunde, davon 0 relevant (0 neu), 2 gefährliche Einstellungen – ",
+        self.assertIn("GEFÄHRLICHE EINSTELLUNGEN – 0 Befunde, davon 0 relevant, 2 gefährliche Einstellungen – ",
                       self.konsole)
         self.assertIn("CONF-SOCKET: /var/run/docker.sock eingebunden", self.konsole)
-        self.assertEqual(scanner.json_datei(os.path.join(self.a.ausgabe, "bekannt_app.json")),
-                         [["app", "", "CONF-PRIVILEGED"], ["app", "/var/run/docker.sock", "CONF-SOCKET"]])
-        self.lauf()     # bekannt: nicht neu
-        self.assertNotIn("NEU:", self.konsole)
-        # weiterer Mount mit derselben Kennung ist neu
+        # weiterer Mount mit derselben Kennung: eigene Zeile
         self.info["Mounts"].append({"Type": "bind", "Source": "/run/containerd/containerd.sock", "Destination": "/c",
                                     "RW": False})
         self.lauf()
-        self.assertIn("NEU: CONF-SOCKET: /run/containerd/containerd.sock", self.konsole)
-        self.assertNotIn("NEU: CONF-SOCKET: /var/run/docker.sock", self.konsole)
+        self.assertIn("\nCONF-SOCKET: /run/containerd/containerd.sock", self.konsole)
+        self.assertIn("\nCONF-SOCKET: /var/run/docker.sock", self.konsole)
 
     def test_ausnahme_fuer_einstellung(self):
         self.info = {"HostConfig": {"PidMode": "host"}, "Mounts": []}

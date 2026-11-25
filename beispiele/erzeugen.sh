@@ -19,7 +19,7 @@ andere=$(comm -23 <(docker ps -q --no-trunc | sort) <("${COMPOSE[@]}" ps -q | so
 [ -z "$andere" ] || { echo "FEHLER: Außer der Testumgebung laufen weitere Container ($(docker inspect -f \
   '{{.Name}}' $andere | tr -d / | xargs)) – stoppen oder einen eigenen Docker-Daemon verwenden" >&2; exit 2; }
 
-rm -f beispiele/scan_* beispiele/bekannt_*.json beispiele/ausgabe.txt
+rm -f beispiele/scan_* beispiele/ausgabe.txt
 rc=0
 python3 -I container-security-scan.py --db daten --alle-container beispiele --nur-behebbare --bericht --sbom \
     > beispiele/ausgabe.txt 2>&1 || rc=$?
@@ -27,7 +27,7 @@ python3 -I container-security-scan.py --db daten --alle-container beispiele --nu
 
 # Berichte aller Container, aber nur eine SBOM (app-node) als Beispiel des Formats: die übrigen wären groß
 # (PHP über 1000 Komponenten) und blähten jeden Diff auf; keine .sha256. Dateinamen ohne Zeitpunkt (feste Links)
-rm -f beispiele/bekannt_*.json beispiele/scan_*.sha256
+rm -f beispiele/scan_*.sha256
 for f in beispiele/scan_*; do
   mv "$f" "$(sed -E 's/_[0-9]{8}_[0-9]{6}//' <<<"$f")"
 done
