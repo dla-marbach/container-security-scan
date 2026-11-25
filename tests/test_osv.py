@@ -48,6 +48,11 @@ class Ziel(unittest.TestCase):
         self.assertEqual(scanner.osv_target(C("maven", "a", "1", maven_key="*:log4j-core"), DEBIAN)[2], {"*:log4j-core"})
         self.assertIsNone(scanner.osv_target(C("maven", "core", "1", maven_key="*:core"), DEBIAN))
         self.assertEqual(scanner.osv_target(C("go", "golang.org/x/net", "v0.1.0"), DEBIAN)[0], "Go")
+        self.assertEqual(scanner.osv_target(C("rubygems", "rack", "3.1.7", quelle="GEM"), DEBIAN)[:1], ("RubyGems",))
+        self.assertEqual(scanner.osv_target(C("rubygems", "x", "1.0", quelle="GIT"), DEBIAN)[4], scanner.cmp_gem)
+        self.assertIsNone(scanner.osv_target(C("rubygems", "my_plugin", "1.0", quelle="PATH"), DEBIAN))
+        self.assertIn("RubyGems", scanner.OSV_ECOSYSTEMS)
+        self.assertIn("RubyGems", scanner.DATEN_OEKOSYSTEME)
 
     def test_laufzeiten_nur_ohne_os_paket(self):
         self.assertEqual(scanner.osv_target(C("runtime", "node", "20.1.0"), DEBIAN)[:1] + (
@@ -91,6 +96,30 @@ class Abgleich(Tmp):
         self.assertEqual(missing, ["npm"])
         _, _, missing, _ = scanner.osv_scan([C("os-paket", "bash", "5")], {"id": "fedora", "version": "40"}, [self.tmp])
         self.assertEqual(missing, ["(OS fedora wird nicht unterstützt)"])
+
+    def test_rubygems(self):
+        schreibe_jsonl(self.tmp, "RubyGems", [
+            eintrag("GHSA-r1", "RubyGems", "rack", [{"introduced": "3.1.0"}, {"fixed": "3.1.8"}], aliases=["CVE-2026-50"],
+                    database_specific={"severity": "HIGH"}),
+            eintrag("GHSA-r2", "RubyGems", "nokogiri", [{"introduced": "0"}, {"fixed": "1.16.5"}]),
+            eintrag("GHSA-r3", "RubyGems", "actionpack", [{"introduced": "7.2.0.beta1"}, {"fixed": "7.2.1.1"}],
+                    severity=[{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}])])
+        comps = [C("rubygems", "rack", "3.1.7"), C("rubygems", "nokogiri", "1.16.7"), C("rubygems", "actionpack", "7.2.1")]
+        findings, _, missing, _ = scanner.osv_scan(comps, DEBIAN, [self.tmp])
+        self.assertEqual(missing, [])
+        self.assertEqual(sorted((f["comp"]["name"], f["id"], f["sev"], f["fix"]) for f in findings),
+                         [("actionpack", "GHSA-r3", "CRITICAL", "7.2.1.1"), ("rack", "CVE-2026-50", "HIGH", "3.1.8")])
+
+    def test_rubygems_daten_fehlen_nur_mit_gems(self):
+        # Übergangszeit nach dem Update, bevor die Action RubyGems in den Branch daten schreibt: unvollständig (2)
+        # nur, wenn tatsächlich Gems gefunden wurden
+        schreibe_jsonl(self.tmp, "npm", [])
+        self.assertEqual(scanner.osv_scan([C("npm", "a", "1.0.0")], DEBIAN, [self.tmp])[2], [])
+        missing = scanner.osv_scan([C("npm", "a", "1.0.0"), C("rubygems", "rails", "7.2.1")], DEBIAN, [self.tmp])[2]
+        self.assertEqual(missing, ["RubyGems"])
+        problems = scanner.daten_probleme(None, DEBIAN, {"pkgdb": "dpkg"}, {}, [C("os-paket", "bash", "5")], missing,
+                                          None, None)
+        self.assertEqual(problems, ["Daten fehlen für: RubyGems (--db-aktualisieren --oekosysteme RubyGems)"])
 
     def test_mehrere_ecosysteme_mehrere_verzeichnisse(self):
         zweit = os.path.join(self.tmp, "lokal")

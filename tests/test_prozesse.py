@@ -160,6 +160,19 @@ class Versionsabfrage(unittest.TestCase):
         self.assertEqual(sorted(aufrufe), [["/usr/local/apache2/bin/httpd", "-V"], ["apache2", "-V"], ["httpd", "-V"]])
         self.assertIn(("apache-httpd", "2.4.71"), [(x["name"], x["version"]) for x in comps])
 
+    def test_ruby_version(self):
+        # ruby --version (RUBYOPT im Container geleert); Patchlevel älterer Versionen (2.7.8p225) abgeschnitten
+        self.assertIn("RUBYOPT=", scanner.DOCKER_ENV)
+        for ausgabe, version in (("ruby 3.3.6 (2024-11-05 revision 75015d4c1f) [x86_64-linux]\n", "3.3.6"),
+                                 ("ruby 2.7.8p225 (2023-03-30 revision 1f4d455848) [x86_64-linux]\n", "2.7.8")):
+            c = mock.Mock(user="0")
+            c.probe.return_value = (0, ausgabe)
+            comps = scanner.probe_runtimes(c, {"1": proc(1, "/usr/local/bin/ruby")}, {})
+            self.assertIn(("ruby", version), [(x["name"], x["version"]) for x in comps])
+            self.assertIn(["/usr/local/bin/ruby", "--version"], [cmd for (cmd, user), kw in c.probe.call_args_list])
+            ruby = [x for x in comps if x["name"] == "ruby"][0]
+            self.assertEqual(scanner.osv_target(ruby, {"id": "debian", "version": "12"})[:1], ("Bitnami",))
+
     def test_host_komponenten(self):
         version = (0, '[{"Name": "Engine", "Version": "29.1.0"}, {"Name": "containerd", "Version": "2.2.0"}]')
         for lesbar, name in ((True, "SUSE Linux Enterprise Server 15 SP7"), (False, "")):

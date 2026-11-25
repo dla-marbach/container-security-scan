@@ -239,8 +239,9 @@ auch als P4 – Programme wie ImageMagick oder ffmpeg laufen nur bei Bedarf. Der
 aufgeführt, zum selbst Einschätzen) und Lücken, die laut Titel nur Windows betreffen.
 
 „Genutzt von“ ermittelt der Scan aus `/proc` (Programm, geladene Bibliotheken, offene Dateien und Ports) und für
-npm/Composer/PyPI/Nextcloud über das Projektverzeichnis (Arbeitsverzeichnis, Skriptpfad, venv, Docroot des
-Webservers).
+npm/Composer/PyPI/RubyGems/Nextcloud über das Projektverzeichnis (Arbeitsverzeichnis, Skriptpfad, venv, Docroot des
+Webservers). Gems aus der `Gemfile.lock`, die nirgends im Container installiert sind (keine
+`specifications/<name>-<version>.gemspec`, meist die Gruppen development/test), gelten als Entwicklungsabhängigkeit.
 
 Schweregrad: Einstufung der Distribution, sonst der Quelle, sonst CVSS.
 Fehlt er, gilt die Bewertung derselben CVE aus den Bitnami- bzw. Alpine-Daten, markiert mit `*` (`CRITICAL*`).
@@ -419,11 +420,12 @@ sudo python3 -I $C --db $DB --bericht --alle --container 'app-*' <ausgabeverzeic
 | npm | `package.json` | npm |
 | Composer | `<vendor-dir>/composer/installed.json` (`vendor/`, auch z. B. Nextclouds `3rdparty/`) | Packagist |
 | PyPI | `*.dist-info`, `*.egg-info` (auch venvs) | PyPI |
+| RubyGems | `Gemfile.lock` | RubyGems |
 | Java | JAR/WAR/EAR, auch verschachtelt | Maven |
 | Go | Build-Info in Go-Programmen | Go |
 | JavaScript | eingebettete Bibliotheken (jQuery, Bootstrap, Moment, Vue …) | npm |
 | Anwendungen | Nextcloud (`version.php`) | OSV Bitnami |
-| Laufzeiten, Server | Version von node, php, php-fpm, python, java, nginx, apache, mariadb, postgresql | Distribution, sonst (offizielle Images, nginx.org, NodeSource, Sury, mariadb.org) OSV Bitnami |
+| Laufzeiten, Server | Version von node, php, php-fpm, python, ruby, java, nginx, apache, mariadb, postgresql | Distribution, sonst (offizielle Images, nginx.org, NodeSource, Sury, mariadb.org) OSV Bitnami |
 
 Nutzerdaten werden nicht ausgewertet: Dateien im Datenverzeichnis von Nextcloud (mit `.ocdata` bzw. `.ncdata`) lässt der Scan
 mit `find`/`tar` schon im Container weg. Beim passiven Lesen (ohne Werkzeuge oder Leserechte im Container, über
@@ -433,7 +435,9 @@ das Verzeichnis.
 **Daten** (Branch [`daten`](https://github.com/dla-marbach/container-security-scan/tree/daten), täglich von
 [`daten.yml`](.github/workflows/daten.yml) erzeugt, ca. 365 MB): ein Auszug aus den OSV-Exporten mit nur den
 Feldern und Einträgen, die der Abgleich liest (Ergebnisse identisch mit den vollständigen Exporten), dazu Supportende
-(endoflife.date) und KEV-Katalog (CISA). Quellen und Lizenzen:
+(endoflife.date) und KEV-Katalog (CISA). Kommt mit einer neuen Version ein Ökosystem hinzu (z. B. RubyGems), fehlt
+es bis zum nächsten Lauf der Action; Container, in denen der Scan solche Pakete findet, ergeben so lange
+Rückgabewert 2 („Daten fehlen für: RubyGems“). Quellen und Lizenzen:
 [`QUELLEN.md`](https://github.com/dla-marbach/container-security-scan/blob/daten/QUELLEN.md).
 
 ## Rein lesend
@@ -464,8 +468,8 @@ Dafür gibt es z. B. [Trivy](https://trivy.dev), [Grype](https://github.com/anch
 
 Bekannte Grenzen:
 
-- Nicht erkannt: Rust, Ruby, .NET, Tcl, Programme ohne Versionskennung, JavaScript-Bundles ohne Kopfkommentar,
-  Fremdpaketquellen außer den genannten.
+- Nicht erkannt: Rust, .NET, Tcl, Ruby-Gems ohne `Gemfile.lock` (global installiert, Standard-Gems von Ruby),
+  Programme ohne Versionskennung, JavaScript-Bundles ohne Kopfkommentar, Fremdpaketquellen außer den genannten.
 - Welche Pakete eine Anwendung tatsächlich importiert, ist von außen nicht sichtbar.
 - Nextcloud selbst nur so weit, wie der Bitnami-Datensatz Einträge führt (Apps aus dem App Store nur über ihre
   Composer- und npm-Pakete).

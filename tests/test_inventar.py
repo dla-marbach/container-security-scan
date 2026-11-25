@@ -46,6 +46,48 @@ F:usr/lib
 R:libcrypto.so.3
 """
 
+GEMFILE_LOCK = b"""GIT
+  remote: https://github.com/example/redmine_git.git
+  revision: 0123abc
+  specs:
+    redmine_git (0.3.0)
+      rails (>= 7.0)
+
+PATH
+  remote: plugins/my_plugin
+  specs:
+    my_plugin (1.0.0)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    json (2.7.2)
+    net-imap (0.4.10)
+      date
+    nokogiri (1.16.7)
+      racc (~> 1.4)
+    nokogiri (1.16.7-aarch64-linux-gnu)
+    nokogiri (1.16.7-x86_64-linux-gnu)
+    rack (3.1.7)
+    rails (7.2.1)
+      rack (>= 2.2.4)
+    rubocop (1.66.1)
+
+PLATFORMS
+  ruby
+  x86_64-linux
+
+DEPENDENCIES
+  nokogiri (~> 1.16.0)
+  rails (= 7.2.1)
+
+CHECKSUMS
+  rack (3.1.7) sha256=abc
+
+BUNDLED WITH
+   2.5.18
+"""
+
 
 class OsRelease(unittest.TestCase):
     def test_debian_mit_punktversion(self):
@@ -226,6 +268,56 @@ class Anwendungspakete(unittest.TestCase):
         self.assertEqual(result["Django"]["ort"], "/opt/venv/lib/python3.12/site-packages")
         self.assertIn("per OS-Paket installiert", result["requests"]["hinweise"])
 
+    def test_rubygems_aus_gemfile_lock(self):
+        lock = GEMFILE_LOCK
+        bundle = "/home/redmine/redmine/vendor/bundle/ruby/3.3.0"
+        files = {"/home/redmine/redmine/Gemfile.lock": lock,
+                 # Gemfile.lock im Quellcode installierter Gems bzw. einer Git-Quelle: kein Projekt
+                 bundle + "/gems/builder-3.3.0/Gemfile.lock": b"GEM\n  specs:\n    rake (10.0.0)\n",
+                 bundle + "/bundler/gems/rails-0123abc/Gemfile.lock": b"GEM\n  specs:\n    rake (10.0.0)\n"}
+        for spec in ("rails-7.2.1", "rack-3.1.7", "nokogiri-1.16.7-x86_64-linux-gnu", "net-imap-0.4.10"):
+            files["%s/specifications/%s.gemspec" % (bundle, spec)] = b""
+        files["/usr/local/lib/ruby/gems/3.3.0/specifications/default/json-2.7.2.gemspec"] = b""
+        result = {c["name"]: c for c in scanner.rubygems_packages(files)}
+        self.assertEqual(sorted(result), ["json", "my_plugin", "net-imap", "nokogiri", "rack", "rails", "redmine_git",
+                                          "rubocop"])
+        # Plattform abgetrennt, mehrere Plattformen derselben Version nur einmal
+        self.assertEqual([(c["name"], c["version"]) for c in scanner.rubygems_packages(files)
+                          if c["name"] == "nokogiri"], [("nokogiri", "1.16.7")])
+        self.assertEqual({c["ort"] for c in result.values()}, {"/home/redmine/redmine"})
+        self.assertEqual(result["rack"]["datei"], bundle + "/specifications/rack-3.1.7.gemspec")
+        # ohne Spezifikation: development/test (P4); auch vorinstallierte Standard-Gems zählen als installiert
+        self.assertTrue(result["rubocop"]["dev"])
+        self.assertEqual(result["rubocop"]["datei"], "/home/redmine/redmine/Gemfile.lock")
+        self.assertFalse(result["rack"]["dev"] or result["json"]["dev"] or result["nokogiri"]["dev"])
+        # GIT und PATH: nie dev; PATH wird nicht abgeglichen
+        self.assertEqual((result["redmine_git"]["quelle"], result["redmine_git"]["dev"]), ("GIT", False))
+        self.assertEqual((result["my_plugin"]["quelle"], result["my_plugin"]["dev"]), ("PATH", False))
+        self.assertIsNone(scanner.osv_target(result["my_plugin"], {"id": "debian", "version": "12"}))
+
+    def test_rubygems_installation_nicht_erkennbar(self):
+        # weniger als die Hälfte der Gems mit Spezifikation gefunden (anderer Ort): alle zählen als installiert
+        files = {"/app/Gemfile.lock": GEMFILE_LOCK,
+                 "/usr/local/bundle/specifications/rails-7.2.1.gemspec": b""}
+        self.assertFalse(any(c["dev"] for c in scanner.rubygems_packages(files)))
+        self.assertFalse(any(c["dev"] for c in scanner.rubygems_packages({"/app/Gemfile.lock": GEMFILE_LOCK})))
+
+    def test_rubygems_aus_os_paket_ueber_das_paket_geprueft(self):
+        # Spezifikation gehört einem OS-Paket (Debian ruby-rack): Abgleich über das Paket, das Fixes zurückportiert
+        spec = "/usr/share/rubygems-integration/all/specifications/rack-3.1.7.gemspec"
+        files = {"/etc/os-release": b"ID=debian\nVERSION_ID=12\n", "/app/Gemfile.lock": GEMFILE_LOCK, spec: b"",
+                 "/var/lib/dpkg/status": b"Package: ruby-rack\nStatus: install ok installed\nVersion: 3.1.7-1\n",
+                 "/var/lib/dpkg/info/ruby-rack.list": spec.encode() + b"\n"}
+        with mock.patch.object(scanner, "collect_files", return_value=(files, [], "test", [])), \
+                mock.patch.object(scanner, "collect_procs", return_value=({}, "test", {})), \
+                mock.patch.object(scanner, "probe_runtimes", return_value=[]), \
+                mock.patch.object(scanner, "host_components", return_value=[]):
+            comps, how = scanner.inventar_erfassen(mock.Mock())[6:8]
+        gems = sorted(c["name"] for c in comps if c["typ"] == "rubygems")
+        self.assertNotIn("rack", gems)
+        self.assertIn("rails", gems)
+        self.assertEqual(how["os_owned"], 1)
+
 
 class JavaScript(unittest.TestCase):
     def test_version_aus_kopf(self):
@@ -381,6 +473,17 @@ class Dateisuche(unittest.TestCase):
     def test_vollstaendig(self):
         rc, namen, err = self.suche(self.tmp)
         self.assertEqual((rc, len(namen), err), (0, 1, ""))
+
+    def test_gemfile_lock_und_spezifikationen(self):
+        for pfad in ("app/Gemfile.lock", "app/vendor/bundle/ruby/3.3.0/specifications/rack-3.1.7.gemspec",
+                     "ruby/gems/3.3.0/specifications/default/json-2.7.2.gemspec", "app/rack.gemspec"):
+            os.makedirs(os.path.join(self.tmp, posixpath.dirname(pfad)), exist_ok=True)
+            with open(os.path.join(self.tmp, pfad), "w") as f:
+                f.write("x")
+        self.assertEqual(self.suche(self.tmp)[0], 0)
+        gefunden = sorted(n for n in self.alle if scanner.WANTED.search("/" + n.lstrip("/")))
+        self.assertEqual([posixpath.basename(n) for n in gefunden],
+                         ["Gemfile.lock", "package.json", "rack-3.1.7.gemspec", "json-2.7.2.gemspec"])
 
     def test_verschwundene_dateien_sind_kein_fehler(self):
         # während der Suche gelöschte Dateien/Verzeichnisse (wie ein fehlender Pfad): nichts geht verloren
