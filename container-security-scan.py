@@ -92,7 +92,7 @@ from functools import cmp_to_key
 # Einstellungen: Version, Relevanz, Fristen für die Daten
 # ===========================================================================
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
