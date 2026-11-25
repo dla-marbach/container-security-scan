@@ -1,10 +1,10 @@
 {
  "bomFormat": "CycloneDX",
  "specVersion": "1.5",
- "serialNumber": "urn:uuid:d589439a-dfa3-4041-b004-d72ddd5f072b",
+ "serialNumber": "urn:uuid:512829da-5668-4d86-984d-31d6fc8de11a",
  "version": 1,
  "metadata": {
-  "timestamp": "2026-11-25T09:49:02Z",
+  "timestamp": "2026-11-25T09:54:28Z",
   "tools": {
    "components": [
     {
@@ -26,7 +26,7 @@
     },
     {
      "name": "container-security-scan:container-id",
-     "value": "8569898b3cb4afc7568eb80272c9e9d41df936405a9e119f4fcf385b54992a6d"
+     "value": "e60af4eb6d8ee5ddea17a3627bd5f9f8be3f144218247c1a1f27f8989898c1b6"
     },
     {
      "name": "container-security-scan:repo-digest",

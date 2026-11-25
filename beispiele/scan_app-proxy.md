@@ -2,7 +2,7 @@
 
 - Image: nginx:1.31-alpine (sha256:b50897d5c7b1)  
 - OS: Alpine Linux v3.24  
-- Zeitpunkt: 2026-11-25 09:48  
+- Zeitpunkt: 2026-11-25 09:54  
 - Scanner: container-security-scan 1.2.0  
 - Datenbank: OSV, Stand 2026-11-24 13:43 UTC (daten)  
 - Erfassung: OS-Pakete apk; Dateien find/tar im Container (inkl. 1 Volumes); Prozesse im Container (je Prozess-Benutzer)
@@ -19,7 +19,7 @@ Gefährliche Einstellungen des Containers (privileged, Docker-Socket, pid=host �
 
 | Dienst | Programm | Ports / Konfiguration |
 |---|---|---|
-| nginx:80 | nginx 1.31.10 | Port 80/tcp (alle) veröffentlicht als 127.0.0.1:8080 (nur lokal – vermutlich hinter einem Reverse Proxy auf dem Host); Konfiguration: listen 80 server_name shop.example.org root /srv/app/public; Backend http://app-node:3000 -> Container app-node; Backend app-php:9000 -> Container app-php |
+| nginx:80 | nginx 1.31.10 | Port 80/tcp (alle) veröffentlicht als 0.0.0.0:8080, :::8080; Konfiguration: listen 80 server_name shop.example.org root /srv/app/public; Backend http://app-node:3000 -> Container app-node; Backend app-php:9000 -> Container app-php |
 
 ## Webadressen
 
@@ -70,8 +70,8 @@ Host-Komponenten, PHP-Erweiterungen mit eigener Version und Bibliotheken ohne er
 ### Container
 
 ```
-ID:        35e8fd4428ee29987a73970c24aeb4cb8dcc17a0667e9d1ed18073333e76bb7f
-Gestartet: 2026-11-25T09:48:49.490971635Z
+ID:        ae32e7bf0315e9786c39887dc629b5d06037f27510746920aff5e4503c8c281e
+Gestartet: 2026-11-25T09:54:13.184330507Z
 Kommando:  ["/docker-entrypoint.sh"] ["nginx", "-g", "daemon off;"]
 Mounts:    /w/beispiele/umgebung/nginx.conf->/etc/nginx/conf.d/default.conf
 Host:      Kernel 7.0.14-linuxkit
@@ -81,19 +81,19 @@ Host:      Kernel 7.0.14-linuxkit
 
 ```
 PID                 USER                COMMAND
-656                 root                nginx: master process nginx -g daemon off;
-714                 nginx               nginx: worker process
-715                 nginx               nginx: worker process
-716                 nginx               nginx: worker process
-717                 nginx               nginx: worker process
+6360                root                nginx: master process nginx -g daemon off;
+6429                nginx               nginx: worker process
+6430                nginx               nginx: worker process
+6431                nginx               nginx: worker process
+6432                nginx               nginx: worker process
 ```
 
 ### Prozesse mit gelöschten (veralteten) Dateien im Speicher
 
-- PID 21 (/usr/sbin/nginx): /[aio] (deleted)
 - PID 22 (/usr/sbin/nginx): /[aio] (deleted)
 - PID 23 (/usr/sbin/nginx): /[aio] (deleted)
 - PID 24 (/usr/sbin/nginx): /[aio] (deleted)
+- PID 25 (/usr/sbin/nginx): /[aio] (deleted)
 
 ACHTUNG: Diese Prozesse nutzen noch alte Dateiversionen – Dienst neu starten.
 
