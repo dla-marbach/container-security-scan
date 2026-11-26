@@ -52,7 +52,8 @@ Erfasst: OS-Pakete (dpkg, apk, rpm) inkl. Quellpaket, npm (jede package.json), C
 vendor-dir, z.B. Nextcloud 3rdparty/), PyPI (auch venvs), RubyGems (Gemfile.lock), Java (JAR/WAR/EAR, auch
 verschachtelt), Go-Programme, eingebettete JavaScript-Bibliotheken (jQuery u.a.), Nextcloud (version.php, über den
 Bitnami-Datensatz), Laufzeiten am Programm (node, php, python, ruby, java, nginx, apache, mariadb, postgresql;
-geprüft über den Bitnami-Datensatz von OSV, falls nicht aus einem OS-Paket), Host-Kernel/Container-Laufzeit, Dienste.
+geprüft über den Bitnami-Datensatz von OSV, falls nicht aus einem OS-Paket; ruby zusätzlich über die Ruby Advisory
+Database), Host-Kernel/Container-Laufzeit, Dienste.
 Nicht erfasst: Rust, .NET, Tcl, Programme ohne Versionskennung.
 "Genutzt von" je Komponente: OS-Paket/Laufzeit = Programm oder geladene Bibliothek (/proc/<pid>/maps);
 npm/composer/pypi/rubygems/Nextcloud = Projektverzeichnis passt zu Arbeitsverzeichnis/Skript bzw. Docroot (welche
@@ -93,7 +94,7 @@ from functools import cmp_to_key
 # Einstellungen: Version, Relevanz, Fristen für die Daten
 # ===========================================================================
 # Version: einzige Stelle; ein Release ist der Git-Tag v<VERSION> (README: Releases)
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 # Relevant (-> Rückgabewert 1): (Priorität, Schweregrad); zusätzlich immer aktiv ausgenutzte Lücken (CISA KEV)
 RELEVANT = {(1, "CRITICAL"), (1, "HIGH"), (2, "CRITICAL")}
@@ -3190,7 +3191,7 @@ def cmp_gem(a, b):
 # Versionsvergleich je Ökosystem wie beim Abgleich (osv_target)
 OSV_CMP = {"Debian": cmp_dpkg, "Ubuntu": cmp_dpkg, "Alpine": cmp_apk, "SUSE": cmp_rpm, "openSUSE": cmp_rpm,
            "npm": cmp_semver, "PyPI": cmp_pep440, "Packagist": cmp_php, "Maven": cmp_maven, "Go": cmp_semver,
-           "RubyGems": cmp_gem, "Bitnami": cmp_semver}
+           "RubyGems": cmp_gem, "Bitnami": cmp_semver, "RubySec": cmp_gem}
 
 
 # ===========================================================================
@@ -3307,7 +3308,9 @@ OSV_BASE = "https://osv-vulnerabilities.storage.googleapis.com/"
 OSV_URL = OSV_BASE + "%s/all.zip"
 
 # Direkt von OSV (ohne Branch daten), Gesamtexporte rund 1,2 GB, davon Ubuntu ca. 800 MB. Bei Bedarf ergänzen: SUSE, openSUSE.
-OSV_ECOSYSTEMS = ["Debian", "Ubuntu", "Alpine", "npm", "PyPI", "Packagist", "RubyGems", "Maven", "Go", "Bitnami"]
+# RubySec (Ruby selbst) kommt aus der Ruby Advisory Database statt von OSV (rubysec_aktualisieren).
+OSV_ECOSYSTEMS = ["Debian", "Ubuntu", "Alpine", "npm", "PyPI", "Packagist", "RubyGems", "Maven", "Go", "Bitnami",
+                  "RubySec"]
 INKREMENT_MAX = 2000           # mehr geänderte Einträge -> Gesamtexport laden (schneller)
 
 # OSV-Kennungen (GHSA-…, DEBIAN-CVE-…, SUSE-SU-2024:1234-1 …) werden zu Dateinamen: kein "/" und kein ".." möglich
@@ -3347,10 +3350,11 @@ def db_source(dbdirs, fname):
 
 def osv_update(dbdir, ecosystems, full=False):
     """OSV-Datenbank aktualisieren. Erstmals (oder mit --voll) den Gesamtexport je Ökosystem laden,
-    danach nur die seit dem letzten Stand geänderten Einträge (Änderungsliste modified_id.csv, neueste zuerst)."""
+    danach nur die seit dem letzten Stand geänderten Einträge (Änderungsliste modified_id.csv, neueste zuerst).
+    RubySec kommt nicht von OSV, sondern aus der Ruby Advisory Database (rubysec_aktualisieren)."""
     os.makedirs(dbdir, exist_ok=True)
     state = db_state(dbdir)
-    for eco in ecosystems:
+    for eco in [e for e in ecosystems if e != RUBYSEC]:
         target, overlay = os.path.join(dbdir, eco + ".zip"), os.path.join(dbdir, eco + ".neu")
         known = state.get(eco, {}).get("stand", "")
         complete = full or not known or not os.path.exists(target)      # Gesamtexport nötig?
@@ -3405,6 +3409,8 @@ def osv_update(dbdir, ecosystems, full=False):
         state[eco] = {"stand": changed[0][0] if changed else known,
                       "geprueft": zeitstempel()}
         json_schreiben(os.path.join(dbdir, "stand.json"), state, indent=1)
+    if RUBYSEC in ecosystems:                  # zuletzt: ein Fehler dort hält die OSV-Daten nicht auf
+        rubysec_aktualisieren(dbdir)
 
 
 def _in_ranges(version, ranges, ecosystem):
@@ -3518,6 +3524,165 @@ def osv_records(dbdir, fname):
                 yield f.read()
 
 
+# Ruby selbst (Interpreter, nicht die Gems): Bitnami führt dazu nur wenige Einträge, die Ruby Advisory Database
+# (rubysec) im Verzeichnis rubies/ruby/ jede Lücke mit den behobenen Versionen (Gem-Schreibweise: "~> 3.3.14",
+# ">= 4.0.10"). Die Daten liegen wie ein OSV-Ökosystem unter RubySec/ (Paket "ruby"), damit Abgleich, Stand und
+# Altersprüfung unverändert gelten. Einträge mit OSVDB-Bezug (bis 2014) bleiben draußen: Sie können Inhalte der
+# OSVDB enthalten, die nicht gemeinfrei sind (Lizenz der Ruby Advisory Database); sie betreffen nur Ruby ≤ 2.1.
+RUBYSEC = "RubySec"
+RUBYSEC_URL = "https://github.com/rubysec/ruby-advisory-db/archive/refs/heads/master.zip"
+RUBYSEC_PFAD = re.compile(r"[^/]+/rubies/ruby/[^/]+\.yml$")
+RUBYSEC_MIN = 50               # weniger Einträge -> Download oder Format kaputt, nichts schreiben
+RUBYSEC_LISTEN = ("patched_versions", "unaffected_versions")
+
+
+def rubysec_eintrag(inhalt, name):
+    """Felder eines Eintrags aus rubies/ruby/ (YAML): die einfachen Schlüssel der obersten Ebene als Text und die
+    beiden Versionslisten. Mehr braucht der Abgleich nicht; ein Format, das hier nicht vorgesehen ist (Liste in
+    eckigen Klammern, Listeneintrag ohne Schlüssel), bricht ab statt still Einträge zu verlieren."""
+    werte, listen, schluessel = {}, {}, None
+    for zeile in inhalt.splitlines():
+        if not zeile.strip() or zeile.startswith(("---", "#")):
+            continue
+        m = re.match(r"([A-Za-z_0-9]+):\s*(.*)$", zeile)
+        if m:                                       # Schlüssel der obersten Ebene
+            schluessel, wert = m.group(1), m.group(2).strip()
+            if schluessel in RUBYSEC_LISTEN and wert:
+                raise ScanError("rubysec %s: %s nicht als Liste je Zeile: %r" % (name, schluessel, wert[:60]))
+            werte[schluessel] = "" if wert in ("|", ">", "|-", ">-") else wert.strip("\"'")
+            continue
+        m = re.match(r" {0,2}-\s+(.*)$", zeile)
+        if m and schluessel in RUBYSEC_LISTEN:
+            listen.setdefault(schluessel, []).append(m.group(1).strip().strip("\"'"))
+    if not listen.get("patched_versions") and not listen.get("unaffected_versions"):
+        raise ScanError("rubysec %s: keine Versionsangaben" % name)
+    werte.update(listen)
+    return werte
+
+
+def _gem_obergrenze(v):
+    """Obere Grenze (ausschließlich) zu "~> v": letzte Stelle weglassen, die davor erhöhen (~> 3.3.14 -> 3.4,
+    ~> 3.3 -> 4, ~> 3 -> 4)."""
+    zahlen = [int(x) for x in re.match(r"\d+(?:\.\d+)*", v).group(0).split(".")]
+    zahlen = zahlen[:-1] if len(zahlen) > 1 else zahlen
+    zahlen[-1] += 1
+    return ".".join(map(str, zahlen))
+
+
+def rubysec_bereich(anforderung, name):
+    """Versionsbereich einer Angabe in Gem-Schreibweise (mehrere Bedingungen mit Komma: Schnittmenge) als
+    (untere Grenze, untere Grenze eingeschlossen, obere Grenze ausschließlich oder None); "0" = von Anfang an."""
+    unten, inkl, oben = "0", True, None
+    for teil in anforderung.split(","):
+        m = re.fullmatch(r"\s*(~>|>=|>|<)\s*(\d[0-9A-Za-z.\-]*)\s*", teil)
+        if not m:
+            raise ScanError("rubysec %s: Versionsangabe nicht auswertbar: %r" % (name, anforderung))
+        op, v = m.groups()
+        if op == "<":
+            oben = v if oben is None or cmp_gem(v, oben) < 0 else oben
+            continue
+        if op == "~>":
+            ob = _gem_obergrenze(v)
+            oben = ob if oben is None or cmp_gem(ob, oben) < 0 else oben
+        if unten == "0" or cmp_gem(v, unten) > 0:
+            unten, inkl = v, op != ">"
+    return unten, inkl, oben
+
+
+def rubysec_ereignisse(sichere):
+    """OSV-Ereignisse (introduced/fixed/last_affected) für alle Versionen außerhalb der sicheren Bereiche. Die
+    untere Grenze eines sicheren Bereichs wird zu "fixed" (bei ">" zu "last_affected"); stammt er aus
+    unaffected_versions, erscheint sie so ebenfalls als „behoben in“."""
+    def kleiner(a, b):
+        return -1 if a == b == "0" else (-1 if a == "0" else 1 if b == "0" else cmp_gem(a, b))
+    zusammen = []
+    for unten, inkl, oben in sorted(sichere, key=cmp_to_key(lambda x, y: kleiner(x[0], y[0]))):
+        if zusammen and (zusammen[-1][2] is None or kleiner(unten, zusammen[-1][2]) <= 0):
+            letzter = zusammen[-1]
+            if letzter[2] is not None and (oben is None or cmp_gem(oben, letzter[2]) > 0):
+                zusammen[-1] = (letzter[0], letzter[1], oben)
+            continue
+        zusammen.append((unten, inkl, oben))
+    ereignisse, beginn = [], "0"         # beginn: ab hier betroffen (None: bis zum Ende sicher)
+    for unten, inkl, oben in zusammen:
+        if unten != "0":
+            ereignisse += [{"introduced": beginn}, {"fixed": unten} if inkl else {"last_affected": unten}]
+        beginn = oben
+        if beginn is None:
+            break
+    if beginn is not None:
+        ereignisse.append({"introduced": beginn})
+    return ereignisse
+
+
+def rubysec_schweregrad(werte):
+    """Stufe aus der angegebenen Punktzahl (CVSS 4 bzw. 3 vor 2; rubysec führt nur die Zahl, keinen Vektor)."""
+    for feld, kritisch in (("cvss_v4", 9.0), ("cvss_v3", 9.0), ("cvss_v2", None)):
+        try:
+            punkte = float(werte.get(feld, ""))
+        except ValueError:
+            continue
+        return "CRITICAL" if kritisch and punkte >= kritisch else "HIGH" if punkte >= 7 else \
+            "MEDIUM" if punkte >= 4 else "LOW" if punkte > 0 else None
+    return None
+
+
+def rubysec_osv(werte, name):
+    """Eintrag der Ruby Advisory Database als gekürzter OSV-Eintrag (Ökosystem RubySec, Paket ruby) oder None
+    (OSVDB-Bezug, siehe oben)."""
+    if werte.get("osvdb"):
+        return None
+    ghsa = "GHSA-" + werte["ghsa"] if werte.get("ghsa") else None
+    vid = "CVE-" + werte["cve"] if werte.get("cve") else ghsa
+    if not vid or not OSV_ID.fullmatch(vid):
+        raise ScanError("rubysec %s: keine gültige Kennung" % name)
+    sichere = [rubysec_bereich(a, name) for k in RUBYSEC_LISTEN for a in werte.get(k, [])]
+    rec = {"id": vid, "affected": [{"package": {"ecosystem": RUBYSEC, "name": "ruby"},
+                                    "ranges": [{"type": "ECOSYSTEM", "events": rubysec_ereignisse(sichere)}]}]}
+    if ghsa and ghsa != vid:
+        rec["aliases"] = [ghsa]
+    if werte.get("date"):
+        rec["published"] = werte["date"]
+    if werte.get("title"):
+        rec["summary"] = werte["title"][:200]
+    sev = rubysec_schweregrad(werte)
+    if sev:
+        rec["database_specific"] = {"severity": sev}
+    return rec
+
+
+def rubysec_aktualisieren(dbdir, url=RUBYSEC_URL):
+    """Ruby Advisory Database laden und die Einträge zu Ruby selbst nach <dbdir>/RubySec/00.jsonl schreiben (nach
+    Kennung sortiert, wie die OSV-Daten), Stand in stand.json. Bricht ab, ohne etwas zu schreiben, wenn der
+    Download oder ein Eintrag nicht auswertbar ist."""
+    with urllib.request.urlopen(url, timeout=300) as r:
+        daten = r.read()
+    zeilen = {}
+    with zipfile.ZipFile(io.BytesIO(daten)) as z:
+        for info in z.infolist():
+            if RUBYSEC_PFAD.match(info.filename):
+                name = info.filename.rsplit("/", 1)[1]
+                rec = rubysec_osv(rubysec_eintrag(z.read(info).decode("utf-8"), name), name)
+                if rec:
+                    zeilen[rec["id"]] = json.dumps(rec, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    if len(zeilen) < RUBYSEC_MIN:
+        raise ScanError("rubysec: nur %d Einträge zu Ruby gefunden" % len(zeilen))
+    ziel = os.path.join(dbdir, RUBYSEC)
+    os.makedirs(ziel, exist_ok=True)
+    with open(os.path.join(ziel, "00.jsonl.tmp"), "w", encoding="utf-8") as f:
+        f.write("".join(zeilen[k] + "\n" for k in sorted(zeilen)))
+    os.replace(os.path.join(ziel, "00.jsonl.tmp"), os.path.join(ziel, "00.jsonl"))
+    pfad = os.path.join(dbdir, "stand.json")
+    try:
+        state = json_datei(pfad)
+    except (OSError, ValueError):
+        state = {}
+    neuester = max(json.loads(z).get("published", "") for z in zeilen.values())
+    state[RUBYSEC] = {"stand": neuester + "T00:00:00Z" if neuester else "", "geprueft": zeitstempel()}
+    json_schreiben(pfad, state, indent=1, sort_keys=True)
+    log("  %s: %d Einträge zu Ruby" % (RUBYSEC, len(zeilen)))
+
+
 # ===========================================================================
 # 15. Schwachstellen: Abgleich mit den OSV-Daten
 # ===========================================================================
@@ -3607,6 +3772,11 @@ def osv_target(c, osinfo):
     return None
 
 
+def rubysec_ziel(c):
+    """Ruby außerhalb der Distributionsdaten: zusätzlich zu Bitnami gegen die Ruby Advisory Database prüfen."""
+    return RUBYSEC, lambda e: e == RUBYSEC, {"ruby"}, c["version"], cmp_gem
+
+
 OS_FILES = ("Debian", "Ubuntu", "Alpine", "SUSE", "openSUSE")
 
 # Typische Versionskennungen von Paketquellen der Hersteller (nginx.org, NodeSource, Sury-PHP, mariadb.org,
@@ -3649,6 +3819,8 @@ def osv_scan(comps, osinfo, dbdirs):
         if t:
             for n in t[2]:
                 by_file[t[0]][n].append((c, t))
+            if t[0] == "Bitnami" and c["name"] == "ruby":
+                by_file[RUBYSEC]["ruby"].append((c, rubysec_ziel(c)))
     if osinfo["id"] not in ("debian", "ubuntu", "alpine") and not osinfo["id"].startswith(("opensuse-leap", "sle")) \
             and any(c["typ"] == "os-paket" for c in comps):
         by_file["(OS %s wird nicht unterstützt)" % osinfo["id"]] = {}
@@ -3719,6 +3891,8 @@ def osv_scan(comps, osinfo, dbdirs):
                 c["hinweise"].append(FREMDQUELLE + " – über Bitnami geprüft")
                 by_file["Bitnami"][BITNAMI[c["name"]]].append(
                     (c, ("Bitnami", lambda e: e == "Bitnami", {BITNAMI[c["name"]]}, c["version"], cmp_semver)))
+                if c["name"] == "ruby":
+                    by_file[RUBYSEC]["ruby"].append((c, rubysec_ziel(c)))
     for fname in [f for f in list(by_file) if f not in OS_FILES]:
         scan_file(fname, by_file[fname])
     # Funde ohne Schweregrad (z.B. Go-Daten): Bewertung derselben CVE aus einer anderen Quelle übernehmen
@@ -5010,6 +5184,7 @@ def kommandozeile():
     ap.add_argument("--daten-erzeugen", metavar="VERZEICHNIS", help=argparse.SUPPRESS)   # für die GitHub Action
     ap.add_argument("--eol-daten-erzeugen", metavar="DATEI", help=argparse.SUPPRESS)
     ap.add_argument("--kev-daten-erzeugen", metavar="DATEI", help=argparse.SUPPRESS)
+    ap.add_argument("--rubysec-daten-erzeugen", metavar="VERZEICHNIS", help=argparse.SUPPRESS)
     ap.add_argument("--ausnahmen", metavar="DATEI",
                     help="Ausnahmeliste: je Zeile \"<Kennung> <Paket oder *> <gültig bis JJJJ-MM-TT> <Begründung>\"; "
                          "passende Funde zählen nicht als relevant (README: Ausnahmen)")
@@ -5142,6 +5317,9 @@ def main():
         return 0
     if a.kev_daten_erzeugen:
         kev_daten_erzeugen(a.kev_daten_erzeugen)
+        return 0
+    if a.rubysec_daten_erzeugen:
+        rubysec_aktualisieren(a.rubysec_daten_erzeugen)
         return 0
     a.dbdirs = a.db or [d for d in (data_dir, local_db) if os.path.isdir(d)]
     if a.db_aktualisieren:

@@ -37,6 +37,14 @@ jobs:
       - name: OSV-Exporte laden und gekürzt in den Branch daten schreiben
         run: python3 container-security-scan.py --daten-erzeugen daten
 
+      # Ruby selbst (Interpreter, nicht die Gems) aus der Ruby Advisory Database (rubysec), unter RubySec/.
+      # Ein Fehler hält die übrigen Daten nicht auf; ist RubySec/ älter als 3 Tage, gilt die Prüfung von
+      # Containern mit Ruby als unvollständig.
+      - name: Ruby-Daten (rubysec) laden
+        id: rubysec
+        continue-on-error: true
+        run: python3 container-security-scan.py --rubysec-daten-erzeugen daten
+
       # Fehler bei endoflife.date verhindern nicht die Aktualisierung der OSV-Daten; bleibt die Datei
       # länger als 30 Tage alt, warnt der Scanner.
       - name: EOL-Daten von endoflife.date laden
@@ -69,6 +77,12 @@ jobs:
             git commit -q -m "OSV-, EOL- und KEV-Daten $(date -u +%F)"
             git push origin HEAD:daten
           fi
+
+      - name: rubysec-Fehler melden
+        if: steps.rubysec.outcome == 'failure'
+        run: |
+          echo "::warning::Ruby-Daten (rubysec) konnten nicht aktualisiert werden"
+          exit 1
 
       - name: EOL-Fehler melden
         if: steps.eol.outcome == 'failure'

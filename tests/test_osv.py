@@ -373,5 +373,135 @@ class Aktualisierung(Tmp):
         self.assertEqual(len(list(scanner.osv_records(ziel, "npm"))), 3)
 
 
+# Eintrag wie in rubies/ruby/ der Ruby Advisory Database (gekürzt): Block-Texte, verschachtelte Listen unter
+# related und notes mit "- " dürfen nicht als Versionsangaben gelten
+RUBY_YAML = """---
+engine: ruby
+cve: 2026-132825
+ghsa: 34m4-m9fh-gqp5
+url: https://nvd.nist.gov/vuln/detail/CVE-2026-132825
+title: Heap buffer overflow in case conversion of strings
+date: 2026-11-18
+description: |
+  ## Patches
+
+  - Upgrade to Ruby 3.3.14, 3.4.13 or 4.0.10.
+cvss_v3: 7.4
+patched_versions:
+  - "~> 3.3.14"
+  - "~> 3.4.13"
+  - ">= 4.0.10"
+related:
+  ghsa:
+    - 8452-w857-wpmw
+  url:
+    - https://www.ruby-lang.org/en/news/
+notes: |
+  - cvss_v3 from NVD.
+"""
+
+
+class RubySec(Tmp):
+    """Ruby selbst über die Ruby Advisory Database (rubies/ruby/)."""
+
+    def test_eintrag_lesen(self):
+        w = scanner.rubysec_eintrag(RUBY_YAML, "CVE-2026-132825.yml")
+        self.assertEqual((w["cve"], w["ghsa"], w["cvss_v3"], w["date"]), ("2026-132825", "34m4-m9fh-gqp5", "7.4", "2026-11-18"))
+        self.assertEqual(w["patched_versions"], ["~> 3.3.14", "~> 3.4.13", ">= 4.0.10"])
+        self.assertNotIn("unaffected_versions", w)
+        # unerwartetes Format bricht ab, statt Einträge still zu verlieren
+        with self.assertRaises(scanner.ScanError):
+            scanner.rubysec_eintrag('cve: 2026-1\npatched_versions: [">= 1.0"]\n', "x.yml")
+        with self.assertRaises(scanner.ScanError):
+            scanner.rubysec_eintrag("cve: 2026-1\ntitle: ohne Versionen\n", "x.yml")
+        with self.assertRaises(scanner.ScanError):
+            scanner.rubysec_osv(scanner.rubysec_eintrag('cve: 2026-1\npatched_versions:\n  - "= 1.0"\n', "x.yml"), "x.yml")
+
+    def test_osv_eintrag_und_bereiche(self):
+        rec = scanner.rubysec_osv(scanner.rubysec_eintrag(RUBY_YAML, "x.yml"), "x.yml")
+        self.assertEqual((rec["id"], rec["aliases"], rec["database_specific"], rec["published"]),
+                         ("CVE-2026-132825", ["GHSA-34m4-m9fh-gqp5"], {"severity": "HIGH"}, "2026-11-18"))
+        aff = rec["affected"][0]
+        self.assertEqual(aff["package"], {"ecosystem": "RubySec", "name": "ruby"})
+        erwartet = {"3.2.9": (True, "3.3.14"), "3.3.13": (True, "3.3.14"), "3.3.14": (False, None),
+                    "3.4.0": (True, "3.4.13"), "3.4.13": (False, None), "4.0.9": (True, "4.0.10"),
+                    "4.0.10": (False, None), "4.1.0": (False, None)}
+        for v, (betroffen, fix) in erwartet.items():
+            hit, f = scanner.affected_by(v, aff, scanner.cmp_gem)
+            self.assertEqual((hit, f if hit else None), (betroffen, fix), v)
+        # nicht betroffene Versionen ("<") und ausschließende Grenze (">")
+        w = {"cve": "2009-1", "cvss_v2": "9.3", "patched_versions": ["~> 1.9.1.129", "> 2.1.7"],
+             "unaffected_versions": ["< 1.9.1"]}
+        rec = scanner.rubysec_osv(w, "x.yml")
+        self.assertEqual(rec["affected"][0]["ranges"][0]["events"],
+                         [{"introduced": "1.9.1"}, {"fixed": "1.9.1.129"}, {"introduced": "1.9.2"},
+                          {"last_affected": "2.1.7"}])
+        self.assertEqual(rec["database_specific"], {"severity": "HIGH"})       # CVSS 2 kennt kein CRITICAL
+        for v, betroffen in (("1.8.7", False), ("1.9.1", True), ("1.9.1.129", False), ("2.1.7", True), ("2.1.8", False)):
+            self.assertEqual(scanner.affected_by(v, rec["affected"][0], scanner.cmp_gem)[0], betroffen, v)
+        # nur GHSA, ohne Punktzahl; OSVDB-Bezug: nicht übernommen (Lizenz)
+        rec = scanner.rubysec_osv({"ghsa": "abcd-efgh-ijkl", "patched_versions": [">= 4.0.10"]}, "x.yml")
+        self.assertEqual((rec["id"], "aliases" in rec, "database_specific" in rec), ("GHSA-abcd-efgh-ijkl", False, False))
+        self.assertIsNone(scanner.rubysec_osv({"cve": "2010-1", "osvdb": "123", "patched_versions": [">= 1.9"]}, "x.yml"))
+
+    def archiv(self, eintraege):
+        pfad = os.path.join(self.tmp, "rubysec.zip")
+        with zipfile.ZipFile(pfad, "w") as z:
+            for name, inhalt in eintraege.items():
+                z.writestr("ruby-advisory-db-master/" + name, inhalt)
+        return "file://" + pfad
+
+    def test_aktualisieren(self):
+        url = self.archiv({"rubies/ruby/CVE-2026-132825.yml": RUBY_YAML,
+                           "rubies/ruby/CVE-2010-1.yml": 'cve: 2010-1\nosvdb: 123\npatched_versions:\n  - ">= 1.9"\n',
+                           "rubies/jruby/CVE-2026-2.yml": 'cve: 2026-2\npatched_versions:\n  - ">= 9"\n',
+                           "gems/rack/CVE-2026-3.yml": "gem: rack\n"})
+        ziel = os.path.join(self.tmp, "daten")
+        os.makedirs(ziel)
+        scanner.json_schreiben(os.path.join(ziel, "stand.json"), {"_format": "osv-kompakt-1", "npm": {"geprueft": "x"}})
+        # zu wenige Einträge (Download oder Format kaputt): nichts schreiben
+        with self.assertRaises(scanner.ScanError):
+            scanner.rubysec_aktualisieren(ziel, url)
+        self.assertFalse(os.path.exists(os.path.join(ziel, "RubySec")))
+        with mock.patch.object(scanner, "RUBYSEC_MIN", 1):
+            scanner.rubysec_aktualisieren(ziel, url)
+        recs = [json.loads(r) for r in scanner.osv_records(ziel, "RubySec")]
+        self.assertEqual([r["id"] for r in recs], ["CVE-2026-132825"])      # ohne OSVDB-Bezug, ohne jruby und Gems
+        stand = scanner.json_datei(os.path.join(ziel, "stand.json"))
+        self.assertEqual((stand["RubySec"]["stand"], stand["npm"], stand["_format"]),
+                         ("2026-11-18T00:00:00Z", {"geprueft": "x"}, "osv-kompakt-1"))
+
+    def test_osv_update_holt_rubysec_ohne_osv(self):
+        with mock.patch.object(scanner, "rubysec_aktualisieren") as rs, \
+                mock.patch.object(scanner.urllib.request, "urlopen") as osv:
+            scanner.osv_update(self.tmp, ["RubySec"])
+        rs.assert_called_once_with(self.tmp)
+        osv.assert_not_called()
+        self.assertIn("RubySec", scanner.OSV_ECOSYSTEMS)
+        self.assertNotIn("RubySec", scanner.DATEN_OEKOSYSTEME)           # eigener Schritt in daten.yml
+
+    def test_abgleich(self):
+        schreibe_jsonl(self.tmp, "Bitnami", [
+            eintrag("BIT-ruby-1", "Bitnami", "ruby", [{"introduced": "4.0.0"}, {"fixed": "4.0.10"}], typ="SEMVER",
+                    aliases=["CVE-2026-132825"])])
+        ruby = C("runtime", "ruby", "4.0.9", "/usr/local/bin/ruby")
+        # RubySec fehlt (Übergangszeit): unvollständig, aber nur mit Ruby
+        self.assertEqual(scanner.osv_scan([ruby], DEBIAN, [self.tmp])[2], ["RubySec"])
+        self.assertEqual(scanner.osv_scan([C("runtime", "node", "20.1.0")], DEBIAN, [self.tmp])[2], [])
+        schreibe_jsonl(self.tmp, "RubySec", [scanner.rubysec_osv(scanner.rubysec_eintrag(RUBY_YAML, "x"), "x"),
+                                             scanner.rubysec_osv({"ghsa": "abcd-efgh-ijkl", "cvss_v3": "9.8",
+                                                                  "patched_versions": [">= 4.0.10"]}, "x")])
+        findings, _, missing, _ = scanner.osv_scan([ruby], DEBIAN, [self.tmp])
+        self.assertEqual(missing, [])
+        # dieselbe CVE aus Bitnami und rubysec nur einmal
+        self.assertEqual(sorted((f["id"], f["fix"]) for f in findings),
+                         [("CVE-2026-132825", "4.0.10"), ("GHSA-abcd-efgh-ijkl", "4.0.10")])
+        self.assertEqual([f["sev"] for f in findings if f["id"].startswith("GHSA")], ["CRITICAL"])
+        self.assertEqual(scanner.osv_scan([C("runtime", "ruby", "4.0.10", "/usr/local/bin/ruby")], DEBIAN, [self.tmp])[0], [])
+        # Ruby aus einem Paket der Distribution: deren Daten, nicht rubysec
+        aus_paket = C("runtime", "ruby", "3.1.2", "/usr/bin/ruby3.1", hinweise=["aus OS-Paket ruby3.1"])
+        self.assertEqual(scanner.osv_scan([aus_paket], DEBIAN, [self.tmp])[0], [])
+
+
 if __name__ == "__main__":
     unittest.main()
