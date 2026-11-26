@@ -429,7 +429,7 @@ sudo python3 -I $C --db $DB --bericht --alle --container 'app-*' <ausgabeverzeic
 | Go | Build-Info in Go-Programmen | Go |
 | JavaScript | eingebettete Bibliotheken (jQuery, Bootstrap, Moment, Vue …) | npm |
 | Anwendungen | Nextcloud (`version.php`) | OSV Bitnami |
-| Laufzeiten, Server | Version von node, php, php-fpm, python, ruby, java, nginx, apache, mariadb, postgresql | Distribution, sonst (offizielle Images, nginx.org, NodeSource, Sury, mariadb.org) OSV Bitnami |
+| Laufzeiten, Server | Version von node, php, php-fpm, python, ruby, java, nginx, apache, mariadb, postgresql | Distribution, sonst (offizielle Images, nginx.org, NodeSource, Sury, mariadb.org) OSV Bitnami, ruby zusätzlich [Ruby Advisory Database](https://github.com/rubysec/ruby-advisory-db) (`rubies/ruby/`) |
 
 Nutzerdaten werden nicht ausgewertet: Dateien im Datenverzeichnis von Nextcloud (mit `.ocdata` bzw. `.ncdata`) lässt der Scan
 mit `find`/`tar` schon im Container weg. Beim passiven Lesen (ohne Werkzeuge oder Leserechte im Container, über
@@ -439,7 +439,8 @@ das Verzeichnis.
 **Daten** (Branch [`daten`](https://github.com/dla-marbach/container-security-scan/tree/daten), täglich von
 [`daten.yml`](.github/workflows/daten.yml) erzeugt, ca. 365 MB): ein Auszug aus den OSV-Exporten mit nur den
 Feldern und Einträgen, die der Abgleich liest (Ergebnisse identisch mit den vollständigen Exporten), dazu Supportende
-(endoflife.date) und KEV-Katalog (CISA). Kommt mit einer neuen Version ein Ökosystem hinzu (z. B. RubyGems), fehlt
+(endoflife.date), KEV-Katalog (CISA) und die Einträge zu Ruby selbst aus der Ruby Advisory Database (`RubySec/`, ohne
+Einträge mit OSVDB-Bezug bis 2014). Kommt mit einer neuen Version ein Ökosystem hinzu (z. B. RubyGems), fehlt
 es bis zum nächsten Lauf der Action; Container, in denen der Scan solche Pakete findet, ergeben so lange
 Rückgabewert 2 („Daten fehlen für: RubyGems“). Quellen und Lizenzen:
 [`QUELLEN.md`](https://github.com/dla-marbach/container-security-scan/blob/daten/QUELLEN.md).
